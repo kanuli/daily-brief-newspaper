@@ -11,11 +11,43 @@
 
   const ST3_CATALOG = "https://raw.githubusercontent.com/kanuli/japanese-vocab-game/main/word-supertonic3-catalog.json";
   const ST3_F3_INDEX = "https://raw.githubusercontent.com/kanuli/japanese-vocab-game/main/word-supertonic3-F3-index.json";
+  const POS_LABELS = {
+    noun: "名詞",
+    n: "名詞",
+    verb: "動詞",
+    v: "動詞",
+    adj: "形容詞",
+    adjective: "形容詞",
+    adv: "副詞",
+    adverb: "副詞",
+    particle: "助詞",
+    conjunction: "接続詞",
+    conj: "接続詞",
+    pronoun: "代名詞",
+    pron: "代名詞",
+    interjection: "感動詞",
+    int: "感動詞",
+    auxiliary: "助動詞",
+    aux: "助動詞",
+    determiner: "連体詞",
+    prefix: "接頭語",
+    suffix: "接尾語",
+    counter: "助数詞",
+    numeral: "数詞",
+    expression: "表現",
+    phrase: "慣用表現"
+  };
   let catalogPromise = null;
   let f3IndexPromise = null;
   let activeAudio = null;
   let activeBlobUrl = "";
   let activeButton = null;
+
+  function japanesePos(value = "") {
+    const raw = String(value).trim();
+    if (!raw) return "";
+    return POS_LABELS[raw.toLowerCase()] || raw;
+  }
 
   async function getEditionData() {
     const edition = document.body.dataset.edition;
@@ -168,7 +200,7 @@
                   <button class="vocab-play" type="button" data-reading="${esc(word.reading || "")}" data-kanji="${esc(word.kanji || "")}" title="Supertonic 3 F3 發音">🔊 F3</button>
                 </div>
                 <div class="vocab-meaning">${esc(word.meaning || "")}</div>
-                <div class="vocab-pos">${esc(word.partOfSpeech || "")}</div>
+                <div class="vocab-pos">${esc(japanesePos(word.partOfSpeech))}</div>
               </article>
             `).join("") : `<p class="vocab-missing">本級今日未能取得兩個有效詞條。</p>`}
           </section>
