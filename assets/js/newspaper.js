@@ -95,23 +95,9 @@ function renderSections(data) {
     .join("");
 }
 
-function renderStudyDesk(data) {
+function clearLegacyStudyDesk() {
   const host = $("#study-desk");
-  if (!host || !data.studyDesk) return;
-  const target = new Date(`${data.studyDesk.targetDate}T00:00:00+09:00`);
-  const now = new Date();
-  const days = Math.max(0, Math.ceil((target - now) / 86400000));
-  host.innerHTML = `
-    <div class="countdown">
-      <div><strong>${days}</strong><span>日後 · ${esc(data.studyDesk.label)}</span></div>
-    </div>
-    <div>
-      <h2>${esc(data.studyDesk.title)}</h2>
-      <p>${esc(data.studyDesk.summary)}</p>
-      <p><strong>今日行動：</strong>${esc(data.studyDesk.action)}</p>
-      <a class="source-link" href="${esc(data.studyDesk.sourceUrl)}" target="_blank" rel="noopener noreferrer">官方資料：JLPT ↗</a>
-    </div>
-  `;
+  if (host) host.innerHTML = "";
 }
 
 function setEditionMeta(data) {
@@ -224,7 +210,7 @@ async function loadEdition() {
     renderLead(data);
     renderTopFive(data);
     renderSections(data);
-    renderStudyDesk(data);
+    clearLegacyStudyDesk();
   } catch (err) {
     console.error(err);
     const main = $("main");
