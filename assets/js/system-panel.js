@@ -3,16 +3,15 @@
 
   const DESKS = [
     ["index.html", "頭版"],
-    ["japan.html", "日本"],
-    ["hong-kong.html", "香港"],
+    ["world.html", "世界"],
     ["asia.html", "亞洲"],
+    ["hong-kong.html", "香港"],
+    ["japan.html", "日本"],
     ["finance.html", "📈 財經"],
     ["technology.html", "AI / 科技"],
     ["manga-anime.html", "漫畫 / Anime"],
     ["manchester-united.html", "Manchester United"],
     ["football.html", "Football"],
-    ["world.html", "世界"],
-    ["index.html#study-desk", "日語學習"],
     ["archive.html", "Archive"]
   ];
 
@@ -21,10 +20,10 @@
     if (!nav) return;
     const page = (location.pathname.split("/").pop() || "index.html").toLowerCase();
     const links = [
-      '<a class="live-nav" href="live.html">● LIVE</a>',
+      '<a class="live-nav" href="live.html">Live</a>',
       ...DESKS.map(([href, label]) => {
         const target = href.split("#")[0].toLowerCase();
-        const current = target === page && !href.includes("#") ? ' aria-current="page"' : "";
+        const current = target === page ? ' aria-current="page"' : "";
         return `<a href="${href}"${current}>${label}</a>`;
       })
     ];
