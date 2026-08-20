@@ -30,10 +30,28 @@
 }
 .vocab-card { padding: 8px 0; border-bottom: 1px dotted #8b8478; }
 .vocab-card:last-child { border-bottom: 0; }
+.vocab-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.vocab-card-head > div { min-width: 0; }
 .vocab-reading { font-size: 12px; color: var(--muted); font-weight: 700; }
-.vocab-kanji { font-family: "Noto Serif TC", "PMingLiU", serif; font-size: 23px; font-weight: 900; line-height: 1.25; }
+.vocab-kanji { font-family: "Noto Serif TC", "PMingLiU", serif; font-size: 23px; font-weight: 900; line-height: 1.25; overflow-wrap: anywhere; }
 .vocab-meaning { margin-top: 4px; font-size: 13px; }
 .vocab-pos { margin-top: 3px; font-size: 10px; color: var(--muted); text-transform: uppercase; }
+.vocab-play {
+  flex: 0 0 auto;
+  appearance: none;
+  border: 1px solid var(--ink);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 5px 8px;
+  font: 900 10px/1 "Noto Sans TC", sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.vocab-play:hover { background: var(--ink); color: #fff; }
+.vocab-play.is-loading { opacity: .65; cursor: wait; }
+.vocab-play.is-playing { background: var(--red); border-color: var(--red); color: #fff; }
+.vocab-play:disabled { cursor: wait; }
 .vocab-missing { font-size: 11px; color: var(--muted); }
 .vocab-source-note {
   display: flex;
