@@ -1,51 +1,11 @@
-.maintenance-monitoring {
-  margin-top: 22px;
-  padding: 18px;
-  border: 3px solid var(--ink);
-  background: #f0eee8;
-}
-
-.monitoring-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 14px;
-}
-
-.monitoring-head h2 {
-  margin: 0;
-  font-family: "Noto Serif TC", "PMingLiU", serif;
-  font-size: 29px;
-  line-height: 1.1;
-}
-
-.monitoring-head p {
-  margin: 5px 0 0;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.monitoring-overall {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 10px;
-  border: 1px solid var(--ink);
-  background: var(--card);
-  font-size: 11px;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
 .status-dot {
   width: 9px;
   height: 9px;
+  flex: 0 0 9px;
   border-radius: 50%;
   background: #777;
   box-shadow: 0 0 0 2px rgba(0,0,0,.08);
 }
-
 .status-ok .status-dot,
 .status-dot.status-ok { background: #198754; }
 .status-warn .status-dot,
@@ -55,92 +15,124 @@
 .status-check .status-dot,
 .status-dot.status-check { background: #777; }
 
-.monitoring-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.monitor-card {
-  min-width: 0;
-  padding: 12px;
-  border-top: 5px solid var(--ink);
-  background: var(--card);
-}
-
-.monitor-card.status-ok { border-top-color: #198754; }
-.monitor-card.status-warn { border-top-color: #c17b00; }
-.monitor-card.status-fail { border-top-color: var(--red); }
-
-.monitor-label {
-  display: flex;
+.system-status-button {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2147483646;
+  display: inline-flex;
   align-items: center;
   gap: 7px;
-  color: var(--muted);
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid #1a1a1a;
+  border-radius: 999px;
+  background: #fffdf7;
+  color: #111;
+  box-shadow: 0 5px 18px rgba(0,0,0,.2);
+  font: 900 11px/1.1 "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  letter-spacing: .06em;
+  cursor: pointer;
+}
+.system-status-button:hover,
+.system-status-button:focus-visible {
+  background: #111;
+  color: #fff;
+  outline: 2px solid #b00016;
+  outline-offset: 2px;
+}
+.system-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #198754;
+  box-shadow: 0 0 0 3px rgba(25,135,84,.14);
+}
+.system-status-label { white-space: nowrap; }
+
+.system-status-panel {
+  position: fixed;
+  right: 18px;
+  bottom: 70px;
+  z-index: 2147483645;
+  width: min(370px, calc(100vw - 28px));
+  padding: 14px;
+  border: 2px solid #111;
+  background: #f5f1e8;
+  color: #111;
+  box-shadow: 0 10px 35px rgba(0,0,0,.26);
+  font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+}
+.system-status-panel[hidden] { display: none; }
+.system-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 10px;
+  margin-bottom: 8px;
+  border-bottom: 4px solid #111;
+}
+.system-panel-head strong {
+  display: block;
+  font-family: "Noto Serif TC", "PMingLiU", serif;
+  font-size: 21px;
+  line-height: 1.05;
+}
+.system-panel-head span {
+  display: block;
+  margin-top: 3px;
+  color: #6c665d;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 800;
   letter-spacing: .05em;
   text-transform: uppercase;
 }
-
-.monitor-value {
-  margin-top: 5px;
-  font-size: 17px;
-  font-weight: 900;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
+.system-panel-close {
+  appearance: none;
+  width: 31px;
+  height: 31px;
+  border: 1px solid #111;
+  background: #fffdf7;
+  color: #111;
+  font: 900 21px/1 sans-serif;
+  cursor: pointer;
 }
-
-.monitor-detail {
-  margin-top: 5px;
-  color: #59534b;
-  font-size: 11px;
+.system-panel-close:hover { background: #111; color: #fff; }
+.system-panel-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 9px 2px;
+  border-bottom: 1px dotted #8b8478;
+}
+.system-panel-row .status-dot { margin-top: 4px; }
+.system-panel-row strong {
+  display: block;
+  font-size: 12px;
+}
+.system-panel-row small {
+  display: block;
+  margin-top: 2px;
+  color: #5e584e;
+  font-size: 10px;
   line-height: 1.45;
 }
-
-.monitoring-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 14px;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid #999;
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.monitoring-links {
+.system-panel-links {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  margin-top: 11px;
 }
-
-.monitoring-links a {
-  color: var(--red-dark);
+.system-panel-links a {
+  color: #79000e;
+  font-size: 10px;
   font-weight: 900;
-}
-
-.monitor-refresh {
-  appearance: none;
-  border: 1px solid var(--ink);
-  background: var(--card);
-  color: var(--ink);
-  padding: 6px 9px;
-  font: inherit;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-.monitor-refresh:hover { background: var(--ink); color: #fff; }
-
-@media (max-width: 900px) {
-  .monitoring-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 620px) {
-  .maintenance-monitoring { padding: 13px 10px; }
-  .monitoring-head { flex-direction: column; }
-  .monitoring-grid { grid-template-columns: 1fr; }
-  .monitoring-footer { align-items: flex-start; flex-direction: column; }
+  .system-status-button { right: 10px; bottom: 10px; }
+  .system-status-label { display: none; }
+  .system-status-button { width: 42px; justify-content: center; padding: 8px; }
+  .system-status-panel { right: 10px; bottom: 62px; width: min(360px, calc(100vw - 20px)); }
 }
