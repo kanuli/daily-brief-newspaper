@@ -12,37 +12,49 @@
 
 Phase 1 已完成：港式報章風格首頁、動態分類版面、手機 responsive、Archive，以及 GitHub Pages deployment。
 
-Phase 2 已加入：每日新聞生成器與 GitHub Actions 排程。預設每日香港時間 07:15 執行，使用 OpenAI Responses API + web search 搜尋及整理當日新聞，產生 8–20 篇高價值內容；section 數量完全動態，並固定把最重要 5 則置頂。
+Phase 2 採用 **零額外 API 收費架構**：不需要 `OPENAI_API_KEY`，不使用付費新聞 API，也不在 GitHub Actions 內呼叫任何按量收費的 AI API。
+
+每日內容由已設定的 ChatGPT Daily Priority Briefing 排程產生，並透過已連接的 GitHub 工具更新本 repository；GitHub Pages 只負責部署及顯示靜態網站。
 
 第一份示範版：2026-08-20。
 
-## 啟用每日自動更新
+## 每日更新方式
 
-在 repository：`Settings → Secrets and variables → Actions → New repository secret`
+每日排程會：
 
-建立：
+1. 搜尋及核實當日重要新聞。
+2. 在 ChatGPT 提供今日最重要 5 則繁體中文簡報。
+3. 同時製作較完整的網站 edition，通常 8–20 篇，但文章數及 section 數量不固定。
+4. 更新／建立：
+   - `data/YYYY-MM-DD.json`
+   - `data/latest.json`
+   - `data/archive.json`
+   - `editions/YYYY-MM-DD.html`
+5. GitHub Pages workflow 在 repository 更新後重新部署網站。
 
-- Name: `OPENAI_API_KEY`
-- Secret: 你的 OpenAI API project key
+## 成本原則
 
-API key 只會在 GitHub Actions runtime 使用，不會寫入 HTML、JavaScript、JSON 或公開 repository。
+- 不需要 OpenAI API key。
+- 不使用付費新聞 API。
+- 不使用按 token／search 次數收費的外部 AI 服務。
+- 網站使用現有 GitHub Pages deployment。
+- 若日後加入任何可能產生額外費用的功能，必須先明確改變這項成本政策；目前預設為 **不產生額外 API 費用**。
 
-設定好之後，可以到 `Actions → Generate Daily Brief → Run workflow` 手動測試一次；之後會按香港時間每日 07:15 自動執行。
-
-## 設計原則
+## 編輯原則
 
 - 每日最重要 5 則置頂，但整份報紙不限制只有 5 篇或 5 個 section。
 - 根據新聞重要性動態增加或減少分類及文章數量。
 - 不為填版而加入低價值新聞。
 - 優先官方／一手資料及可靠新聞來源。
 - 每篇保留原始新聞來源連結。
-- 會讀取最近數份 edition 的標題，避免沒有新進展的重複新聞。
+- 參考最近數份 edition，避免沒有實質新進展的重複新聞。
+- Manchester United 轉會傳聞必須清楚標示為媒體報道／傳聞，不能當作官方確認。
 - 不複製任何香港報章的商標、版頭或受保護版面；只採用高資訊密度、強頭條層級的港式報章閱讀語言。
-- 自動化流程目前把 `image` 保留為 `null`；新聞圖片會在後續獨立處理授權來源，不使用 AI 生成新聞圖片。
+- 新聞圖片目前保持 `image: null`；日後只加入有明確合法重用規則的來源圖片，不使用 AI 生成新聞圖片，也不直接複製 Reuters／Getty／AFP 等受限制圖片。
 
 ## 自動化流程
 
-`GitHub Actions → OpenAI Responses API/web search → Structured Output → QA/ID 檢查 → data/YYYY-MM-DD.json → editions/YYYY-MM-DD.html → archive.json → commit → GitHub Pages`
+`ChatGPT Daily Priority Briefing → web research / verification → GitHub edition files → push/update repository → GitHub Pages deployment`
 
 ## 網站結構
 
@@ -51,7 +63,6 @@ API key 只會在 GitHub Actions runtime 使用，不會寫入 HTML、JavaScript
 - `editions/` — 每日固定版本
 - `data/` — 每日新聞 JSON + Archive index
 - `assets/` — CSS / JavaScript
-- `config/news_config.json` — 主題、文章數量與來源偏好
-- `scripts/generate_daily.py` — 每日新聞生成器
-- `.github/workflows/daily-news.yml` — 每日 07:15 HKT 自動生成
 - `.github/workflows/pages.yml` — GitHub Pages deployment
+
+> 注意：repository 已移除先前需要 `OPENAI_API_KEY` 的 `daily-news.yml`、`generate_daily.py` 及相關 API 設定，避免誤觸額外 API 費用。
