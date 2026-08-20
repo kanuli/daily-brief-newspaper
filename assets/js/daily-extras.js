@@ -90,6 +90,11 @@
     }
   }
 
+  function siteRootUrl() {
+    const baseAttr = document.querySelector("base")?.getAttribute("href") || "./";
+    return new URL(baseAttr, location.href);
+  }
+
   function buildWhatsAppText(data) {
     const titles = (data.topFive || [])
       .map((id) => (data.articles || []).find((a) => a.id === id))
@@ -97,8 +102,10 @@
       .slice(0, 3)
       .map((a, index) => `${index + 1}. ${a.title}`)
       .join("\n");
-    const pageUrl = `${location.origin}${location.pathname}`;
-    return `🗞️ 每日晨報 Daily Brief｜${data.dateLabel || data.date || "今日"}\n\n${titles}${titles ? "\n\n" : ""}全文：${pageUrl}\nLive：${location.origin}${location.pathname.replace(/[^/]*$/, "")}live.html`;
+    const root = siteRootUrl();
+    const dailyUrl = new URL("index.html", root).href;
+    const liveUrl = new URL("live.html", root).href;
+    return `🗞️ 每日晨報 Daily Brief｜${data.dateLabel || data.date || "今日"}\n\n${titles}${titles ? "\n\n" : ""}今日晨報：${dailyUrl}\nLive：${liveUrl}`;
   }
 
   async function copyText(text) {
@@ -150,7 +157,7 @@
       const button = event.currentTarget;
       try {
         if (navigator.share) {
-          await navigator.share({ title: "每日晨報 Daily Brief", text, url: location.href });
+          await navigator.share({ title: "每日晨報 Daily Brief", text, url: new URL("index.html", siteRootUrl()).href });
         } else {
           await copyText(text);
           const old = button.textContent;
