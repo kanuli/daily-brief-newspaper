@@ -97,7 +97,7 @@
     }
     if (activeButton) {
       activeButton.disabled = false;
-      activeButton.textContent = "🔊 F3";
+      activeButton.textContent = "🔊";
       activeButton.classList.remove("is-playing", "is-loading");
       activeButton = null;
     }
@@ -136,7 +136,7 @@
     activeButton = button;
     button.disabled = true;
     button.classList.add("is-loading");
-    button.textContent = "… F3";
+    button.textContent = "…";
     button.title = `正在載入 ${reading}`;
 
     try {
@@ -155,7 +155,7 @@
       const audio = activeAudio = new Audio(activeBlobUrl);
       button.classList.remove("is-loading");
       button.classList.add("is-playing");
-      button.textContent = "■ F3";
+      button.textContent = "■";
       button.title = `Supertonic 3 F3：${reading}`;
       audio.onended = stopVocabAudio;
       audio.onerror = stopVocabAudio;
@@ -164,7 +164,7 @@
       console.warn("Supertonic F3 vocab audio unavailable", error);
       if (activeButton === button) {
         button.classList.remove("is-loading", "is-playing");
-        button.textContent = "⚠ F3";
+        button.textContent = "⚠";
         button.title = error?.message || "F3 音訊暫時不可用";
         button.disabled = false;
         activeButton = null;
@@ -185,7 +185,7 @@
         <h2>今日10個日語單字</h2>
         <span>N1–N5 · 每級2個</span>
       </div>
-      <p class="daily-vocab-intro">每日從 <strong>japanese-vocab-game</strong> 詞庫抽選 10 個字；按 <strong>🔊 F3</strong> 可播放 Supertonic 3 專業播音女聲的預錄發音。音訊按需要逐字載入，不會下載整個 AI 模型。</p>
+      <p class="daily-vocab-intro">每日從 <strong>japanese-vocab-game</strong> 詞庫抽選 10 個字；按 <strong>🔊</strong> 可播放 Supertonic 3 專業播音女聲的預錄發音。音訊按需要逐字載入，不會下載整個 AI 模型。</p>
       <div class="vocab-level-grid">
         ${groups.map((group) => `
           <section class="vocab-level-block">
@@ -197,7 +197,7 @@
                     <div class="vocab-reading">${esc(word.reading || "")}</div>
                     <div class="vocab-kanji">${esc(word.kanji || word.reading || "")}</div>
                   </div>
-                  <button class="vocab-play" type="button" data-reading="${esc(word.reading || "")}" data-kanji="${esc(word.kanji || "")}" title="Supertonic 3 F3 發音">🔊 F3</button>
+                  <button class="vocab-play" type="button" data-reading="${esc(word.reading || "")}" data-kanji="${esc(word.kanji || "")}" title="Supertonic 3 F3 發音">🔊</button>
                 </div>
                 <div class="vocab-meaning">${esc(word.meaning || "")}</div>
                 <div class="vocab-pos">${esc(japanesePos(word.partOfSpeech))}</div>
