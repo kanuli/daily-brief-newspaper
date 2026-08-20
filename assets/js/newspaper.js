@@ -10,8 +10,79 @@ function esc(value = "") {
     .replaceAll("'", "&#039;");
 }
 
+function dedupeIds(ids = []) {
+  return [...new Set(ids.filter(Boolean))];
+}
+
 function articleById(data, id) {
   return data.articles.find((a) => a.id === id);
+}
+
+async function applyEditorialOverride(data) {
+  if (!data?.date) return data;
+  try {
+    const res = await fetch(`data/editorial-overrides/${data.date}.json`, { cache: "no-store" });
+    if (res.status === 404) return data;
+    if (!res.ok) throw new Error(`Editorial override HTTP ${res.status}`);
+    const override = await res.json();
+
+    const incoming = Array.isArray(override.articles) ? override.articles : [];
+    const incomingById = new Map(incoming.map((article) => [article.id, article]));
+    const existingIds = new Set((data.articles || []).map((article) => article.id));
+    data.articles = (data.articles || []).map((article) => incomingById.get(article.id) || article);
+    incoming.forEach((article) => {
+      if (!existingIds.has(article.id)) data.articles.push(article);
+    });
+
+    if (override.leadId) data.leadId = override.leadId;
+    if (Array.isArray(override.topFive) && override.topFive.length) {
+      data.topFive = dedupeIds(override.topFive).slice(0, 5);
+    }
+
+    data.sections = (data.sections || []).map((section) => ({
+      ...section,
+      articleIds: [...(section.articleIds || [])]
+    }));
+
+    const sectionOverrides = override.sectionOverrides || {};
+    Object.entries(sectionOverrides).forEach(([slug, config]) => {
+      let section = data.sections.find((item) => item.slug === slug);
+      if (!section) {
+        section = { slug, title: config.title || slug, subtitle: config.subtitle || "", articleIds: [] };
+        data.sections.push(section);
+      }
+      if (config.title) section.title = config.title;
+      if (config.subtitle) section.subtitle = config.subtitle;
+      if (Array.isArray(config.articleIds)) section.articleIds = dedupeIds(config.articleIds);
+    });
+
+    const financeIds = dedupeIds(override.moveToMarketEconomy || []);
+    if (financeIds.length) {
+      data.sections.forEach((section) => {
+        if (section.slug !== "market-economy") {
+          section.articleIds = (section.articleIds || []).filter((id) => !financeIds.includes(id));
+        }
+      });
+      let market = data.sections.find((section) => section.slug === "market-economy");
+      if (!market) {
+        market = {
+          slug: "market-economy",
+          title: "📈 財經 / 全球市場",
+          subtitle: "香港 · 日本 · 美國 · 全球",
+          articleIds: []
+        };
+        data.sections.push(market);
+      }
+      market.title = "📈 財經 / 全球市場";
+      market.subtitle = market.subtitle || "香港 · 日本 · 美國 · 全球";
+      market.articleIds = dedupeIds([...(market.articleIds || []), ...financeIds]);
+    }
+
+    return data;
+  } catch (err) {
+    console.warn("Editorial override unavailable", err);
+    return data;
+  }
 }
 
 function mediaMarkup(article, isLead = false) {
@@ -200,7 +271,7 @@ async function loadEdition() {
   try {
     const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await applyEditorialOverride(await res.json());
     setEditionMeta(data);
     renderLead(data);
     renderTopFive(data);
