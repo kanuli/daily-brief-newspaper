@@ -85,7 +85,37 @@
       <section class="study-desk" id="study-desk" aria-label="日語學習 Desk"></section>
 
       <section class="maintenance-monitoring" id="maintenance-monitoring" aria-label="Maintenance and Monitoring">
-        <p class="notice">正在載入維護與監察狀態…</p>
+        <div class="monitoring-head">
+          <div>
+            <h2>Maintenance & Monitoring｜維護與監察</h2>
+            <p>為確保手機版穩定，首頁即時監察程式已暫停；系統狀態改由 GitHub Actions / Discord 通知監察。</p>
+          </div>
+          <div class="monitoring-overall status-ok"><span class="status-dot"></span><span>STATIC SAFE MODE</span></div>
+        </div>
+        <div class="monitoring-grid">
+          <article class="monitor-card status-ok">
+            <div class="monitor-label"><span class="status-dot"></span>Website</div>
+            <div class="monitor-value">Static mode</div>
+            <div class="monitor-detail">沒有背景 fetch、timer 或 GitHub API request。</div>
+          </article>
+          <article class="monitor-card status-check">
+            <div class="monitor-label"><span class="status-dot"></span>Daily / Live</div>
+            <div class="monitor-value">由頁面資料載入</div>
+            <div class="monitor-detail">Daily 與 Live 繼續使用現有 data JSON，不由此 section 額外重讀。</div>
+          </article>
+          <article class="monitor-card status-check">
+            <div class="monitor-label"><span class="status-dot"></span>GitHub Pages / Discord</div>
+            <div class="monitor-value">External status</div>
+            <div class="monitor-detail">透過 GitHub Actions 與 Discord #daily-news 查看部署及通知結果。</div>
+          </article>
+        </div>
+        <div class="monitoring-footer">
+          <div><strong>Maintenance:</strong> Monitoring dashboard 現以純 HTML 安全模式運作，不執行任何監察 JavaScript。</div>
+          <div class="monitoring-links">
+            <a href="https://github.com/kanuli/daily-brief-newspaper/actions" target="_blank" rel="noopener noreferrer">GitHub Actions ↗</a>
+            <a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">Repository ↗</a>
+          </div>
+        </div>
       </section>
 
       <p class="notice">圖片政策：本版本不使用 AI 生成新聞圖片。日後只接入官方、可合法重用或來源明確允許顯示的圖片；不會把 Reuters / Getty / AFP 等受版權保護照片直接複製到 repository。</p>
@@ -99,6 +129,5 @@
 
   <script src="assets/js/newspaper.js" defer></script>
   <script src="assets/js/daily-extras.js" defer></script>
-  <script src="assets/js/monitoring.js" defer></script>
 </body>
 </html>
