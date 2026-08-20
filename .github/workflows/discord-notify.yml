@@ -1,0 +1,136 @@
+name: Discord News Notification
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "data/latest.json"
+      - "data/live.json"
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Send Daily / Live update to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        shell: bash
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "DISCORD_WEBHOOK_URL is not configured; skipping Discord notification."
+            exit 0
+          fi
+
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+          import subprocess
+          import urllib.request
+
+          webhook = os.environ["DISCORD_WEBHOOK_URL"].strip()
+          site = "https://kanuli.github.io/daily-brief-newspaper/"
+
+          changed = set(
+              subprocess.check_output(
+                  ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
+                  text=True,
+              ).splitlines()
+          )
+
+          def load(path):
+              return json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+
+          def previous_json(path):
+              try:
+                  raw = subprocess.check_output(["git", "show", f"HEAD^:{path}"], text=True)
+                  return json.loads(raw)
+              except Exception:
+                  return None
+
+          def post(content):
+              content = content.strip()
+              if len(content) > 1950:
+                  content = content[:1947] + "…"
+              body = json.dumps({
+                  "content": content,
+                  "allowed_mentions": {"parse": []}
+              }, ensure_ascii=False).encode("utf-8")
+              req = urllib.request.Request(
+                  webhook,
+                  data=body,
+                  headers={
+                      "Content-Type": "application/json",
+                      "User-Agent": "DailyBriefGitHubActions/1.0"
+                  },
+                  method="POST",
+              )
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  if response.status not in (200, 204):
+                      raise RuntimeError(f"Discord webhook returned HTTP {response.status}")
+
+          # Daily takes priority if one commit happened to update both files.
+          if "data/latest.json" in changed:
+              data = load("data/latest.json")
+              articles = {a.get("id"): a for a in data.get("articles", [])}
+              top = []
+              for article_id in data.get("topFive", [])[:3]:
+                  article = articles.get(article_id)
+                  if article and article.get("title"):
+                      top.append(article["title"])
+              lines = [
+                  f"🗞️ **每日晨報 Daily Brief｜{data.get('dateLabel') or data.get('date') or '今日'}**",
+                  ""
+              ]
+              lines += [f"{i}. {title}" for i, title in enumerate(top, 1)]
+              lines += ["", f"🔗 今日晨報：{site}", f"🔴 Live：{site}live.html"]
+              post("\n".join(lines))
+              raise SystemExit(0)
+
+          if "data/live.json" in changed:
+              current = load("data/live.json")
+              previous = previous_json("data/live.json") or {}
+
+              def fingerprint(item):
+                  # Ignore routine checked-time changes. Notify only when story substance changes.
+                  return (
+                      item.get("id"),
+                      item.get("status"),
+                      item.get("section"),
+                      item.get("title"),
+                      item.get("summary"),
+                      item.get("sourceUrl"),
+                  )
+
+              old = {item.get("id"): fingerprint(item) for item in previous.get("items", [])}
+              material = []
+              for item in current.get("items", []):
+                  item_id = item.get("id")
+                  if not item_id or old.get(item_id) != fingerprint(item):
+                      material.append(item)
+
+              if not material:
+                  print("Live file changed, but there is no material story change; no Discord notification sent.")
+                  raise SystemExit(0)
+
+              lines = [
+                  f"🔴 **Live Update｜{current.get('lastUpdatedLabel', '最新更新')}**",
+                  ""
+              ]
+              for item in material[:4]:
+                  status = item.get("status", "UPDATED")
+                  title = item.get("title", "更新")
+                  lines.append(f"**{status}** · {title}")
+              if len(material) > 4:
+                  lines.append(f"＋另外 {len(material) - 4} 則更新")
+              lines += ["", f"🔗 完整 Live：{site}live.html"]
+              post("\n".join(lines))
+          PY
