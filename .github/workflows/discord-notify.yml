@@ -100,7 +100,7 @@ jobs:
               previous = previous_json("data/live.json") or {}
 
               def fingerprint(item):
-                  # Ignore routine checked-time changes. Notify only when story substance changes.
+                  # Ignore routine checked-time changes when identifying material stories.
                   return (
                       item.get("id"),
                       item.get("status"),
@@ -118,7 +118,17 @@ jobs:
                       material.append(item)
 
               if not material:
-                  print("Live file changed, but there is no material story change; no Discord notification sent.")
+                  developing = current.get("developingCount", 0)
+                  lines = [
+                      f"🔴 **Live Check｜{current.get('lastUpdatedLabel', '最新檢查')}**",
+                      "",
+                      "本輪沒有重大新進展。",
+                  ]
+                  if developing:
+                      lines.append(f"目前仍有 {developing} 則 DEVELOPING 項目持續追蹤。")
+                  lines += ["", f"🔗 完整 Live：{site}live.html"]
+                  post("\n".join(lines))
+                  print("Live check completed with no material story change; confirmation sent to Discord.")
                   raise SystemExit(0)
 
               lines = [
