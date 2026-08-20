@@ -1,96 +1,112 @@
 # 每日晨報 Daily Brief
 
-一個以繁體中文製作的個人化電子報紙網站，聚焦：
+一個以繁體中文製作的個人化電子報紙網站。
 
-- 日本與日語學習
-- 日本漫畫 / Anime
-  - 優先追蹤 `Naruto`、`One Piece`、`My Hero Academia`
-  - 同時納入當日最新、最熱門及真正有新聞價值的漫畫／動畫作品
-- AI 與科技
-- 香港／亞洲新聞
-- Manchester United
-  - 足球新聞的最高優先級
-- Football
-  - Manchester United 之後，再涵蓋英超、Champions League／UEFA、主要歐洲聯賽、國際賽及真正重要的轉會／賽事新聞
-- 📈 市場 / 經濟
+## 核心新聞 Desk
+
+- 🇯🇵 `日本` — **一般重要新聞優先**：社會、政策、公共安全、交通、教育、健康、文化、重大事件與真正影響生活的科技／產業消息；不再用金融市場新聞填滿日本欄。
+- 🇭🇰 `香港 / 亞洲` — **香港一般重要新聞優先**：政府與公共政策、社會、民生、交通、房屋、教育、健康、公共服務、重大事故／事件；再按價值加入重要亞洲新聞。
+- 📈 `財經 / 全球市場` — 把香港、日本、美國及全球的重要金融、宏觀、利率、匯率、股債市場、重大企業／產業財經消息集中到獨立 desk。除非事件本身同時是當地最重大的公共新聞，否則不與日本／香港 desk 重複。
+- 日本漫畫 / Anime — 優先追蹤 `Naruto`、`One Piece`、`My Hero Academia`，同時納入當日更新、更熱門及真正有新聞價值的作品。
+- AI / 科技
+- Manchester United — 所有足球新聞中的最高優先。
+- Football — Manchester United 之後，再涵蓋英超、Champions League／UEFA、主要歐洲聯賽、國際賽及真正重要的轉會／賽事新聞。
 - 🧪 科學 / 新技術
 - 🔐 網絡安全
 - 📱 軟件 / App / 消費科技
 - 📰 突發新聞
 - 🔎 今日值得跟進
 - 📅 Upcoming events / 明日焦點
-- 以及當日具決策價值的其他重大議題
 
-## 目前版本
+## Daily + Live
 
-Phase 1 已完成：港式報章風格首頁、動態分類版面、手機 responsive、Archive，以及 GitHub Pages deployment。
+- **Daily Edition**：每日香港時間約 08:00 產生完整晨報並固定保存到 Archive。
+- **Live Update**：每 3 小時檢查一次，只加入 `NEW`、`UPDATED`、`DEVELOPING` 的實質新進展，不重寫 Daily Edition。
+- 新一日 Daily 出版後會重設 Live baseline，避免跨日累積舊消息。
 
-Phase 2 採用 **零額外 API 收費架構**：不需要 `OPENAI_API_KEY`，不使用付費新聞 API，也不在 GitHub Actions 內呼叫任何按量收費的 AI API。
+## 日語學習：每日 10 個單字
 
-每日內容由已設定的 ChatGPT Daily Priority Briefing 排程產生，並透過已連接的 GitHub 工具更新本 repository；GitHub Pages 只負責部署及顯示靜態網站。
+不顯示 JLPT countdown。Daily Edition 每天固定提供 **10 個日語單字**：
 
-第一份示範版：2026-08-20。
+- N1 × 2
+- N2 × 2
+- N3 × 2
+- N4 × 2
+- N5 × 2
 
-## 每日更新方式
+來源優先使用另一個 repository：[`kanuli/japanese-vocab-game`](https://github.com/kanuli/japanese-vocab-game) 的 `data/advanced_vocab.js`。每個詞保留：
 
-每日排程會：
+- JLPT level
+- 假名讀音
+- 漢字（如有）
+- 繁體中文意思
+- 詞性
 
-1. 搜尋及核實當日重要新聞。
-2. 在 ChatGPT 提供今日最重要 5 則繁體中文簡報。
-3. 同時製作較完整的網站 edition，通常 8–20 篇，但文章數及 section 數量不固定。
-4. 主動評估日本漫畫 / Anime 新聞；如有值得報道的內容，建立獨立 `漫畫 / Anime` section。
-5. 足球採雙層優先：先處理 `Manchester United`，再處理較廣泛的 `Football` 新聞。
-6. 按當日新聞價值動態建立市場／經濟、科學／新技術、網絡安全、軟件／App／消費科技、突發新聞、今日值得跟進及 Upcoming events／明日焦點等 desk。
-7. 更新／建立：
-   - `data/YYYY-MM-DD.json`
-   - `data/latest.json`
-   - `data/archive.json`
-   - `editions/YYYY-MM-DD.html`
-8. GitHub Pages workflow 在 repository 更新後重新部署網站。
+每日詞表保存為 `data/vocab/YYYY-MM-DD.json`，所以 Archive 會保留當日的 10 個字。選詞時應避免與最近至少 7 日重複；如資料足夠，優先避免 30 日內重複。
+
+> 詞庫內部分 JLPT 分級是依資料來源／頻率推定，並非官方 JLPT 詞彙清單；網站會保留此提示。
+
+## Discord 手機自動推送
+
+使用 Discord 官方 Webhook，不需要每次手動複製或貼上。
+
+GitHub Actions workflow：`.github/workflows/discord-notify.yml`
+
+### 行為
+
+- `data/latest.json` 更新：自動送出 Daily Notification，包含日期、Top 3 標題、Daily URL、Live URL。
+- `data/live.json` 更新：先和上一個 commit 比較；只有 story 的 `status`、`title`、`summary`、`section` 或 `sourceUrl` 有實質變化才送通知。
+- 只有 `lastUpdated` / `timeLabel` 等例行檢查時間改變時，不會發 Discord 通知。
+- Live 通知最多列出 4 則更新，再連到完整 Live page。
+- Webhook URL 只放在 GitHub Actions Secret `DISCORD_WEBHOOK_URL`，不可寫入 repository。
+
+### 一次性設定
+
+1. 在 Discord 建立或選擇一個私人 server / text channel。
+2. Channel Settings → Integrations → Webhooks → New Webhook。
+3. Copy Webhook URL。
+4. GitHub repository → Settings → Secrets and variables → Actions → New repository secret。
+5. Secret name：`DISCORD_WEBHOOK_URL`。
+6. Secret value：貼上 Discord Webhook URL。
+7. 手機 Discord App 對該 channel 開啟 notifications。
+
+設定完成後，Daily / Live 的 GitHub data 更新會自動推送到 Discord。
 
 ## 成本原則
 
-- 不需要 OpenAI API key。
+- 不需要 `OPENAI_API_KEY`。
 - 不使用付費新聞 API。
 - 不使用按 token／search 次數收費的外部 AI 服務。
-- 網站使用現有 GitHub Pages deployment。
+- 網站使用 GitHub Pages。
+- Discord notification 使用官方 Webhook。
 - 若日後加入任何可能產生額外費用的功能，必須先明確改變這項成本政策；目前預設為 **不產生額外 API 費用**。
 
 ## 編輯原則
 
-- 每日最重要 5 則置頂，但整份報紙不限制只有 5 篇或固定 section 數量。
-- 根據新聞重要性動態增加或減少分類及文章數量。
-- 不為填版而加入低價值新聞。
-- 優先官方／一手資料及可靠新聞來源。
-- 每篇保留原始新聞來源連結。
+- 每日最重要 5 則置頂，但整份報紙不限制固定文章或 section 數量。
+- 一般新聞重要性優先於「為了有內容而塞財經新聞」。
+- 香港、日本與財經 desk 各自有清楚角色；同一金融故事一般只在財經 desk 出現一次。
+- 根據新聞重要性動態增加或減少分類及文章數量，不為填版加入低價值新聞。
+- 優先官方／一手資料及可靠新聞來源，每篇保留直接來源連結。
 - 參考最近數份 edition，避免沒有實質新進展的重複新聞。
-- `漫畫 / Anime` 為獨立編輯板塊；優先追蹤 `Naruto`、`One Piece`、`My Hero Academia`，但不限制於這三個作品。若其他作品當日有更重大、更新或更熱門的官方消息，應優先刊登。
-- 漫畫／動畫新聞優先使用出版社、官方作品網站、官方動畫／電影網站、製作委員會及其他可信來源；避免盜版 scan、未證實 leak 或純粹劇情爆料。
-- 漫畫／動畫摘要預設避免不必要的劇透；若新聞本身涉及重大劇情內容，必須清楚標示 `劇透注意`。
-- `Manchester United` 為所有足球新聞中的第一優先；若有具實質價值的 United 新聞，應先於一般足球新聞評估是否進入 Top 5 或獨立 section。
-- `Football` 為 Manchester United 以外的獨立板塊，涵蓋主要英超、Champions League／UEFA、歐洲主要聯賽、國際足球、重大賽果／傷兵／教練／轉會與制度變化；不收錄普通比賽花邊或低價值傳聞。
-- Manchester United 及其他轉會傳聞必須清楚標示為媒體報道／傳聞，不能當作官方確認。
-- `📈 市場 / 經濟`：只刊真正重要的宏觀、利率、匯率、主要市場或企業／產業影響新聞，不做每日流水帳。
-- `🧪 科學 / 新技術`：重大研究、太空、能源、醫療／工程技術或具實際應用價值的新突破。
-- `🔐 網絡安全`：重大漏洞、攻擊、資料外洩、平台／裝置安全更新，以及可能影響日常使用的風險。
-- `📱 軟件 / App / 消費科技`：重要 OS、手機、App、平台功能、裝置及服務改動；優先實際影響使用決策的消息。
-- `📰 突發新聞`：只用於真正正在發展且具高重要性的 breaking story，不因為「新」就自動加入。
-- `🔎 今日值得跟進`：追蹤仍未完結、今日可能有下一步的高價值事件；要說清楚下一個觀察點是甚麼。
-- `📅 Upcoming events / 明日焦點`：只列已確認／可核實的未來事件，例如政策會議、重要發布、賽事、財報、截止日期或重大活動；避免推測式日程。
-- 不複製任何香港報章的商標、版頭或受保護版面；只採用高資訊密度、強頭條層級的港式報章閱讀語言。
+- 漫畫／動畫優先官方出版社、作品官網、動畫／電影官網、製作委員會及可信來源；避免盜版 scan、未證實 leak 或純粹劇情爆料，預設避免不必要劇透。
+- Manchester United 轉會傳聞與其他轉會傳聞必須清楚標示為媒體報道／傳聞，不能當作官方確認。
 - 新聞圖片目前保持 `image: null`；日後只加入有明確合法重用規則的來源圖片，不使用 AI 生成新聞圖片，也不直接複製 Reuters／Getty／AFP 等受限制圖片。
-
-## 自動化流程
-
-`ChatGPT Daily Priority Briefing → web research / verification → GitHub edition files → push/update repository → GitHub Pages deployment`
 
 ## 網站結構
 
-- `index.html` — 今日頭版
+- `index.html` — 今日 Daily + Live 摘要
+- `live.html` — 每 3 小時 Live Update
 - `archive.html` — 歷史日報
 - `editions/` — 每日固定版本
-- `data/` — 每日新聞 JSON + Archive index
+- `data/` — 每日新聞 JSON + Live + Archive index
+- `data/vocab/` — 每日 10 個 N1–N5 單字
 - `assets/` — CSS / JavaScript
 - `.github/workflows/pages.yml` — GitHub Pages deployment
+- `.github/workflows/discord-notify.yml` — Daily / Live → Discord 手機推送
 
-> 注意：repository 已移除先前需要 `OPENAI_API_KEY` 的 `daily-news.yml`、`generate_daily.py` 及相關 API 設定，避免誤觸額外 API 費用。
+## 自動化流程
+
+`Daily Briefing → web research / verification → GitHub Daily edition + vocab → GitHub Pages → Discord push`
+
+`Every 3 hours → new/updated/developing research → data/live.json → GitHub Pages → Discord push when material change exists`

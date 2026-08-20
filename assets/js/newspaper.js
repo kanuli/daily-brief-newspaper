@@ -95,25 +95,6 @@ function renderSections(data) {
     .join("");
 }
 
-function renderStudyDesk(data) {
-  const host = $("#study-desk");
-  if (!host || !data.studyDesk) return;
-  const target = new Date(`${data.studyDesk.targetDate}T00:00:00+09:00`);
-  const now = new Date();
-  const days = Math.max(0, Math.ceil((target - now) / 86400000));
-  host.innerHTML = `
-    <div class="countdown">
-      <div><strong>${days}</strong><span>日後 · ${esc(data.studyDesk.label)}</span></div>
-    </div>
-    <div>
-      <h2>${esc(data.studyDesk.title)}</h2>
-      <p>${esc(data.studyDesk.summary)}</p>
-      <p><strong>今日行動：</strong>${esc(data.studyDesk.action)}</p>
-      <a class="source-link" href="${esc(data.studyDesk.sourceUrl)}" target="_blank" rel="noopener noreferrer">官方資料：JLPT ↗</a>
-    </div>
-  `;
-}
-
 function setEditionMeta(data) {
   $$("[data-edition-date]").forEach((el) => (el.textContent = data.dateLabel));
   $$("[data-edition-number]").forEach((el) => (el.textContent = data.editionNumber || "001"));
@@ -224,7 +205,6 @@ async function loadEdition() {
     renderLead(data);
     renderTopFive(data);
     renderSections(data);
-    renderStudyDesk(data);
   } catch (err) {
     console.error(err);
     const main = $("main");
