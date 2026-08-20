@@ -4,8 +4,8 @@
   const host = document.querySelector("#maintenance-monitoring");
   if (!host) return;
 
-  const API = "https://api.github.com/repos/kanuli/daily-brief-newspaper";
   const MAX_LIVE_AGE_MS = 4.25 * 60 * 60 * 1000;
+  const FETCH_TIMEOUT_MS = 5000;
 
   function esc(value = "") {
     return String(value)
@@ -32,19 +32,8 @@
     const minutes = Math.floor(ms / 60000);
     if (minutes < 60) return `${minutes} 分鐘前`;
     const hours = Math.floor(minutes / 60);
-    const rem = minutes % 60;
-    if (hours < 24) return `${hours} 小時${rem ? ` ${rem} 分鐘` : ""}前`;
+    if (hours < 24) return `${hours} 小時前`;
     return `${Math.floor(hours / 24)} 日前`;
-  }
-
-  function statusFromConclusion(run) {
-    if (!run) return { cls: "status-check", label: "N/V" };
-    if (run.status !== "completed") return { cls: "status-warn", label: String(run.status || "RUNNING").toUpperCase() };
-    if (run.conclusion === "success") return { cls: "status-ok", label: "OPERATIONAL" };
-    if (["failure", "timed_out", "cancelled", "startup_failure"].includes(run.conclusion)) {
-      return { cls: "status-fail", label: String(run.conclusion).toUpperCase() };
-    }
-    return { cls: "status-warn", label: String(run.conclusion || "UNKNOWN").toUpperCase() };
   }
 
   function card(key, title, value, detail, cls = "status-check") {
@@ -57,40 +46,21 @@
     `;
   }
 
-  async function json(url) {
-    const res = await fetch(url, {
-      cache: "no-store",
-      headers: url.startsWith("https://api.github.com/") ? { Accept: "application/vnd.github+json" } : undefined
-    });
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-    return res.json();
+  async function localJson(url) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, { cache: "no-store", signal: controller.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
-  async function latestWorkflowRun(workflow) {
-    const data = await json(`${API}/actions/workflows/${workflow}/runs?branch=main&per_page=1`);
-    return data.workflow_runs?.[0] || null;
-  }
-
-  function dataHealth(daily, vocab) {
-    const problems = [];
-    if (!Array.isArray(daily.articles) || daily.articles.length === 0) problems.push("articles 缺失");
-    if (!Array.isArray(daily.topFive) || daily.topFive.length !== 5) problems.push("Top 5 不完整");
-    if (!Array.isArray(daily.sections) || daily.sections.length === 0) problems.push("sections 缺失");
-
-    const words = Array.isArray(vocab?.words) ? vocab.words : [];
-    if (words.length !== 10) problems.push(`單字 ${words.length}/10`);
-    for (const level of ["N1", "N2", "N3", "N4", "N5"]) {
-      if (words.filter((w) => w.level === level).length !== 2) problems.push(`${level} ≠ 2`);
-    }
-
-    if (problems.length) {
-      return { cls: "status-warn", value: "需要檢查", detail: problems.join(" · ") };
-    }
-    return {
-      cls: "status-ok",
-      value: "資料完整",
-      detail: `${daily.articles.length} 篇新聞 · ${daily.sections.length} 個 sections · Top 5 完整 · Vocabulary 10/10`
-    };
+  function replaceCard(key, html) {
+    const el = host.querySelector(`[data-monitor-card="${key}"]`);
+    if (el) el.outerHTML = html;
   }
 
   function renderShell() {
@@ -98,21 +68,21 @@
       <div class="monitoring-head">
         <div>
           <h2>Maintenance & Monitoring｜維護與監察</h2>
-          <p>即時檢查網站、Daily / Live 資料、GitHub Pages 與 Discord 通知 pipeline。</p>
+          <p>輕量模式：只檢查本站資料，不在閱讀頁背景查詢 GitHub API。</p>
         </div>
         <div class="monitoring-overall status-check" id="monitoring-overall"><span class="status-dot"></span><span>CHECKING</span></div>
       </div>
-      <div class="monitoring-grid" id="monitoring-grid">
-        ${card("site", "Website", "Online", "此監察面板已成功載入。", "status-ok")}
-        ${card("daily", "Daily Edition", "檢查中…", "讀取 data/latest.json", "status-check")}
-        ${card("live", "Live Update", "檢查中…", "讀取 data/live.json", "status-check")}
-        ${card("pages", "GitHub Pages", "檢查中…", "查詢最近 deployment workflow", "status-check")}
-        ${card("discord", "Discord Push", "檢查中…", "查詢最近 Discord workflow", "status-check")}
+      <div class="monitoring-grid">
+        ${card("site", "Website", "Online", "此頁已成功載入。", "status-ok")}
+        ${card("daily", "Daily Edition", "檢查中…", "讀取本地 Daily data", "status-check")}
+        ${card("live", "Live Update", "檢查中…", "讀取本地 Live data", "status-check")}
+        ${card("pages", "GitHub Pages", "Actions 監察", "按下方 GitHub Actions 查看正式 deployment 狀態。", "status-check")}
+        ${card("discord", "Discord Push", "Actions 監察", "Discord workflow 狀態改由 GitHub Actions 頁確認。", "status-check")}
         ${card("data", "Data Integrity", "檢查中…", "檢查 Top 5、sections 與每日10字", "status-check")}
       </div>
       <div class="monitoring-footer">
         <div>
-          <strong>Maintenance:</strong> 目前沒有預定維護。頁面開啟期間每 5 分鐘自動重新檢查。<br>
+          <strong>Maintenance:</strong> 目前沒有預定維護。為保持手機頁面順暢，不再自動背景輪詢。<br>
           <span id="monitoring-checked">尚未完成檢查</span>
         </div>
         <div class="monitoring-links">
@@ -124,26 +94,24 @@
     `;
   }
 
-  function replaceCard(key, html) {
-    const el = host.querySelector(`[data-monitor-card="${key}"]`);
-    if (el) el.outerHTML = html;
-  }
-
   function updateOverall() {
-    const cards = [...host.querySelectorAll(".monitor-card")];
+    const localCards = ["site", "daily", "live", "data"]
+      .map((key) => host.querySelector(`[data-monitor-card="${key}"]`))
+      .filter(Boolean);
     const overall = host.querySelector("#monitoring-overall");
     if (!overall) return;
+
     let cls = "status-ok";
-    let label = "ALL SYSTEMS OPERATIONAL";
-    if (cards.some((c) => c.classList.contains("status-fail"))) {
+    let label = "LOCAL CHECKS OK";
+    if (localCards.some((c) => c.classList.contains("status-fail"))) {
       cls = "status-fail";
       label = "ACTION REQUIRED";
-    } else if (cards.some((c) => c.classList.contains("status-warn"))) {
+    } else if (localCards.some((c) => c.classList.contains("status-warn"))) {
       cls = "status-warn";
       label = "WARNING";
-    } else if (cards.some((c) => c.classList.contains("status-check"))) {
+    } else if (localCards.some((c) => c.classList.contains("status-check"))) {
       cls = "status-check";
-      label = "PARTIAL / N/V";
+      label = "PARTIAL CHECK";
     }
     overall.className = `monitoring-overall ${cls}`;
     overall.innerHTML = `<span class="status-dot"></span><span>${esc(label)}</span>`;
@@ -157,11 +125,10 @@
     }
 
     let daily = null;
-    let live = null;
     let vocab = null;
 
     try {
-      daily = await json("data/latest.json");
+      daily = await localJson("data/latest.json");
       const isToday = daily.date === hktDateKey();
       replaceCard("daily", card(
         "daily",
@@ -171,11 +138,11 @@
         isToday ? "status-ok" : "status-warn"
       ));
     } catch (err) {
-      replaceCard("daily", card("daily", "Daily Edition", "讀取失敗", String(err.message || err), "status-fail"));
+      replaceCard("daily", card("daily", "Daily Edition", "讀取失敗", String(err.name === "AbortError" ? "讀取逾時" : err.message || err), "status-fail"));
     }
 
     try {
-      live = await json("data/live.json");
+      const live = await localJson("data/live.json");
       const updated = live.lastUpdated ? new Date(live.lastUpdated) : null;
       const age = updated ? Date.now() - updated.getTime() : Infinity;
       const stale = !updated || age > MAX_LIVE_AGE_MS;
@@ -187,52 +154,36 @@
         stale ? "status-warn" : "status-ok"
       ));
     } catch (err) {
-      replaceCard("live", card("live", "Live Update", "讀取失敗", String(err.message || err), "status-fail"));
+      replaceCard("live", card("live", "Live Update", "讀取失敗", String(err.name === "AbortError" ? "讀取逾時" : err.message || err), "status-fail"));
     }
 
     if (daily?.date) {
       try {
-        vocab = await json(`data/vocab/${daily.date}.json`);
+        vocab = await localJson(`data/vocab/${daily.date}.json`);
       } catch (_) {
         vocab = null;
       }
     }
 
     if (daily) {
-      const health = dataHealth(daily, vocab);
-      replaceCard("data", card("data", "Data Integrity", health.value, health.detail, health.cls));
+      const problems = [];
+      if (!Array.isArray(daily.articles) || !daily.articles.length) problems.push("articles 缺失");
+      if (!Array.isArray(daily.topFive) || daily.topFive.length !== 5) problems.push("Top 5 不完整");
+      if (!Array.isArray(daily.sections) || !daily.sections.length) problems.push("sections 缺失");
+      const words = Array.isArray(vocab?.words) ? vocab.words : [];
+      if (words.length !== 10) problems.push(`單字 ${words.length}/10`);
+      for (const level of ["N1", "N2", "N3", "N4", "N5"]) {
+        if (words.filter((w) => w.level === level).length !== 2) problems.push(`${level} ≠ 2`);
+      }
+      replaceCard("data", card(
+        "data",
+        "Data Integrity",
+        problems.length ? "需要檢查" : "資料完整",
+        problems.length ? problems.join(" · ") : `${daily.articles.length} 篇新聞 · ${daily.sections.length} 個 sections · Top 5 完整 · Vocabulary 10/10`,
+        problems.length ? "status-warn" : "status-ok"
+      ));
     } else {
       replaceCard("data", card("data", "Data Integrity", "無法驗證", "Daily data 未能讀取。", "status-fail"));
-    }
-
-    try {
-      const run = await latestWorkflowRun("pages.yml");
-      const status = statusFromConclusion(run);
-      const age = run?.updated_at ? formatAge(Date.now() - new Date(run.updated_at).getTime()) : "時間 N/V";
-      replaceCard("pages", card(
-        "pages",
-        "GitHub Pages",
-        status.label,
-        run ? `Run #${run.run_number} · ${age}` : "沒有可讀取的 workflow run",
-        status.cls
-      ));
-    } catch (err) {
-      replaceCard("pages", card("pages", "GitHub Pages", "API N/V", "網站已載入；GitHub workflow API 暫時未能讀取。", "status-check"));
-    }
-
-    try {
-      const run = await latestWorkflowRun("discord-notify.yml");
-      const status = statusFromConclusion(run);
-      const age = run?.updated_at ? formatAge(Date.now() - new Date(run.updated_at).getTime()) : "時間 N/V";
-      replaceCard("discord", card(
-        "discord",
-        "Discord Push",
-        status.label,
-        run ? `最近 workflow Run #${run.run_number} · ${age}` : "沒有可讀取的 workflow run",
-        status.cls
-      ));
-    } catch (err) {
-      replaceCard("discord", card("discord", "Discord Push", "API N/V", "GitHub workflow API 暫時未能讀取；不代表 Discord 發送失敗。", "status-check"));
     }
 
     const checked = host.querySelector("#monitoring-checked");
@@ -258,6 +209,11 @@
 
   renderShell();
   host.querySelector("#monitor-refresh")?.addEventListener("click", runChecks);
-  runChecks();
-  setInterval(runChecks, 5 * 60 * 1000);
+
+  const start = () => runChecks().catch(() => {});
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(start, { timeout: 1500 });
+  } else {
+    setTimeout(start, 500);
+  }
 })();
