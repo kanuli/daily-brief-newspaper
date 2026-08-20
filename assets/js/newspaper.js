@@ -95,11 +95,6 @@ function renderSections(data) {
     .join("");
 }
 
-function clearLegacyStudyDesk() {
-  const host = $("#study-desk");
-  if (host) host.innerHTML = "";
-}
-
 function setEditionMeta(data) {
   $$("[data-edition-date]").forEach((el) => (el.textContent = data.dateLabel));
   $$("[data-edition-number]").forEach((el) => (el.textContent = data.editionNumber || "001"));
@@ -210,7 +205,6 @@ async function loadEdition() {
     renderLead(data);
     renderTopFive(data);
     renderSections(data);
-    clearLegacyStudyDesk();
   } catch (err) {
     console.error(err);
     const main = $("main");
