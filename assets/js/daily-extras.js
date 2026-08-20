@@ -44,18 +44,18 @@
 
   function renderDailyVocab(vocab) {
     const study = $("#study-desk");
-    if (!study || $("#daily-vocab")) return;
+    if (!study || study.dataset.vocabLoaded === "true") return;
 
     const groups = groupWords(vocab.words || []);
-    const section = document.createElement("section");
-    section.id = "daily-vocab";
-    section.className = "daily-vocab";
-    section.innerHTML = `
+    study.dataset.vocabLoaded = "true";
+    study.className = "daily-vocab";
+    study.setAttribute("aria-label", "今日10個日語單字");
+    study.innerHTML = `
       <div class="section-heading daily-vocab-heading">
         <h2>今日10個日語單字</h2>
         <span>N1–N5 · 每級2個</span>
       </div>
-      <p class="daily-vocab-intro">每日從 <strong>japanese-vocab-game</strong> 詞庫抽選 10 個字；假名、漢字、繁體中文意思及詞性沿用原資料。</p>
+      <p class="daily-vocab-intro">每日從 <strong>japanese-vocab-game</strong> 詞庫抽選 10 個字；假名、漢字、繁體中文意思及詞性沿用原資料。此版不再顯示 JLPT countdown。</p>
       <div class="vocab-level-grid">
         ${groups.map((group) => `
           <section class="vocab-level-block">
@@ -76,7 +76,6 @@
         <a href="${esc(vocab.sourceUrl || "https://github.com/kanuli/japanese-vocab-game")}" target="_blank" rel="noopener noreferrer">在 japanese-vocab-game 查看詞庫 ↗</a>
       </div>
     `;
-    study.insertAdjacentElement("afterend", section);
   }
 
   async function loadDailyVocab(date) {
@@ -90,92 +89,11 @@
     }
   }
 
-  function siteRootUrl() {
-    const baseAttr = document.querySelector("base")?.getAttribute("href") || "./";
-    return new URL(baseAttr, location.href);
-  }
-
-  function buildWhatsAppText(data) {
-    const titles = (data.topFive || [])
-      .map((id) => (data.articles || []).find((a) => a.id === id))
-      .filter(Boolean)
-      .slice(0, 3)
-      .map((a, index) => `${index + 1}. ${a.title}`)
-      .join("\n");
-    const root = siteRootUrl();
-    const dailyUrl = new URL("index.html", root).href;
-    const liveUrl = new URL("live.html", root).href;
-    return `🗞️ 每日晨報 Daily Brief｜${data.dateLabel || data.date || "今日"}\n\n${titles}${titles ? "\n\n" : ""}今日晨報：${dailyUrl}\nLive：${liveUrl}`;
-  }
-
-  async function copyText(text) {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return;
-    }
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    document.execCommand("copy");
-    ta.remove();
-  }
-
-  function injectShareBar(data) {
-    if ($("#share-bar")) return;
-    const dateStrip = $(".date-strip");
-    if (!dateStrip) return;
-    const text = buildWhatsAppText(data);
-    const bar = document.createElement("div");
-    bar.id = "share-bar";
-    bar.className = "share-bar";
-    bar.innerHTML = `
-      <span><strong>分享今日晨報</strong> · WhatsApp Channel 目前使用手動貼上方式</span>
-      <div class="share-actions">
-        <button type="button" id="copy-whatsapp-post">複製 WhatsApp Channel 貼文</button>
-        <button type="button" id="share-daily-brief">分享連結</button>
-      </div>
-    `;
-    dateStrip.insertAdjacentElement("afterend", bar);
-
-    $("#copy-whatsapp-post", bar)?.addEventListener("click", async (event) => {
-      const button = event.currentTarget;
-      try {
-        await copyText(text);
-        const old = button.textContent;
-        button.textContent = "已複製 ✓";
-        setTimeout(() => (button.textContent = old), 1800);
-      } catch (err) {
-        console.error(err);
-      }
-    });
-
-    $("#share-daily-brief", bar)?.addEventListener("click", async (event) => {
-      const button = event.currentTarget;
-      try {
-        if (navigator.share) {
-          await navigator.share({ title: "每日晨報 Daily Brief", text, url: new URL("index.html", siteRootUrl()).href });
-        } else {
-          await copyText(text);
-          const old = button.textContent;
-          button.textContent = "連結已複製 ✓";
-          setTimeout(() => (button.textContent = old), 1800);
-        }
-      } catch (err) {
-        if (err?.name !== "AbortError") console.error(err);
-      }
-    });
-  }
-
   async function init() {
     observeFinanceLabel();
     try {
       const data = await getEditionData();
       await loadDailyVocab(data.date || document.body.dataset.edition);
-      injectShareBar(data);
       setTimeout(normalizeFinanceLabels, 500);
       setTimeout(normalizeFinanceLabels, 1600);
     } catch (err) {
