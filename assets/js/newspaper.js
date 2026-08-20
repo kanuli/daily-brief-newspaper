@@ -21,7 +21,7 @@ function mediaMarkup(article, isLead = false) {
     : "";
   const caption = article.imageCaption
     ? `<figcaption>${esc(article.imageCaption)}</figcaption>`
-    : `<figcaption>新聞圖片接口已預留；Phase 2 只會接入可合法使用或來源允許的圖片。</figcaption>`;
+    : `<figcaption>圖片接口已預留；只會接入可合法使用或來源允許的新聞圖片。</figcaption>`;
   return `<figure class="media-frame" data-label="${esc(label)}">${img}${caption}</figure>`;
 }
 
@@ -34,6 +34,7 @@ function renderLead(data) {
   const article = articleById(data, data.leadId);
   if (!article) return;
   const host = $("#lead-story");
+  if (!host) return;
   host.innerHTML = `
     <span class="eyebrow">${esc(article.section)}｜今日頭條</span>
     <h2>${esc(article.title)}</h2>
@@ -120,6 +121,98 @@ function setEditionMeta(data) {
   document.title = `每日晨報 Daily Brief｜${data.dateLabel}`;
 }
 
+function liveBadge(status = "UPDATED") {
+  const safe = String(status).toUpperCase();
+  return `<span class="live-badge live-${esc(safe.toLowerCase())}">${esc(safe)}</span>`;
+}
+
+function liveSource(item) {
+  if (!item.sourceUrl) return "";
+  return `<a class="source-link" href="${esc(item.sourceUrl)}" target="_blank" rel="noopener noreferrer">來源：${esc(item.sourceName || "原文")} ↗</a>`;
+}
+
+function renderLiveSummary(data) {
+  const host = $("#live-summary");
+  if (!host) return;
+  const items = (data.items || []).slice(0, 4);
+  host.innerHTML = `
+    <div class="live-summary-head">
+      <div>
+        <div class="live-kicker"><span class="live-dot"></span> LIVE UPDATE</div>
+        <h2>最新新聞更新</h2>
+        <p>Last updated ${esc(data.lastUpdatedLabel || "—")} · ${esc(data.nextUpdateLabel || "")}</p>
+      </div>
+      <div class="live-counts">
+        <span><strong>${Number(data.newCount || 0)}</strong> NEW</span>
+        <span><strong>${Number(data.updatedCount || 0)}</strong> UPDATED</span>
+        <span><strong>${Number(data.developingCount || 0)}</strong> DEVELOPING</span>
+      </div>
+    </div>
+    <div class="live-summary-grid">
+      ${items.length ? items.map((item) => `
+        <article class="live-mini-card">
+          <div>${liveBadge(item.status)} <span class="live-time">${esc(item.timeLabel || "")}</span></div>
+          <h3>${esc(item.title)}</h3>
+          <p>${esc(item.summary)}</p>
+        </article>
+      `).join("") : `<p class="notice">本輪沒有需要新增的重大新聞。Daily Edition 保持不變。</p>`}
+    </div>
+    <div class="live-more"><a href="live.html">查看完整 Live Update →</a></div>
+  `;
+}
+
+function renderLivePage(data) {
+  const headerTime = $("#live-header-time");
+  if (headerTime) headerTime.textContent = data.lastUpdatedLabel || "—";
+  const stats = $("#live-page-stats");
+  if (stats) {
+    stats.innerHTML = `
+      <div><strong>${Number(data.newCount || 0)}</strong><span>NEW</span></div>
+      <div><strong>${Number(data.updatedCount || 0)}</strong><span>UPDATED</span></div>
+      <div><strong>${Number(data.developingCount || 0)}</strong><span>DEVELOPING</span></div>
+      <p>${esc(data.nextUpdateLabel || "")}</p>
+    `;
+  }
+  const host = $("#live-page-items");
+  if (!host) return;
+  const items = data.items || [];
+  host.innerHTML = items.length ? items.map((item) => `
+    <article class="live-story">
+      <div class="live-story-meta">${liveBadge(item.status)} <span>${esc(item.section || "Live")}</span> <span>${esc(item.timeLabel || "")}</span></div>
+      <h2>${esc(item.title)}</h2>
+      <p>${esc(item.summary)}</p>
+      ${liveSource(item)}
+    </article>
+  `).join("") : `<p class="notice">本輪沒有重大新消息。下一輪仍會按排程檢查。</p>`;
+  document.title = `Live Update｜每日晨報｜${data.lastUpdatedLabel || ""}`;
+}
+
+async function fetchLiveData() {
+  const res = await fetch("data/live.json", { cache: "no-store" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function loadLiveSummary() {
+  try {
+    renderLiveSummary(await fetchLiveData());
+  } catch (err) {
+    console.error(err);
+    const host = $("#live-summary");
+    if (host) host.innerHTML = `<p class="notice">Live Update 暫時未能載入；Daily Edition 仍可正常閱讀。</p>`;
+  }
+}
+
+async function loadLivePage() {
+  try {
+    renderLivePage(await fetchLiveData());
+  } catch (err) {
+    console.error(err);
+    const host = $("#live-page-items");
+    if (host) host.innerHTML = `<p class="notice">Live Update 暫時未能載入。</p>`;
+  }
+}
+
 async function loadEdition() {
   const edition = document.body.dataset.edition;
   const url = edition ? `data/${edition}.json` : "data/latest.json";
@@ -163,5 +256,10 @@ async function loadArchive() {
   }
 }
 
-if (document.body.dataset.page === "archive") loadArchive();
-else loadEdition();
+const page = document.body.dataset.page;
+if (page === "archive") loadArchive();
+else if (page === "live") loadLivePage();
+else {
+  loadEdition();
+  if (!document.body.dataset.edition) loadLiveSummary();
+}
