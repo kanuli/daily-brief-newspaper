@@ -19,19 +19,14 @@
 
   function normalizeFinanceLabels() {
     document.querySelectorAll('a[href="#market-economy"]').forEach((a) => {
-      a.textContent = "📈 財經 / 全球市場";
+      if (a.textContent !== "📈 財經 / 全球市場") {
+        a.textContent = "📈 財經 / 全球市場";
+      }
     });
     const heading = $("#market-economy .section-heading h2");
-    if (heading) heading.textContent = "📈 財經 / 全球市場";
-  }
-
-  function observeFinanceLabel() {
-    normalizeFinanceLabels();
-    const host = $("#dynamic-sections");
-    if (!host) return;
-    const observer = new MutationObserver(() => normalizeFinanceLabels());
-    observer.observe(host, { childList: true, subtree: true });
-    setTimeout(() => observer.disconnect(), 8000);
+    if (heading && heading.textContent !== "📈 財經 / 全球市場") {
+      heading.textContent = "📈 財經 / 全球市場";
+    }
   }
 
   function groupWords(words = []) {
@@ -90,12 +85,12 @@
   }
 
   async function init() {
-    observeFinanceLabel();
+    normalizeFinanceLabels();
     try {
       const data = await getEditionData();
       await loadDailyVocab(data.date || document.body.dataset.edition);
-      setTimeout(normalizeFinanceLabels, 500);
-      setTimeout(normalizeFinanceLabels, 1600);
+      setTimeout(normalizeFinanceLabels, 400);
+      setTimeout(normalizeFinanceLabels, 1200);
     } catch (err) {
       console.warn("Daily extras unavailable", err);
     }
