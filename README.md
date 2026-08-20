@@ -26,7 +26,7 @@
 
 ## 日語學習：每日 10 個單字
 
-Daily Edition 除原有 JLPT countdown 外，每天固定提供 **10 個日語單字**：
+不顯示 JLPT countdown。Daily Edition 每天固定提供 **10 個日語單字**：
 
 - N1 × 2
 - N2 × 2
@@ -46,9 +46,31 @@ Daily Edition 除原有 JLPT countdown 外，每天固定提供 **10 個日語�
 
 > 詞庫內部分 JLPT 分級是依資料來源／頻率推定，並非官方 JLPT 詞彙清單；網站會保留此提示。
 
-## WhatsApp Channel 分享
+## Discord 手機自動推送
 
-目前採用**零成本、手動發布**方式：網站提供「複製 WhatsApp Channel 貼文」與系統 Share 按鈕，產生今日晨報標題、Top stories、Daily URL 與 Live URL，方便在 WhatsApp Channel 貼上。網站不使用非官方 WhatsApp web-session automation。
+使用 Discord 官方 Webhook，不需要每次手動複製或貼上。
+
+GitHub Actions workflow：`.github/workflows/discord-notify.yml`
+
+### 行為
+
+- `data/latest.json` 更新：自動送出 Daily Notification，包含日期、Top 3 標題、Daily URL、Live URL。
+- `data/live.json` 更新：先和上一個 commit 比較；只有 story 的 `status`、`title`、`summary`、`section` 或 `sourceUrl` 有實質變化才送通知。
+- 只有 `lastUpdated` / `timeLabel` 等例行檢查時間改變時，不會發 Discord 通知。
+- Live 通知最多列出 4 則更新，再連到完整 Live page。
+- Webhook URL 只放在 GitHub Actions Secret `DISCORD_WEBHOOK_URL`，不可寫入 repository。
+
+### 一次性設定
+
+1. 在 Discord 建立或選擇一個私人 server / text channel。
+2. Channel Settings → Integrations → Webhooks → New Webhook。
+3. Copy Webhook URL。
+4. GitHub repository → Settings → Secrets and variables → Actions → New repository secret。
+5. Secret name：`DISCORD_WEBHOOK_URL`。
+6. Secret value：貼上 Discord Webhook URL。
+7. 手機 Discord App 對該 channel 開啟 notifications。
+
+設定完成後，Daily / Live 的 GitHub data 更新會自動推送到 Discord。
 
 ## 成本原則
 
@@ -56,6 +78,7 @@ Daily Edition 除原有 JLPT countdown 外，每天固定提供 **10 個日語�
 - 不使用付費新聞 API。
 - 不使用按 token／search 次數收費的外部 AI 服務。
 - 網站使用 GitHub Pages。
+- Discord notification 使用官方 Webhook。
 - 若日後加入任何可能產生額外費用的功能，必須先明確改變這項成本政策；目前預設為 **不產生額外 API 費用**。
 
 ## 編輯原則
@@ -80,9 +103,10 @@ Daily Edition 除原有 JLPT countdown 外，每天固定提供 **10 個日語�
 - `data/vocab/` — 每日 10 個 N1–N5 單字
 - `assets/` — CSS / JavaScript
 - `.github/workflows/pages.yml` — GitHub Pages deployment
+- `.github/workflows/discord-notify.yml` — Daily / Live → Discord 手機推送
 
 ## 自動化流程
 
-`Daily Briefing → web research / verification → GitHub Daily edition + vocab → GitHub Pages`
+`Daily Briefing → web research / verification → GitHub Daily edition + vocab → GitHub Pages → Discord push`
 
-`Every 3 hours → new/updated/developing research → data/live.json → GitHub Pages`
+`Every 3 hours → new/updated/developing research → data/live.json → GitHub Pages → Discord push when material change exists`
