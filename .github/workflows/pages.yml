@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -23,6 +23,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Merge verified Live into Rolling Desk
+        run: python scripts/merge_live_into_desk.py
 
       - name: Validate Daily Brief data schema
         run: python scripts/validate_site_data.py
@@ -35,6 +40,19 @@ jobs:
 
       - name: Validate Stock News data
         run: python scripts/validate_stock_news.py
+
+      - name: Commit synchronized rolling data
+        run: |
+          if git diff --quiet -- data/desk-latest.json data/live.json; then
+            echo "Rolling data already synchronized"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- data/desk-latest.json data/live.json
+            git commit -m "Synchronize Live and Rolling Desk"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
