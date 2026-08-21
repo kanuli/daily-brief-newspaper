@@ -24,8 +24,17 @@
     }
     return map;
   }
+  function enforceGeography() {
+    const slugs = String(document.body.dataset.topicSlugs || '').split(',').map(s=>s.trim());
+    if (!slugs.includes('world')) return;
+    document.querySelectorAll('.topic-story').forEach(card => {
+      const tag = card.querySelector('.tag')?.textContent || '';
+      if (/中東|West Asia|Middle East/i.test(tag)) card.remove();
+    });
+  }
   async function apply() {
     if (document.body.dataset.page !== 'topic') return;
+    enforceGeography();
     const map = await loadStoryMap();
     document.querySelectorAll('.topic-story').forEach(card => {
       if (card.querySelector('.topic-article-body')) return;
