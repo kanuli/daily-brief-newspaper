@@ -14,6 +14,16 @@ EXPECTED_DESK_SLUGS = {
     "ai-tech", "manga-anime", "manchester-united", "football",
 }
 RICH_FIELDS = ("title", "dek", "summary", "context", "why", "watchNext")
+COMPLETE_SOURCE_MINIMA = {
+    "world": 12, "asia": 8, "hong-kong": 8, "japan": 8,
+    "market-economy": 10, "ai-tech": 10, "manga-anime": 4,
+    "manchester-united": 4, "football": 10,
+}
+COMPLETE_CANDIDATE_MINIMA = {
+    "world": 4, "asia": 3, "hong-kong": 2, "japan": 2,
+    "market-economy": 3, "ai-tech": 2, "manga-anime": 1,
+    "manchester-united": 1, "football": 3,
+}
 
 
 def load_json(path: pathlib.Path):
@@ -131,6 +141,7 @@ def validate_desk_latest(data, label):
     for slug in sorted(EXPECTED_DESK_SLUGS):
         stories = desks.get(slug)
         require(isinstance(stories, list), f"{label}: desks.{slug} must be an array")
+        require(len(stories) >= 1, f"{label}: desks.{slug} must not be empty")
         ids = []
         for index, story in enumerate(stories):
             validate_rich_story(story, f"{label}: desks.{slug}[{index}]")
@@ -144,7 +155,6 @@ def validate_desk_latest(data, label):
             ids.append(story["id"])
         require(len(ids) == len(set(ids)), f"{label}: desks.{slug} contains duplicate story ids")
 
-    # Hong Kong and Japan are hard regression gates after repeated false-empty/underfilled runs.
     require(len(desks.get("hong-kong", [])) >= 3,
             f"{label}: Hong Kong Desk must contain at least 3 current verified newspaper stories")
     require(len(desks.get("japan", [])) >= 3,
@@ -235,7 +245,6 @@ def validate_live(data, label):
                 f"{label}: zero final raw fresh candidates require recovery pass")
 
     if status == "COMPLETE":
-        # New per-desk audit is mandatory for a run that claims completion.
         for field in ("deskCandidateCounts", "deskSourceCounts", "deskSearchCounts", "deskRecoveryTriggered"):
             require(isinstance(coverage.get(field), dict), f"{label}: COMPLETE run requires coverage.{field}")
         require(coverage["sourceOrganizationCount"] >= 40,
@@ -246,11 +255,20 @@ def validate_live(data, label):
                 f"{label}: COMPLETE hourly run requires deskMinimumsMet=true")
         require(coverage["rawFreshCandidateCount"] > 0,
                 f"{label}: rawFreshCandidateCount=0 cannot be COMPLETE")
+
         candidate_counts = coverage["deskCandidateCounts"]
-        require(candidate_counts.get("hong-kong", 0) >= 2,
-                f"{label}: COMPLETE run needs at least 2 Hong Kong desk candidates")
-        require(candidate_counts.get("japan", 0) >= 2,
-                f"{label}: COMPLETE run needs at least 2 Japan desk candidates")
+        source_counts = coverage["deskSourceCounts"]
+        search_counts = coverage["deskSearchCounts"]
+        recovery_flags = coverage["deskRecoveryTriggered"]
+        for slug in EXPECTED_DESK_SLUGS:
+            require(isinstance(candidate_counts.get(slug), int) and candidate_counts.get(slug) >= COMPLETE_CANDIDATE_MINIMA[slug],
+                    f"{label}: COMPLETE run has insufficient {slug} candidates: {candidate_counts.get(slug)}")
+            require(isinstance(source_counts.get(slug), int) and source_counts.get(slug) >= COMPLETE_SOURCE_MINIMA[slug],
+                    f"{label}: COMPLETE run has insufficient {slug} source coverage: {source_counts.get(slug)}")
+            require(isinstance(search_counts.get(slug), int) and search_counts.get(slug) >= 1,
+                    f"{label}: COMPLETE run requires at least one recorded search/check for {slug}")
+            require(isinstance(recovery_flags.get(slug), bool),
+                    f"{label}: COMPLETE run requires boolean deskRecoveryTriggered.{slug}")
 
 
 def main():
