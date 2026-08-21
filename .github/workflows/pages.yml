@@ -24,6 +24,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate Daily Brief data schema
+        run: python scripts/validate_site_data.py
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

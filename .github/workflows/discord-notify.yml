@@ -77,9 +77,26 @@ jobs:
                   if response.status not in (200, 204):
                       raise RuntimeError(f"Discord webhook returned HTTP {response.status}")
 
+          def daily_fingerprint(data):
+              articles = []
+              for article in data.get("articles", []):
+                  articles.append((
+                      article.get("id"), article.get("title"), article.get("summary"),
+                      article.get("sourceUrl"), article.get("timeLabel")
+                  ))
+              return (
+                  data.get("date"), data.get("leadId"), tuple(data.get("topFive", [])),
+                  tuple(articles)
+              )
+
           # Daily takes priority if one commit happened to update both files.
           if "data/latest.json" in changed:
               data = load("data/latest.json")
+              previous = previous_json("data/latest.json") or {}
+              if previous and daily_fingerprint(previous) == daily_fingerprint(data):
+                  print("Daily content unchanged; schema/layout-only update, Discord Daily alert suppressed.")
+                  raise SystemExit(0)
+
               articles = {a.get("id"): a for a in data.get("articles", [])}
               top = []
               for article_id in data.get("topFive", [])[:3]:
@@ -98,16 +115,12 @@ jobs:
           if "data/live.json" in changed:
               current = load("data/live.json")
               previous = previous_json("data/live.json") or {}
+              coverage = current.get("coverage") or {}
 
               def fingerprint(item):
-                  # Ignore routine checked-time changes when identifying material stories.
                   return (
-                      item.get("id"),
-                      item.get("status"),
-                      item.get("section"),
-                      item.get("title"),
-                      item.get("summary"),
-                      item.get("sourceUrl"),
+                      item.get("id"), item.get("status"), item.get("section"),
+                      item.get("title"), item.get("summary"), item.get("sourceUrl")
                   )
 
               old = {item.get("id"): fingerprint(item) for item in previous.get("items", [])}
@@ -117,22 +130,33 @@ jobs:
                   if not item_id or old.get(item_id) != fingerprint(item):
                       material.append(item)
 
+              orgs = coverage.get("sourceOrganizationCount", "N/V")
+              searches = coverage.get("freshSearchCount", "N/V")
+              fresh = coverage.get("freshCandidatesFound", coverage.get("firstPassCandidateCount", coverage.get("candidateCount", "N/V")))
+              duplicates = coverage.get("duplicatesAlreadyInDaily", coverage.get("rejectedDuplicates", "N/V"))
+              second_pass = coverage.get("secondPassTriggered")
+
               if not material:
                   developing = current.get("developingCount", 0)
                   lines = [
                       f"🔴 **Live Check｜{current.get('lastUpdatedLabel', '最新檢查')}**",
                       "",
-                      "本輪沒有重大新進展。",
+                      "本輪沒有新增的重大新聞卡，但全球掃描已完成。",
+                      f"掃描：{orgs} organizations / {searches} fresh searches",
+                      f"Fresh candidates：{fresh} · 已在 Daily / 重複：{duplicates}",
                   ]
+                  if second_pass is True:
+                      lines.append("Second pass：已執行")
                   if developing:
                       lines.append(f"目前仍有 {developing} 則 DEVELOPING 項目持續追蹤。")
                   lines += ["", f"🔗 完整 Live：{site}live.html"]
                   post("\n".join(lines))
-                  print("Live check completed with no material story change; confirmation sent to Discord.")
+                  print("Live zero-increment check sent with coverage audit.")
                   raise SystemExit(0)
 
               lines = [
                   f"🔴 **Live Update｜{current.get('lastUpdatedLabel', '最新更新')}**",
+                  f"掃描：{orgs} organizations / {searches} fresh searches",
                   ""
               ]
               for item in material[:4]:
