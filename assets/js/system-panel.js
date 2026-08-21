@@ -8,6 +8,7 @@
     ["hong-kong.html", "香港"],
     ["japan.html", "日本"],
     ["finance.html", "📈 財經"],
+    ["stocks.html", "📊 Stock News"],
     ["technology.html", "AI / 科技"],
     ["manga-anime.html", "漫畫 / Anime"],
     ["manchester-united.html", "Manchester United"],
@@ -44,7 +45,7 @@
       inject("assets/js/topic-longform.js?v=20260821-1915", "data-topic-longform");
       return;
     }
-    if (document.body.dataset.page !== "archive") {
+    if (document.body.dataset.page !== "archive" && document.body.dataset.page !== "stocks") {
       inject("assets/js/article-body-upgrade.js?v=20260821-1915", "data-article-body-upgrade");
     }
   }
@@ -75,7 +76,7 @@
         <span class="status-dot"></span><div><strong>Website</strong><small>Static safe mode · no background monitoring loop</small></div>
       </div>
       <div class="system-panel-row status-ok">
-        <span class="status-dot"></span><div><strong>Daily / Live</strong><small>Daily + Hourly Live + Rolling Desk JSON are publishing sources</small></div>
+        <span class="status-dot"></span><div><strong>Daily / Live / Stocks</strong><small>Daily + Hourly Live + Rolling Desk + Stock News JSON are publishing sources</small></div>
       </div>
       <div class="system-panel-row status-check">
         <span class="status-dot"></span><div><strong>GitHub Pages / Discord</strong><small>Deployment and push delivery are checked externally</small></div>
