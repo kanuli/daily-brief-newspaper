@@ -1,0 +1,43 @@
+name: CosyVoice E2E Smoke
+
+on:
+  pull_request:
+    paths:
+      - "assets/js/site-tts-*.js"
+      - "scripts/test_cosyvoice_backend.py"
+      - ".github/workflows/cosyvoice-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cosyvoice-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "gradio_client>=1.12,<2"
+          sudo apt-get update -y
+          sudo apt-get install -y ffmpeg
+
+      - name: Generate real Cantonese audio
+        run: python scripts/test_cosyvoice_backend.py
+
+      - name: Upload generated audio
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cosyvoice-smoke-audio
+          path: artifacts/cosyvoice-smoke/*.wav
+          if-no-files-found: error
