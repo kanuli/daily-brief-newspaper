@@ -4,109 +4,75 @@
 
 ## 核心新聞 Desk
 
-- 🇯🇵 `日本` — **一般重要新聞優先**：社會、政策、公共安全、交通、教育、健康、文化、重大事件與真正影響生活的科技／產業消息；不再用金融市場新聞填滿日本欄。
-- 🇭🇰 `香港 / 亞洲` — **香港一般重要新聞優先**：政府與公共政策、社會、民生、交通、房屋、教育、健康、公共服務、重大事故／事件；再按價值加入重要亞洲新聞。
-- 📈 `財經 / 全球市場` — 把香港、日本、美國及全球的重要金融、宏觀、利率、匯率、股債市場、重大企業／產業財經消息集中到獨立 desk。除非事件本身同時是當地最重大的公共新聞，否則不與日本／香港 desk 重複。
-- 日本漫畫 / Anime — 優先追蹤 `Naruto`、`One Piece`、`My Hero Academia`，同時納入當日更新、更熱門及真正有新聞價值的作品。
-- AI / 科技
-- Manchester United — 所有足球新聞中的最高優先。
-- Football — Manchester United 之後，再涵蓋英超、Champions League／UEFA、主要歐洲聯賽、國際賽及真正重要的轉會／賽事新聞。
-- 🧪 科學 / 新技術
-- 🔐 網絡安全
-- 📱 軟件 / App / 消費科技
-- 📰 突發新聞
-- 🔎 今日值得跟進
-- 📅 Upcoming events / 明日焦點
+- 🌍 `世界` — 亞洲以外的重要國際新聞；Europe、Middle East、North America、Latin America、Africa、Oceania，country-specific story 原則上至少兩個獨立來源核實。
+- 🌏 `亞洲` — 香港與日本以外的亞洲新聞；中國、台灣、韓國、東南亞、南亞等分國家搜尋與交叉核實。
+- 🇭🇰 `香港` — 民生、政策、交通、房屋、醫療、教育、司法、社區、文化、環境、事故；非政府、多元本地媒體優先，RTHK與政府來源主要作補充／核實。
+- 🇯🇵 `日本` — 社會、政策、公共安全、交通、教育、健康、氣候／災害、文化、旅遊、生活、司法及對公眾有影響的科技／產業消息；純金融市場消息歸財經。
+- 📈 `財經 / 全球市場` — worldwide finance，涵蓋 US、EU/UK、Taiwan、Japan、Hong Kong/China，以及其他重要地區的股債匯、央行、利率、通脹、能源、大宗商品與重大企業財經。
+- `AI / 科技` — worldwide AI / tech，涵蓋 AI、半導體、雲端、軟件／App、網絡安全、監管、consumer tech 與科研。
+- `漫畫 / Anime` — 全產業搜尋，不限指定作品；官方、出版社、製作委員會及可信娛樂媒體優先。
+- `Manchester United` — 所有足球新聞中的最高優先，獨立專版。
+- `Football` — worldwide football；英超、La Liga、Serie A、Bundesliga、Ligue 1、荷甲、葡超、UEFA、國際賽、J-League、香港聯賽及其他重大賽事／轉會。
 
-## Daily + Live
+## Daily + Hourly Live
 
 - **Daily Edition**：每日香港時間約 08:00 產生完整晨報並固定保存到 Archive。
-- **Live Update**：每 3 小時檢查一次，只加入 `NEW`、`UPDATED`、`DEVELOPING` 的實質新進展，不重寫 Daily Edition。
-- 新一日 Daily 出版後會重設 Live baseline，避免跨日累積舊消息。
+- **Hourly Live Update**：香港時間 **06:00–24:00** 每小時檢查一次；**08:00 跳過**，由 Daily Edition 取代。
+- Hourly Live slots：06:00、07:00、09:00、10:00、11:00、12:00、13:00、14:00、15:00、16:00、17:00、18:00、19:00、20:00、21:00、22:00、23:00、24:00／00:00。
+- 01:00–05:00 不執行 Live。
+- Live 使用 `NEW`、`UPDATED`、`DEVELOPING`，不重寫固定 Daily Edition。
+- 每輪以最新、完整、可信優先於最快完成。
+- `rawFreshCandidateCount == 0` 視為 **collection failure**，不得當正常「沒有新聞」結束；必須擴大來源、搜尋方式與時間窗再查。
+- 每輪至少實際檢查 30 個不同 news organizations/newsrooms、至少 24 次 fresh/source-specific searches；低 candidate 數會觸發 second pass，0 raw candidates 會再觸發 recovery pass。
+- 搜尋窗保留 30 分鐘 indexing overlap；Daily baseline只用於去重，不可縮短下一輪 Live 的 scheduled search window。
 
 ## 日語學習：每日 10 個單字
 
-不顯示 JLPT countdown。Daily Edition 每天固定提供 **10 個日語單字**：
+Daily Edition 每天固定提供 **10 個日語單字**：N1、N2、N3、N4、N5 各 2 個。
 
-- N1 × 2
-- N2 × 2
-- N3 × 2
-- N4 × 2
-- N5 × 2
+來源使用 [`kanuli/japanese-vocab-game`](https://github.com/kanuli/japanese-vocab-game) 的最新可驗證完整 wordlist。每個詞保留 JLPT level、假名讀音、漢字（如有）、繁體中文意思及詞性。每日詞表保存為 `data/vocab/YYYY-MM-DD.json`，所以當日版本發布後固定保存，不受後續詞庫更新改寫。選詞避免最近至少 7 日重複，資料足夠時優先避免 30 日內重複。
 
-來源優先使用另一個 repository：[`kanuli/japanese-vocab-game`](https://github.com/kanuli/japanese-vocab-game) 的 `data/advanced_vocab.js`。每個詞保留：
-
-- JLPT level
-- 假名讀音
-- 漢字（如有）
-- 繁體中文意思
-- 詞性
-
-每日詞表保存為 `data/vocab/YYYY-MM-DD.json`，所以 Archive 會保留當日的 10 個字。選詞時應避免與最近至少 7 日重複；如資料足夠，優先避免 30 日內重複。
-
-> 詞庫內部分 JLPT 分級是依資料來源／頻率推定，並非官方 JLPT 詞彙清單；網站會保留此提示。
+> 詞庫內部分 JLPT 分級可能是依資料來源／頻率推定，並非官方 JLPT 詞彙清單。
 
 ## Discord 手機自動推送
 
-使用 Discord 官方 Webhook，不需要每次手動複製或貼上。
+使用 Discord 官方 Webhook，GitHub Actions workflow：`.github/workflows/discord-notify.yml`。
 
-GitHub Actions workflow：`.github/workflows/discord-notify.yml`
-
-### 行為
-
-- `data/latest.json` 更新：自動送出 Daily Notification，包含日期、Top 3 標題、Daily URL、Live URL。
-- `data/live.json` 更新：先和上一個 commit 比較；只有 story 的 `status`、`title`、`summary`、`section` 或 `sourceUrl` 有實質變化才送通知。
-- 只有 `lastUpdated` / `timeLabel` 等例行檢查時間改變時，不會發 Discord 通知。
-- Live 通知最多列出 4 則更新，再連到完整 Live page。
-- Webhook URL 只放在 GitHub Actions Secret `DISCORD_WEBHOOK_URL`，不可寫入 repository。
-
-### 一次性設定
-
-1. 在 Discord 建立或選擇一個私人 server / text channel。
-2. Channel Settings → Integrations → Webhooks → New Webhook。
-3. Copy Webhook URL。
-4. GitHub repository → Settings → Secrets and variables → Actions → New repository secret。
-5. Secret name：`DISCORD_WEBHOOK_URL`。
-6. Secret value：貼上 Discord Webhook URL。
-7. 手機 Discord App 對該 channel 開啟 notifications。
-
-設定完成後，Daily / Live 的 GitHub data 更新會自動推送到 Discord。
+- `data/latest.json` 更新：送出 Daily Notification。
+- `data/live.json` 更新：送出 Hourly Live Update；有 material items 時列出更新，沒有 incremental publish 時亦提供該輪檢查／audit 狀態，而不是靜默跳過。
+- Webhook URL 只存於 GitHub Actions Secret `DISCORD_WEBHOOK_URL`，不可寫入 repository。
 
 ## 成本原則
 
 - 不需要 `OPENAI_API_KEY`。
 - 不使用付費新聞 API。
-- 不使用按 token／search 次數收費的外部 AI 服務。
+- 不使用額外按量收費 AI／search 服務。
 - 網站使用 GitHub Pages。
 - Discord notification 使用官方 Webhook。
-- 若日後加入任何可能產生額外費用的功能，必須先明確改變這項成本政策；目前預設為 **不產生額外 API 費用**。
 
-## 編輯原則
+## 編輯與資料品質原則
 
-- 每日最重要 5 則置頂，但整份報紙不限制固定文章或 section 數量。
-- 一般新聞重要性優先於「為了有內容而塞財經新聞」。
-- 香港、日本與財經 desk 各自有清楚角色；同一金融故事一般只在財經 desk 出現一次。
-- 根據新聞重要性動態增加或減少分類及文章數量，不為填版加入低價值新聞。
-- 優先官方／一手資料及可靠新聞來源，每篇保留直接來源連結。
-- 參考最近數份 edition，避免沒有實質新進展的重複新聞。
-- 漫畫／動畫優先官方出版社、作品官網、動畫／電影官網、製作委員會及可信來源；避免盜版 scan、未證實 leak 或純粹劇情爆料，預設避免不必要劇透。
-- Manchester United 轉會傳聞與其他轉會傳聞必須清楚標示為媒體報道／傳聞，不能當作官方確認。
-- 新聞圖片目前保持 `image: null`；日後只加入有明確合法重用規則的來源圖片，不使用 AI 生成新聞圖片，也不直接複製 Reuters／Getty／AFP 等受限制圖片。
+- 頭版只放最高優先內容，各分版可提供更完整深度。
+- country-specific news 原則上至少兩個獨立可信來源核實；同一 wire copy 的轉載不算獨立第二來源。
+- 同一主題只要有新數字、新回應、新傷亡、新政策、新司法／外交進展、新 market move、新產品／事故、新轉會狀態或賽果，可列 `UPDATED`，不可過度去重。
+- GitHub Pages deployment 前會執行資料 schema validation；壞 JSON 不應部署到網站。
+- 新聞圖片目前保持 `image: null`；不使用 AI 生成新聞圖片，也不直接複製 Reuters／Getty／AFP 等受限制圖片。
 
 ## 網站結構
 
-- `index.html` — 今日 Daily + Live 摘要
-- `live.html` — 每 3 小時 Live Update
+- `index.html` — 今日 Daily + Hourly Live 摘要
+- `live.html` — Hourly Live Update
+- `world.html`, `asia.html`, `hong-kong.html`, `japan.html`, `finance.html`, `technology.html`, `manga-anime.html`, `manchester-united.html`, `football.html` — 各獨立 Desk
 - `archive.html` — 歷史日報
 - `editions/` — 每日固定版本
-- `data/` — 每日新聞 JSON + Live + Archive index
+- `data/` — Daily / Live / Archive JSON
+- `data/topic-more/` — 各分版額外新聞
 - `data/vocab/` — 每日 10 個 N1–N5 單字
-- `assets/` — CSS / JavaScript
-- `.github/workflows/pages.yml` — GitHub Pages deployment
-- `.github/workflows/discord-notify.yml` — Daily / Live → Discord 手機推送
+- `.github/workflows/pages.yml` — GitHub Pages deployment + schema validation
+- `.github/workflows/discord-notify.yml` — Daily / Live → Discord
 
 ## 自動化流程
 
-`Daily Briefing → web research / verification → GitHub Daily edition + vocab → GitHub Pages → Discord push`
+`08:00 Daily Briefing → global research / verification → GitHub Daily edition + vocab → GitHub Pages → Discord`
 
-`Every 3 hours → new/updated/developing research → data/live.json → GitHub Pages → Discord push when material change exists`
+`06:00–24:00 Hourly Live（08:00除外）→ global fresh research / verification → data/live.json → GitHub Pages → Discord`
