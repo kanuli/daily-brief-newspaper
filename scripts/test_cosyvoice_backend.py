@@ -14,13 +14,14 @@ F01_URL = "https://raw.githubusercontent.com/ASLP-lab/WenetSpeech-Yue/demo_page/
 INSTRUCT = "You are a helpful assistant. 请用广东话表达。<|endofprompt|>"
 TEST_TEXT = "今日香港天氣很好。這是一段廣東話語音測試。"
 
+# This exact API-dedicated address was returned by the live ModelScope Studio
+# proxy itself (HTTP 403 response), so test it directly instead of guessing.
 MODELSCOPE_BASES = [
-    "https://www.modelscope.cn/api/v1/studio/FunAudioLLM/Fun-CosyVoice3-0.5B/gradio/",
-    "https://modelscope.cn/api/v1/studio/FunAudioLLM/Fun-CosyVoice3-0.5B/gradio/",
+    "https://studio-funaudiollm-fun-cosyvoice3-0-5b.api-inference.modelscope.net/",
 ]
 
-# These HF runtimes are kept only as diagnostics. They already failed the first
-# real smoke test and must not be promoted to production unless a later test passes.
+# These HF runtimes are diagnostic only. They already failed real E2E runs and
+# must never be promoted to production unless a later run returns a real WAV.
 HF_DIAGNOSTICS = [
     ("Originalmmd/CosyVoice3-VoiceStudio", "instruct"),
     ("recentechstudio/CosyVoice3", "zero-shot"),
@@ -163,20 +164,18 @@ def http_diagnostics(base):
         try:
             r = requests.get(url, timeout=20, allow_redirects=True)
             ctype = r.headers.get("content-type", "")
-            sample = r.text[:1000].replace("\n", " ") if "text" in ctype or "json" in ctype else "<binary>"
+            sample = r.text[:1600].replace("\n", " ") if "text" in ctype or "json" in ctype else "<binary>"
             print(f"GET {url} -> {r.status_code} final={r.url} type={ctype} len={len(r.content)} sample={sample}", flush=True)
         except Exception as exc:
             print(f"GET {url} -> {type(exc).__name__}: {exc}", flush=True)
 
 
 def test_modelscope(base, ref_path, output_dir):
-    print(f"\n=== TEST ModelScope official Studio: {base} ===", flush=True)
+    print(f"\n=== TEST ModelScope dedicated CosyVoice API: {base} ===", flush=True)
     http_diagnostics(base)
     client = Client(base, verbose=True)
     api = client.view_api(return_format="dict")
     print(json.dumps(api, ensure_ascii=False, indent=2)[:30000], flush=True)
-    # Official Studio supports both zero-shot and instruct. Prefer instruct so the
-    # selected F01 voice is combined with an explicit Cantonese dialect request.
     try:
         return call_from_api(client, api, "instruct", ref_path, output_dir, "modelscope-official")
     except Exception as first:
@@ -209,8 +208,6 @@ def main():
                 errors.append(msg)
                 print(f"FAIL {msg}", flush=True)
 
-        # Keep known-broken HF services in the diagnostic tail only. A surprise
-        # recovery is accepted if and only if it returns a real WAV in this run.
         for space_id, mode in HF_DIAGNOSTICS:
             try:
                 path = test_hf(space_id, mode, ref_path, output_dir)
