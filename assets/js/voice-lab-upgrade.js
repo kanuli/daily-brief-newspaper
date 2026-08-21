@@ -92,6 +92,14 @@
     }
   }
 
+  function toArrayBuffer(value) {
+    if (value instanceof ArrayBuffer) return value.slice(0);
+    if (ArrayBuffer.isView(value)) {
+      return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
+    }
+    throw new Error('eSpeak returned an unsupported audio format');
+  }
+
   async function playFixedESpeak(button) {
     try {
       if (currentSource) {
@@ -126,7 +134,7 @@
       });
       if (!wav) throw new Error('eSpeak returned no audio data');
 
-      const decoded = await audioContext.decodeAudioData(wav.slice ? wav.slice(0) : wav);
+      const decoded = await audioContext.decodeAudioData(toArrayBuffer(wav));
       const source = audioContext.createBufferSource();
       source.buffer = decoded;
       source.connect(audioContext.destination);
