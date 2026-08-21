@@ -9,6 +9,11 @@ EXPECTED_DESKS = {
     "世界", "亞洲", "香港", "日本", "財經 / 全球市場",
     "AI / 科技", "漫畫 / Anime", "Manchester United", "Football",
 }
+EXPECTED_DESK_SLUGS = {
+    "world", "asia", "hong-kong", "japan", "market-economy",
+    "ai-tech", "manga-anime", "manchester-united", "football",
+}
+RICH_FIELDS = ("title", "dek", "summary", "context", "why", "watchNext")
 
 
 def load_json(path: pathlib.Path):
@@ -23,13 +28,35 @@ def require(condition, message):
         raise ValueError(message)
 
 
+def nonempty_text(value):
+    return isinstance(value, str) and bool(value.strip())
+
+
+def validate_rich_story(story, label):
+    require(isinstance(story, dict), f"{label}: story must be an object")
+    require(nonempty_text(story.get("id")), f"{label}: id is required")
+    for field in RICH_FIELDS:
+        require(nonempty_text(story.get(field)), f"{label}: {field} is required for newspaper-depth rendering")
+    require(nonempty_text(story.get("section")), f"{label}: section is required")
+    require(nonempty_text(story.get("sourceName")), f"{label}: sourceName is required")
+    require(nonempty_text(story.get("sourceUrl")), f"{label}: sourceUrl is required")
+    require(nonempty_text(story.get("timeLabel")), f"{label}: timeLabel is required")
+    sources = story.get("sources")
+    if sources is not None:
+        require(isinstance(sources, list), f"{label}: sources must be an array when present")
+        for index, source in enumerate(sources):
+            require(isinstance(source, dict), f"{label}: sources[{index}] must be an object")
+            require(nonempty_text(source.get("name")), f"{label}: sources[{index}].name is required")
+            require(nonempty_text(source.get("url")), f"{label}: sources[{index}].url is required")
+
+
 def validate_edition(data, label, require_sections=True):
     require(isinstance(data, dict), f"{label}: root must be an object")
     articles = data.get("articles")
     require(isinstance(articles, list) and articles, f"{label}: articles must be a non-empty array")
     ids = [a.get("id") for a in articles if isinstance(a, dict)]
     require(len(ids) == len(articles), f"{label}: every article must be an object with id")
-    require(all(isinstance(i, str) and i for i in ids), f"{label}: every article id must be a non-empty string")
+    require(all(nonempty_text(i) for i in ids), f"{label}: every article id must be a non-empty string")
     require(len(ids) == len(set(ids)), f"{label}: duplicate article ids")
     known = set(ids)
     require(data.get("leadId") in known, f"{label}: leadId does not resolve to an article")
@@ -47,8 +74,8 @@ def validate_edition(data, label, require_sections=True):
         title = section.get("title")
         subtitle = section.get("subtitle")
         article_ids = section.get("articleIds")
-        require(isinstance(slug, str) and slug, f"{label}: section.slug must be a non-empty string")
-        require(isinstance(title, str) and title, f"{label}: {slug}.title must be a non-empty string")
+        require(nonempty_text(slug), f"{label}: section.slug must be a non-empty string")
+        require(nonempty_text(title), f"{label}: {slug}.title must be a non-empty string")
         require(isinstance(subtitle, str), f"{label}: {slug}.subtitle must be a string")
         require(isinstance(article_ids, list), f"{label}: {slug}.articleIds must be an array")
         require(all(i in known for i in article_ids), f"{label}: {slug} contains unknown article ids")
@@ -69,12 +96,10 @@ def validate_topic_more(data, latest, label):
     slugs = []
     for section in sections:
         slug = section.get("slug")
-        title = section.get("title")
-        subtitle = section.get("subtitle")
+        require(nonempty_text(slug), f"{label}: section.slug must be a non-empty string")
+        require(nonempty_text(section.get("title")), f"{label}: {slug}.title must be a non-empty string")
+        require(isinstance(section.get("subtitle"), str), f"{label}: {slug}.subtitle must be a string")
         article_ids = section.get("articleIds")
-        require(isinstance(slug, str) and slug, f"{label}: section.slug must be a non-empty string")
-        require(isinstance(title, str) and title, f"{label}: {slug}.title must be a non-empty string")
-        require(isinstance(subtitle, str), f"{label}: {slug}.subtitle must be a string")
         require(isinstance(article_ids, list), f"{label}: {slug}.articleIds must be an array")
         require(all(i in known for i in article_ids), f"{label}: {slug} contains unknown article ids")
         slugs.append(slug)
@@ -94,18 +119,60 @@ def validate_vocab(data, label):
     require(all(count == 2 for count in counts.values()), f"{label}: each of N1-N5 must contain exactly 2 words: {counts}")
 
 
+def validate_desk_latest(data, label):
+    require(isinstance(data, dict), f"{label}: root must be an object")
+    require(data.get("mode") == "ROLLING_DESK_LATEST", f"{label}: mode must be ROLLING_DESK_LATEST")
+    require(nonempty_text(data.get("generatedAt")), f"{label}: generatedAt is required")
+    desks = data.get("desks")
+    require(isinstance(desks, dict), f"{label}: desks must be an object")
+    missing = EXPECTED_DESK_SLUGS - set(desks)
+    require(not missing, f"{label}: missing desk keys: {sorted(missing)}")
+
+    for slug in sorted(EXPECTED_DESK_SLUGS):
+        stories = desks.get(slug)
+        require(isinstance(stories, list), f"{label}: desks.{slug} must be an array")
+        ids = []
+        for index, story in enumerate(stories):
+            validate_rich_story(story, f"{label}: desks.{slug}[{index}]")
+            require(story.get("status") in {"LATEST", "NEW", "UPDATED"},
+                    f"{label}: desks.{slug}[{index}] invalid status {story.get('status')!r}")
+            desk_slugs = story.get("deskSlugs")
+            require(isinstance(desk_slugs, list) and desk_slugs,
+                    f"{label}: desks.{slug}[{index}].deskSlugs must be a non-empty array")
+            require(slug in desk_slugs,
+                    f"{label}: desks.{slug}[{index}] must include {slug!r} in deskSlugs")
+            ids.append(story["id"])
+        require(len(ids) == len(set(ids)), f"{label}: desks.{slug} contains duplicate story ids")
+
+    # Hong Kong and Japan are hard regression gates after repeated false-empty/underfilled runs.
+    require(len(desks.get("hong-kong", [])) >= 3,
+            f"{label}: Hong Kong Desk must contain at least 3 current verified newspaper stories")
+    require(len(desks.get("japan", [])) >= 3,
+            f"{label}: Japan Desk must contain at least 3 current verified newspaper stories")
+
+
 def validate_live(data, label):
     require(isinstance(data, dict), f"{label}: root must be an object")
-    require(isinstance(data.get("items", []), list), f"{label}: items must be an array")
-    require(isinstance(data.get("nextUpdateLabel"), str) and data.get("nextUpdateLabel"), f"{label}: nextUpdateLabel is required")
+    items = data.get("items", [])
+    require(isinstance(items, list), f"{label}: items must be an array")
+    require(nonempty_text(data.get("nextUpdateLabel")), f"{label}: nextUpdateLabel is required")
+
     item_ids = []
-    for item in data.get("items", []):
-        require(isinstance(item, dict), f"{label}: every item must be an object")
-        require(item.get("status") in {"NEW", "UPDATED", "DEVELOPING"}, f"{label}: invalid Live status {item.get('status')!r}")
-        require(isinstance(item.get("id"), str) and item.get("id"), f"{label}: every item needs id")
-        require(isinstance(item.get("title"), str) and item.get("title"), f"{label}: every item needs title")
+    actual = {"NEW": 0, "UPDATED": 0, "DEVELOPING": 0}
+    for index, item in enumerate(items):
+        validate_rich_story(item, f"{label}: items[{index}]")
+        status_value = item.get("status")
+        require(status_value in actual, f"{label}: invalid Live status {status_value!r}")
         item_ids.append(item["id"])
+        actual[status_value] += 1
     require(len(item_ids) == len(set(item_ids)), f"{label}: duplicate Live item ids")
+
+    require(data.get("newCount") == actual["NEW"],
+            f"{label}: newCount={data.get('newCount')} but actual NEW items={actual['NEW']}")
+    require(data.get("updatedCount") == actual["UPDATED"],
+            f"{label}: updatedCount={data.get('updatedCount')} but actual UPDATED items={actual['UPDATED']}")
+    require(data.get("developingCount") == actual["DEVELOPING"],
+            f"{label}: developingCount={data.get('developingCount')} but actual DEVELOPING items={actual['DEVELOPING']}")
 
     coverage = data.get("coverage")
     require(isinstance(coverage, dict), f"{label}: coverage must be an object")
@@ -132,7 +199,7 @@ def validate_live(data, label):
 
     sources = coverage["sourceOrganizationsChecked"]
     require(isinstance(sources, list), f"{label}: sourceOrganizationsChecked must be an array")
-    require(all(isinstance(s, str) and s.strip() for s in sources), f"{label}: every source organization must be a non-empty string")
+    require(all(nonempty_text(s) for s in sources), f"{label}: every source organization must be a non-empty string")
     unique_sources = {s.strip().casefold() for s in sources}
     require(len(unique_sources) == len(sources), f"{label}: sourceOrganizationsChecked contains duplicates")
 
@@ -168,14 +235,22 @@ def validate_live(data, label):
                 f"{label}: zero final raw fresh candidates require recovery pass")
 
     if status == "COMPLETE":
-        require(coverage["sourceOrganizationCount"] >= 30,
-                f"{label}: COMPLETE hourly run needs at least 30 unique organizations")
-        require(coverage["freshSearchCount"] >= 24,
-                f"{label}: COMPLETE hourly run needs at least 24 fresh searches")
+        # New per-desk audit is mandatory for a run that claims completion.
+        for field in ("deskCandidateCounts", "deskSourceCounts", "deskSearchCounts", "deskRecoveryTriggered"):
+            require(isinstance(coverage.get(field), dict), f"{label}: COMPLETE run requires coverage.{field}")
+        require(coverage["sourceOrganizationCount"] >= 40,
+                f"{label}: COMPLETE hourly run needs at least 40 unique organizations")
+        require(coverage["freshSearchCount"] >= 36,
+                f"{label}: COMPLETE hourly run needs at least 36 fresh/source-specific checks")
         require(coverage["deskMinimumsMet"] is True,
                 f"{label}: COMPLETE hourly run requires deskMinimumsMet=true")
         require(coverage["rawFreshCandidateCount"] > 0,
                 f"{label}: rawFreshCandidateCount=0 cannot be COMPLETE")
+        candidate_counts = coverage["deskCandidateCounts"]
+        require(candidate_counts.get("hong-kong", 0) >= 2,
+                f"{label}: COMPLETE run needs at least 2 Hong Kong desk candidates")
+        require(candidate_counts.get("japan", 0) >= 2,
+                f"{label}: COMPLETE run needs at least 2 Japan desk candidates")
 
 
 def main():
@@ -184,16 +259,24 @@ def main():
         latest = load_json(DATA / "latest.json")
         validate_edition(latest, "data/latest.json", require_sections=True)
         date = latest.get("date")
-        require(isinstance(date, str) and date, "data/latest.json: date is required")
+        require(nonempty_text(date), "data/latest.json: date is required")
+
         dated_path = DATA / f"{date}.json"
         if dated_path.exists():
             validate_edition(load_json(dated_path), str(dated_path.relative_to(ROOT)), require_sections=False)
+
         topic_path = DATA / "topic-more" / f"{date}.json"
         if topic_path.exists():
             validate_topic_more(load_json(topic_path), latest, str(topic_path.relative_to(ROOT)))
+
         vocab_path = DATA / "vocab" / f"{date}.json"
         if vocab_path.exists():
             validate_vocab(load_json(vocab_path), str(vocab_path.relative_to(ROOT)))
+
+        desk_path = DATA / "desk-latest.json"
+        require(desk_path.exists(), "data/desk-latest.json is required for rolling newspaper mode")
+        validate_desk_latest(load_json(desk_path), "data/desk-latest.json")
+
         live_path = DATA / "live.json"
         if live_path.exists():
             validate_live(load_json(live_path), "data/live.json")
