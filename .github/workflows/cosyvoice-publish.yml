@@ -11,6 +11,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: "cosyvoice2-yue-publish"
@@ -18,6 +20,9 @@ concurrency:
 
 jobs:
   generate-and-publish:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -121,3 +126,15 @@ jobs:
             git reset --hard origin/main
             echo "Stale CosyVoice generation safely skipped; no incorrect audio published."
           fi
+
+      - name: Configure Pages after verified audio
+        uses: actions/configure-pages@v5
+
+      - name: Upload site including verified CosyVoice audio
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Deploy site including verified CosyVoice audio
+        id: deployment
+        uses: actions/deploy-pages@v4
