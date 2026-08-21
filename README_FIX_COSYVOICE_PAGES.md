@@ -1,1 +1,0 @@
-Temporary implementation note for PR review: CosyVoice2-Yue audio publication now deploys GitHub Pages in the same workflow so github-actions[bot] commits do not leave the live site without the generated manifest/WAV. Remove this note before merge if not needed.
