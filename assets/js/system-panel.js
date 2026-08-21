@@ -76,7 +76,7 @@
 
   function loadSiteTTS() {
     if (document.body.dataset.page === "archive") return;
-    inject("assets/js/site-tts-v4.js?v=20260822-cosyregular1", "data-site-tts");
+    inject("assets/js/site-tts-v5.js?v=20260822-cosy2only1", "data-site-tts");
   }
 
   function mountVoiceLauncher() {
@@ -85,26 +85,30 @@
     voiceButton.id = "main-site-voice-button";
     voiceButton.type = "button";
     voiceButton.textContent = "🔊 廣東話朗讀";
-    voiceButton.setAttribute("aria-label", "朗讀本頁首則新聞");
+    voiceButton.setAttribute("aria-label", "用 CosyVoice2-Yue 朗讀本頁新聞");
     voiceButton.addEventListener("click", async () => {
       const original = "🔊 廣東話朗讀";
+      const page = (location.pathname.split("/").pop() || "index.html").toLowerCase();
+      const selector = page === "index.html"
+        ? "#lead-story .site-tts-button"
+        : "main article .site-tts-button";
       voiceButton.disabled = true;
-      voiceButton.textContent = "⏳ 尋找新聞…";
+      voiceButton.textContent = "⏳ 尋找 CosyVoice…";
       let articleButton = null;
-      for (let i = 0; i < 20; i += 1) {
-        articleButton = document.querySelector("main article .site-tts-button");
+      for (let i = 0; i < 30; i += 1) {
+        articleButton = document.querySelector(selector);
         if (articleButton) break;
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
       if (articleButton) {
         articleButton.click();
-        voiceButton.textContent = "🔊 正在朗讀首則新聞";
+        voiceButton.textContent = "🔊 CosyVoice2-Yue 朗讀中";
         setTimeout(() => { voiceButton.disabled = false; voiceButton.textContent = original; }, 1200);
         return;
       }
       voiceButton.disabled = false;
-      voiceButton.textContent = "⚠️ 暫未找到可朗讀新聞";
-      setTimeout(() => { voiceButton.textContent = original; }, 2500);
+      voiceButton.textContent = "⚠️ 暫未有 CosyVoice2-Yue 音訊";
+      setTimeout(() => { voiceButton.textContent = original; }, 3000);
     });
     document.body.appendChild(voiceButton);
   }
