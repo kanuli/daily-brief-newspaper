@@ -17,8 +17,10 @@
       <div class="tag"><span class="stock-impact ${impactClass(story.impact)}">${esc(story.impact||'↔')} ${esc(story.impactLabel||'READ-THROUGH')}</span>${esc(story.storyType||'LATEST')}</div>
       <h2>${esc(story.title||'')}</h2>
       ${story.dek?`<p class="stock-story-dek">${esc(story.dek)}</p>`:''}
+      ${story.summary?`<p class="stock-summary"><strong>摘要：</strong>${esc(story.summary)}</p>`:''}
       <div class="stock-story-body">${body.map(p=>`<p>${esc(p)}</p>`).join('')}</div>
-      <div class="stock-info-grid">
+      <div class="stock-info-grid stock-info-grid-three">
+        <div class="stock-info-card"><strong>背景</strong><p>${esc(story.context||'')}</p></div>
         <div class="stock-info-card"><strong>為何重要</strong><p>${esc(story.why||'')}</p></div>
         <div class="stock-info-card"><strong>下一步</strong><p>${esc(story.watchNext||'')}</p></div>
       </div>
