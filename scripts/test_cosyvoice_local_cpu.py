@@ -2,6 +2,7 @@
 import os
 import sys
 import time
+import types
 import urllib.request
 from pathlib import Path
 
@@ -16,6 +17,29 @@ REPO_ROOT = Path(os.environ.get("WSYUE_ROOT", "/tmp/WenetSpeech-Yue"))
 CODE_ROOT = REPO_ROOT / "CosyVoice2-Yue"
 MODEL_DIR = Path(os.environ.get("COSY_MODEL_DIR", "/tmp/Cosyvoice2-Yue"))
 OUTPUT = Path("artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav")
+
+
+class LocalNormalizer:
+    """Offline replacement for wetext's downloader-backed normalizer.
+
+    CosyVoice's frontend only requires a Normalizer object exposing normalize().
+    Returning the original text keeps CosyVoice's own punctuation cleanup,
+    paragraph splitting and tokenizer path active while avoiding ModelScope FST
+    downloads that can return 403 on unauthenticated GitHub runners.
+    """
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def normalize(self, text):
+        return text
+
+
+def install_offline_wetext_stub():
+    module = types.ModuleType("wetext")
+    module.Normalizer = LocalNormalizer
+    sys.modules["wetext"] = module
+    print("Using local pass-through text normalizer; no ModelScope FST download", flush=True)
 
 
 def main():
@@ -50,6 +74,7 @@ def main():
 
     sys.path.insert(0, str(CODE_ROOT))
     sys.path.insert(0, str(CODE_ROOT / "third_party" / "Matcha-TTS"))
+    install_offline_wetext_stub()
 
     from cosyvoice.cli.cosyvoice import CosyVoice2
     from cosyvoice.utils.file_utils import load_wav
