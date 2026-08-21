@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Noto+Serif+TC:wght@600;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/css/newspaper.css?v=20260820-1915">
-  <link rel="stylesheet" href="assets/css/voice-lab.css?v=20260821-voice3">
+  <link rel="stylesheet" href="assets/css/voice-lab.css?v=20260821-voice4">
 </head>
 <body>
   <div class="paper">
@@ -28,12 +28,12 @@
     <main class="voice-lab-shell">
       <section class="voice-hero">
         <h2>🔊 廣東話聲線實驗室</h2>
-        <p>上面會即時讀取你部裝置實際提供嘅 <strong>zh-HK / yue</strong> 聲線；下面另外提供較自然嘅 <strong>WenetSpeech-Yue neural TTS 官方 samples</strong>，包括女性 reference conditioning。eSpeak 已經移出主要聲線清單，因為佢本身係機械式 formant TTS，唔適合作新聞朗讀。</p>
+        <p>目前首選係 <strong>CosyVoice2-Yue-Databaker — Female</strong>。上面仍會偵測你部裝置嘅 <strong>zh-HK / yue</strong> 聲線作 fallback；下面可以播放 WenetSpeech-Yue 官方 neural samples，亦新增免費官方 Hugging Face Space 即時生成測試。eSpeak 已移出主要聲線清單，因為機械式 formant TTS 唔適合作新聞朗讀。</p>
       </section>
 
       <section class="voice-controls" aria-label="聲線試聽控制">
         <div>
-          <label for="voice-sample">試聽文字（只適用於裝置 Browser voice）</label>
+          <label for="voice-sample">試聽文字（Browser voice + 免費 WenetSpeech neural 測試共用）</label>
           <textarea id="voice-sample"></textarea>
           <div class="voice-control-row">
             <label for="voice-rate">語速</label>
@@ -67,23 +67,24 @@
             <thead><tr><th>方案</th><th>廣東話</th><th>免費條件</th><th>GitHub Pages</th><th>本頁處理</th></tr></thead>
             <tbody>
               <tr><td>Browser / OS Web Speech API</td><td>視裝置提供 zh-HK / yue voices</td><td>無 API 計費</td><td>✅ 純 JavaScript</td><td class="voice-eligible">✅ 可即時輸入文字 / 試聽 / 儲存</td></tr>
-              <tr><td>WenetSpeech-Yue / CosyVoice2-Yue / Llasa-1B-Yue</td><td>原生 Cantonese neural TTS，可由 reference speaker 控制音色</td><td>官方開源研究模型 / samples</td><td>⚠️ 官方 sample 可直接播；完整模型太重</td><td class="voice-eligible">✅ 已加入女性 F01 conditioning + 多組官方 neural samples</td></tr>
+              <tr><td>WenetSpeech-Yue / CosyVoice2-Yue-Databaker Female</td><td>原生 Cantonese neural TTS；F01 女性 reference conditioning</td><td>模型 Apache-2.0；官方 ZeroGPU Space 有免費每日 quota</td><td>✅ Pages 用 Gradio JS Client 呼叫公開 Space；毋須把 5.94GB 模型放入 repo</td><td class="voice-eligible">★ 首選；✅ 官方 sample + 免費即時生成測試</td></tr>
+              <tr><td>GitHub Actions CPU 預生成</td><td>可用同一 CosyVoice2-Yue + F01 女性 reference</td><td>Public repo 標準 runner 免費</td><td>✅ 生成後只播放靜態音檔</td><td>第二層穩定 fallback；需先通過 CPU smoke test</td></tr>
               <tr><td>meSpeak / eSpeak Cantonese</td><td>zh-yue，但本質係機械式 formant TTS</td><td>GPL 開源、client-side</td><td>✅</td><td class="voice-rejected">⚠️ 已移出主要 selector；只保留研究記錄</td></tr>
               <tr><td>MOSS-TTS v1.5</td><td>支援 Cantonese (yue)</td><td>開源模型</td><td>❌ 1.7B–8B 級模型，不適合純 GitHub Pages</td><td>研究保留，不加入 selector</td></tr>
               <tr><td>VITS Cantonese (xiaomaiiwn / ONNX)</td><td>有 browser WASM demo 路線</td><td>模型權重授權未夠清楚</td><td>技術上可行但檔案約 114MB</td><td class="voice-rejected">❌ 授權不夠清楚，先排除</td></tr>
-              <tr><td>ResponsiveVoice</td><td>有 Hong Kong voice</td><td>Free plan 有字符額度 / 帳戶條件</td><td>✅</td><td class="voice-rejected">❌ 不符合「純免費無付費依賴」原則</td></tr>
-              <tr><td>Azure / Google Cloud / AWS / ElevenLabs 等</td><td>部分有 Cantonese</td><td>免費額度或試用後收費</td><td>需 API / backend / secret</td><td class="voice-rejected">❌ 排除</td></tr>
+              <tr><td>Azure / Google Cloud / AWS / ElevenLabs 等</td><td>部分有 Cantonese</td><td>免費額度或試用後收費</td><td>需 API / backend / secret</td><td class="voice-rejected">❌ 不符合長期純免費原則</td></tr>
             </tbody>
           </table>
         </div>
-        <p class="voice-footnote">研究更新：2026-08-21。開源參考：<a href="https://github.com/ASLP-lab/WenetSpeech-Yue" target="_blank" rel="noopener noreferrer">WenetSpeech-Yue</a>、<a href="https://github.com/espeak-ng/espeak-ng" target="_blank" rel="noopener noreferrer">eSpeak NG</a>。大型 neural 模型目前只提供官方 sample 比較；如果日後有足夠輕量、授權清楚嘅 browser runtime，先再升級為真正即時 selector。</p>
-        <p class="voice-legal">WenetSpeech-Yue 官方資料集包含 speaker identity、age、gender 等標註，而 CosyVoice2-Yue inference 使用 reference / prompt speech 控制 speaker characteristics。因此女性聲線唔係另一個固定「Female model」，而係由女性 reference conditioning 出嚟。</p>
+        <p class="voice-footnote">研究更新：2026-08-21。首選方案唔會把大型 neural model 儲存在 GitHub Pages；Pages 只保存播放／選擇程式碼。官方 Space 可用時即時生成；服務休眠、排隊、quota 用盡或 runtime error 時會明確提示，而唔會冒充同一把聲。</p>
+        <p class="voice-legal">WenetSpeech-Yue 官方資料集包含 speaker identity、age、gender 等標註，而 CosyVoice2-Yue inference 使用 reference / prompt speech 控制 speaker characteristics。因此女性聲線唔係另一個固定「Female model」，而係由女性 F01 reference conditioning 出嚟。</p>
       </section>
     </main>
 
     <footer class="footer"><span>每日晨報 Daily Brief · Cantonese Voice Lab</span><span><a href="index.html">返回頭版</a> · <a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">GitHub</a></span></footer>
   </div>
-  <script src="assets/js/voice-lab.js?v=20260821-voice3" defer></script>
+  <script src="assets/js/voice-lab.js?v=20260821-voice4" defer></script>
   <script src="assets/js/voice-lab-upgrade.js?v=20260821-female1" defer></script>
+  <script type="module" src="assets/js/voice-live-free.js?v=20260821-free1"></script>
 </body>
 </html>
