@@ -30,8 +30,18 @@
     nav.innerHTML = links.join("");
   }
 
+  function loadDeskEnhancer() {
+    if (document.body.dataset.page !== "topic" || document.querySelector('script[data-topic-longform]')) return;
+    const script = document.createElement("script");
+    script.src = "assets/js/topic-longform.js?v=20260821-1847";
+    script.defer = true;
+    script.dataset.topicLongform = "true";
+    document.head.appendChild(script);
+  }
+
   function mountSystemPanel() {
     normalizeDeskNav();
+    loadDeskEnhancer();
     if (document.getElementById("system-status-button")) return;
 
     const button = document.createElement("button");
@@ -55,7 +65,7 @@
         <span class="status-dot"></span><div><strong>Website</strong><small>Static safe mode · no background monitoring loop</small></div>
       </div>
       <div class="system-panel-row status-ok">
-        <span class="status-dot"></span><div><strong>Daily / Live</strong><small>Daily JSON + Live JSON remain the publishing source</small></div>
+        <span class="status-dot"></span><div><strong>Daily / Live</strong><small>Daily + Hourly Live + Rolling Desk JSON are publishing sources</small></div>
       </div>
       <div class="system-panel-row status-check">
         <span class="status-dot"></span><div><strong>GitHub Pages / Discord</strong><small>Deployment and push delivery are checked externally</small></div>
