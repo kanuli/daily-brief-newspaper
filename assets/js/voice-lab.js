@@ -53,7 +53,7 @@
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       const saved = raw ? JSON.parse(raw) : null;
-      if (saved?.engine === 'webspeech') state.selected = saved;
+      if (saved?.engine === 'webspeech' || saved?.engine === 'wenet-female') state.selected = saved;
       else if (saved) localStorage.removeItem(STORAGE_KEY);
     } catch (_) {
       state.selected = null;
@@ -61,12 +61,20 @@
   }
 
   function renderSaved() {
-    els.saved.textContent = state.selected ? `${state.selected.name} · Browser / 裝置` : '未選擇預設聲線';
+    if (!state.selected) {
+      els.saved.textContent = '未選擇預設聲線';
+      return;
+    }
+    if (state.selected.engine === 'wenet-female') {
+      els.saved.textContent = `${state.selected.name} · WenetSpeech neural（首選）`;
+      return;
+    }
+    els.saved.textContent = `${state.selected.name} · Browser / 裝置`;
   }
 
   function saveSelected() {
     if (!state.selected) {
-      setStatus('請先選擇一把裝置廣東話聲線。', 'warn');
+      setStatus('請先選擇一把聲線。', 'warn');
       return;
     }
     const payload = { ...state.selected, rate: Number(els.rate.value), savedAt: new Date().toISOString() };
