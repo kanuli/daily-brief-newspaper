@@ -1,6 +1,12 @@
 (() => {
   "use strict";
   const esc = (v='') => String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
+  if (!document.getElementById('topic-longform-style')) {
+    const style = document.createElement('style');
+    style.id = 'topic-longform-style';
+    style.textContent = `.topic-article-body{margin:16px 0 14px;padding-top:12px;border-top:1px solid #8b8478;font-family:"Noto Serif TC","PMingLiU",serif;font-size:15px;line-height:1.78}.topic-article-body p{margin:0 0 1em;break-inside:avoid}.topic-story.topic-feature .topic-article-body{column-count:2;column-gap:30px;column-rule:1px solid #c5beb3}.topic-story.has-longform .topic-dek{font-size:18px!important}.football-catchup{display:contents}@media(max-width:720px){.topic-story.topic-feature .topic-article-body{column-count:1}.topic-article-body{font-size:15px;line-height:1.72}}`;
+    document.head.appendChild(style);
+  }
   function paragraphs(value) {
     if (Array.isArray(value)) return value.map(String).map(s=>s.trim()).filter(Boolean);
     if (!value) return [];
