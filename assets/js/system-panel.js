@@ -76,7 +76,7 @@
 
   function loadSiteTTS() {
     if (document.body.dataset.page === "archive") return;
-    inject("assets/js/site-tts-v3.js?v=20260822-cosyqueue1", "data-site-tts");
+    inject("assets/js/site-tts-v4.js?v=20260822-cosyregular1", "data-site-tts");
   }
 
   function mountVoiceLauncher() {
