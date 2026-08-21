@@ -74,7 +74,7 @@
       activeButton.textContent = BUTTON_TEXT;
       activeButton = null;
     }
-    setStatus("朗讀已停止。")
+    setStatus("朗讀已停止。");
   }
 
   function normalizeText(value) {
@@ -84,15 +84,15 @@
   function extractArticleText(article) {
     const clone = article.cloneNode(true);
     $$("button,a,figure,figcaption,.site-tts-controls,.story-meta,.tag,.eyebrow,.live-badge,.live-time,.source-link", clone).forEach((el) => el.remove());
-    const text = normalizeText(clone.textContent);
-    return text.slice(0, 900);
+    return normalizeText(clone.textContent).slice(0, 900);
   }
 
   function shouldEnhance(article) {
+    if (!(article instanceof Element) || article.tagName !== "ARTICLE") return false;
+    if (!article.closest("main")) return false;
     if (article.dataset.siteTtsReady === "true") return false;
     if (article.closest(".study-desk,[data-no-tts]")) return false;
-    const text = extractArticleText(article);
-    return text.length >= 24;
+    return extractArticleText(article).length >= 24;
   }
 
   function addButton(article) {
@@ -113,7 +113,14 @@
   }
 
   function scanArticles(root = document) {
-    $$("main article", root).forEach(addButton);
+    if (root instanceof Element) {
+      if (root.matches("article")) addButton(root);
+      const ownerArticle = root.closest("article");
+      if (ownerArticle) addButton(ownerArticle);
+      $$("article", root).forEach(addButton);
+      return;
+    }
+    $$("main article").forEach(addButton);
   }
 
   function normalizeLang(lang) {
@@ -269,7 +276,7 @@
       await audio.play();
       setStatus("使用中：CosyVoice2-Yue-Databaker — Female");
     } catch (_) {
-      setStatus("CosyVoice Female 已生成；如瀏覽器阻止自動播放，請按下方播放器。")
+      setStatus("CosyVoice Female 已生成；如瀏覽器阻止自動播放，請按下方播放器。");
     }
   }
 
@@ -292,7 +299,7 @@
       console.warn("CosyVoice failed", error);
       setStatus("CosyVoice 失敗，正在依次嘗試 Google Female → Microsoft Female…");
       const ok = await browserFallback(text, seq);
-      if (!ok && seq === activeSequence) setStatus("三層均不可用：CosyVoice、Google Cantonese、Microsoft Cantonese Female 都未能播放。")
+      if (!ok && seq === activeSequence) setStatus("三層均不可用：CosyVoice、Google Cantonese、Microsoft Cantonese Female 都未能播放。");
     } finally {
       if (seq === activeSequence) {
         button.disabled = false;
@@ -306,16 +313,18 @@
     injectStyle();
     ensurePlayer();
     scanArticles();
+
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
+        if (mutation.target instanceof Element) scanArticles(mutation.target);
         for (const node of mutation.addedNodes) {
-          if (!(node instanceof Element)) continue;
-          if (node.matches?.("main article")) addButton(node);
-          scanArticles(node);
+          if (node instanceof Element) scanArticles(node);
         }
       }
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+    [250, 750, 1500, 3000].forEach((delay) => setTimeout(() => scanArticles(), delay));
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true });
