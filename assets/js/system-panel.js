@@ -16,6 +16,41 @@
     ["archive.html", "Archive"]
   ];
 
+  function injectNavStyle() {
+    if (document.getElementById("mobile-two-row-nav-style")) return;
+    const style = document.createElement("style");
+    style.id = "mobile-two-row-nav-style";
+    style.textContent = `
+      @media (max-width:620px){
+        .section-nav{
+          display:grid!important;
+          grid-template-columns:repeat(7,minmax(0,1fr))!important;
+          grid-auto-flow:row!important;
+          overflow:visible!important;
+          width:100%!important;
+          flex-wrap:unset!important;
+        }
+        .section-nav a{
+          display:flex!important;
+          align-items:center!important;
+          justify-content:center!important;
+          min-width:0!important;
+          padding:7px 2px!important;
+          white-space:normal!important;
+          overflow-wrap:anywhere!important;
+          text-align:center!important;
+          font-size:9.5px!important;
+          line-height:1.12!important;
+          border-right:1px solid #444!important;
+          border-bottom:1px solid #444!important;
+        }
+        .section-nav a:nth-child(7n){border-right:0!important}
+        .section-nav a:nth-last-child(-n+6){border-bottom:0!important}
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   function normalizeDeskNav() {
     const nav = document.querySelector('.section-nav[aria-label="新聞分版"]');
     if (!nav) return;
@@ -42,15 +77,16 @@
 
   function loadArticleEnhancers() {
     if (document.body.dataset.page === "topic") {
-      inject("assets/js/topic-longform.js?v=20260821-1915", "data-topic-longform");
+      inject("assets/js/topic-longform.js?v=20260821-2020", "data-topic-longform");
       return;
     }
     if (document.body.dataset.page !== "archive" && document.body.dataset.page !== "stocks") {
-      inject("assets/js/article-body-upgrade.js?v=20260821-1915", "data-article-body-upgrade");
+      inject("assets/js/article-body-upgrade.js?v=20260821-2020", "data-article-body-upgrade");
     }
   }
 
   function mountSystemPanel() {
+    injectNavStyle();
     normalizeDeskNav();
     loadArticleEnhancers();
     if (document.getElementById("system-status-button")) return;
