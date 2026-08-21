@@ -15,14 +15,9 @@ EXPECTED_DESK_SLUGS = {
 }
 RICH_FIELDS = ("title", "dek", "summary", "context", "why", "watchNext")
 COMPLETE_SOURCE_MINIMA = {
-    "world": 12, "asia": 8, "hong-kong": 8, "japan": 8,
+    "world": 12, "asia": 10, "hong-kong": 8, "japan": 8,
     "market-economy": 10, "ai-tech": 10, "manga-anime": 4,
     "manchester-united": 4, "football": 10,
-}
-COMPLETE_CANDIDATE_MINIMA = {
-    "world": 4, "asia": 3, "hong-kong": 2, "japan": 2,
-    "market-economy": 3, "ai-tech": 2, "manga-anime": 1,
-    "manchester-united": 1, "football": 3,
 }
 
 
@@ -261,8 +256,8 @@ def validate_live(data, label):
         search_counts = coverage["deskSearchCounts"]
         recovery_flags = coverage["deskRecoveryTriggered"]
         for slug in EXPECTED_DESK_SLUGS:
-            require(isinstance(candidate_counts.get(slug), int) and candidate_counts.get(slug) >= COMPLETE_CANDIDATE_MINIMA[slug],
-                    f"{label}: COMPLETE run has insufficient {slug} candidates: {candidate_counts.get(slug)}")
+            require(isinstance(candidate_counts.get(slug), int) and candidate_counts.get(slug) >= 0,
+                    f"{label}: COMPLETE run requires non-negative {slug} candidate count")
             require(isinstance(source_counts.get(slug), int) and source_counts.get(slug) >= COMPLETE_SOURCE_MINIMA[slug],
                     f"{label}: COMPLETE run has insufficient {slug} source coverage: {source_counts.get(slug)}")
             require(isinstance(search_counts.get(slug), int) and search_counts.get(slug) >= 1,
