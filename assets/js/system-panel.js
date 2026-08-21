@@ -97,7 +97,7 @@
 
   function loadSiteTTS() {
     if (document.body.dataset.page === "archive") return;
-    inject("assets/js/site-tts.js?v=20260822-main1", "data-site-tts");
+    inject("assets/js/site-tts.js?v=20260822-main2", "data-site-tts");
   }
 
   function mountSystemPanel() {
