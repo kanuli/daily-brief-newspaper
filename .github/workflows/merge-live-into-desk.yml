@@ -116,7 +116,8 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -- data/desk-latest.json data/live.json
             git commit -m "Merge verified Live items into Rolling Desk"
-            git push
+            git pull --rebase origin main
+            git push origin HEAD:main
           fi
 
       - name: Configure Pages
