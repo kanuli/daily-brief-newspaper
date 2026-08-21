@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="每日晨報免費廣東話聲線實驗室：試聽裝置聲線及 browser-local Cantonese VITS。">
+  <title>廣東話聲線實驗室｜每日晨報</title>
+  <link rel="stylesheet" href="assets/css/newspaper.css?v=20260820-1915">
+  <link rel="stylesheet" href="assets/css/voice-lab.css?v=20260821-2249">
+</head>
+<body><div class="paper">
+  <div class="utility-bar"><span>PERSONAL EDITION · HONG KONG</span><span>VOICE LAB</span></div>
+  <header class="masthead"><div class="masthead-side">FREE ONLY<br>GITHUB PAGES</div><div class="brand"><div class="brand-kicker">每 日 晨 報 · 聲 音 測 試</div><h1>廣東話聲線</h1><div class="brand-en">CANTONESE VOICE LAB</div></div><div class="masthead-side right">NO API KEY<br>NO PAID TTS</div></header>
+  <nav class="section-nav" aria-label="新聞分版"><a href="live.html">Live</a><a href="index.html">頭版</a><a href="world.html">世界</a><a href="asia.html">亞洲</a><a href="hong-kong.html">香港</a><a href="japan.html">日本</a><a href="finance.html">📈 財經</a><a href="stocks.html">📊 Stock News</a><a href="technology.html">AI / 科技</a><a href="manga-anime.html">漫畫 / Anime</a><a href="manchester-united.html">Manchester United</a><a href="football.html">Football</a><a href="voice-lab.html" aria-current="page">🎧 廣東話聲線</a><a href="archive.html">Archive</a></nav>
+  <div class="date-strip"><span>FREE CANTONESE TTS TEST</span><span>親耳比較 · 選擇儲存在目前裝置</span></div>
+  <main class="voice-main">
+    <section class="voice-hero"><div><span class="voice-kicker">✓ 免費　✓ GitHub Pages 可直接運行</span><h2>先試聽，再決定每日新聞用邊把聲。</h2><p>A 組會讀取你目前瀏覽器／作業系統提供嘅廣東話聲線；B 組係用 WebAssembly 喺瀏覽器本機合成嘅 Cantonese VITS。兩者都毋須將付費 TTS API key 放入網站。</p></div><div class="eligibility-box"><strong>合資格條件</strong><span>✓ 零 API 費用</span><span>✓ repository 可保存</span><span>✓ GitHub Pages 可跑</span><span>✓ 不保存 secret key</span></div></section>
+
+    <section class="voice-control-panel"><div class="section-heading"><h2>統一試音稿</h2><span>SAME SCRIPT</span></div><label for="voice-sample">所有聲線讀同一段：</label><textarea id="voice-sample" rows="5">各位早晨，歡迎收聽《每日晨報》。今日我哋會先睇香港同亞洲新聞，再講全球市場、人工智能、科技同足球最新消息。以下係今日最值得你留意嘅重點。</textarea><div class="voice-settings-row"><label>語速 <select id="voice-rate"><option value="0.8">0.8×</option><option value="1" selected>1.0×</option><option value="1.2">1.2×</option><option value="1.5">1.5×</option></select></label><button class="voice-btn ghost" id="stop-all" type="button">■ 停止播放</button></div></section>
+
+    <section class="current-choice" aria-live="polite"><div><span>目前選擇</span><strong id="current-voice">未選擇</strong></div><p id="current-voice-note">試聽後按「★ 選用呢把聲」。</p></section>
+
+    <section class="voice-section"><div class="section-heading"><h2>A. 你部機現有嘅免費廣東話聲線</h2><span>WEB SPEECH · 0 MB</span></div><p class="voice-explainer">會偵測 <code>zh-HK</code>／<code>yue</code> 聲線。Windows、iPhone、Mac、Chrome、Edge、Safari 顯示數目可以唔同。</p><div class="voice-status" id="system-status">正在檢查瀏覽器可用聲線…</div><div class="voice-grid" id="system-voice-list"></div><button class="voice-btn ghost" id="refresh-voices" type="button">↻ 重新偵測聲線</button></section>
+
+    <section class="voice-section"><div class="section-heading"><h2>B. Browser-local 開源廣東話聲線</h2><span>SHERPA-ONNX · VITS</span></div><article class="voice-card open-source-card" id="sherpa-card"><div class="voice-card-head"><div><span class="provider-badge">OPEN SOURCE · LOCAL INFERENCE</span><h3>Cantonese (xiaomaiiwn)</h3></div><span class="lang-badge">yue</span></div><p>直接喺瀏覽器合成，冇 API key、冇每月 quota。第一次使用要下載約 114 MB 模型，所以唔會自動載入。</p><div class="model-status" id="sherpa-status">尚未載入模型。</div><div class="voice-actions"><button class="voice-btn" id="load-sherpa" type="button">↓ 載入模型並準備試聽</button><button class="voice-btn" id="play-sherpa" type="button" disabled>▶ 試聽</button><button class="voice-btn select" id="select-sherpa" type="button">★ 選用呢把聲</button></div><audio id="sherpa-player" controls hidden></audio></article></section>
+
+    <section class="voice-section research-section"><div class="section-heading"><h2>全球方案篩選</h2><span>FREE + STATIC GITHUB</span></div><div class="research-table-wrap"><table class="research-table"><thead><tr><th>方案</th><th>情況</th><th>結果</th></tr></thead><tbody><tr><td>Browser / OS Web Speech</td><td>免費；聲線按裝置</td><td><strong class="pass">採用</strong></td></tr><tr><td>sherpa-onnx Cantonese VITS</td><td>browser-local；1 把</td><td><strong class="pass">採用</strong></td></tr><tr><td>VocoLoco / OmniVoice</td><td>免費，但模型約 GB 級</td><td>暫不載入</td></tr><tr><td>FreeTTS.org</td><td>HiuMaan / WanLung；有免費 quota</td><td><strong class="reject">剔除</strong></td></tr><tr><td>Azure / Google Cloud / AWS Polly</td><td>有廣東話，但需 cloud credential／計費或限額</td><td><strong class="reject">剔除</strong></td></tr></tbody></table></div><p class="research-note">只要有 quota、期限、要秘密 API key，或者 GitHub Pages 無法安全保存 credential，就唔當成最終免費方案。</p></section>
+  </main>
+  <footer class="footer"><span>每日晨報 · Cantonese Voice Lab</span><span><a href="index.html">返回頭版</a> · <a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">GitHub</a></span></footer>
+</div><script src="assets/js/cantonese-voice-lab.js?v=20260821-2249" defer></script></body></html>
