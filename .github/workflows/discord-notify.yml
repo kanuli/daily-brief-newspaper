@@ -89,7 +89,6 @@ jobs:
                   tuple(articles)
               )
 
-          # Daily takes priority if one commit happened to update both files.
           if "data/latest.json" in changed:
               data = load("data/latest.json")
               previous = previous_json("data/latest.json") or {}
@@ -132,31 +131,48 @@ jobs:
 
               orgs = coverage.get("sourceOrganizationCount", "N/V")
               searches = coverage.get("freshSearchCount", "N/V")
-              fresh = coverage.get("freshCandidatesFound", coverage.get("firstPassCandidateCount", coverage.get("candidateCount", "N/V")))
+              raw_fresh = coverage.get("rawFreshCandidateCount", coverage.get("freshCandidatesFound", "N/V"))
+              verified = coverage.get("verifiedCandidateCount", coverage.get("candidateCount", "N/V"))
+              incremental = coverage.get("incrementalCandidateCount", coverage.get("publishedCount", "N/V"))
               duplicates = coverage.get("duplicatesAlreadyInDaily", coverage.get("rejectedDuplicates", "N/V"))
               second_pass = coverage.get("secondPassTriggered")
+              recovery_pass = coverage.get("recoveryPassTriggered")
+              coverage_status = str(coverage.get("status", "UNKNOWN")).upper()
+              slot = coverage.get("scheduledSlot") or current.get("windowLabel") or "Hourly Live"
 
               if not material:
-                  developing = current.get("developingCount", 0)
                   lines = [
-                      f"🔴 **Live Check｜{current.get('lastUpdatedLabel', '最新檢查')}**",
-                      "",
-                      "本輪沒有新增的重大新聞卡，但全球掃描已完成。",
+                      f"🔴 **Hourly Live｜{current.get('lastUpdatedLabel', '最新檢查')}**",
+                      f"時段：{slot}",
                       f"掃描：{orgs} organizations / {searches} fresh searches",
-                      f"Fresh candidates：{fresh} · 已在 Daily / 重複：{duplicates}",
+                      f"Raw fresh：{raw_fresh} · Verified：{verified} · Incremental：{incremental} · Daily/重複：{duplicates}",
                   ]
+
+                  if coverage_status in {"COLLECTION_FAILURE", "INCOMPLETE"} or raw_fresh == 0:
+                      lines += [
+                          "",
+                          "⚠️ **COLLECTION FAILURE / INCOMPLETE**",
+                          "本輪原始 fresh candidate 為 0 或 coverage 未完成；這不是正常的『世界沒有新聞』結果。",
+                      ]
+                  else:
+                      lines += [
+                          "",
+                          "本輪沒有新增卡片，但已找到 fresh candidates；上面列出核實、去重及篩選結果。",
+                      ]
+
                   if second_pass is True:
                       lines.append("Second pass：已執行")
-                  if developing:
-                      lines.append(f"目前仍有 {developing} 則 DEVELOPING 項目持續追蹤。")
+                  if recovery_pass is True:
+                      lines.append("Recovery pass：已執行")
                   lines += ["", f"🔗 完整 Live：{site}live.html"]
                   post("\n".join(lines))
-                  print("Live zero-increment check sent with coverage audit.")
+                  print("Hourly Live zero-increment check sent with candidate audit.")
                   raise SystemExit(0)
 
               lines = [
-                  f"🔴 **Live Update｜{current.get('lastUpdatedLabel', '最新更新')}**",
+                  f"🔴 **Hourly Live Update｜{current.get('lastUpdatedLabel', '最新更新')}**",
                   f"掃描：{orgs} organizations / {searches} fresh searches",
+                  f"Raw fresh：{raw_fresh} · Verified：{verified} · Incremental：{incremental}",
                   ""
               ]
               for item in material[:4]:
