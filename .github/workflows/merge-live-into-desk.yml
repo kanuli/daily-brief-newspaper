@@ -13,7 +13,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: "rolling-desk-merge"
   cancel-in-progress: true
 
 jobs:
@@ -60,8 +60,7 @@ jobs:
               for field in required:
                   if not isinstance(item.get(field), str) or not item[field].strip():
                       raise SystemExit(f'Live item {item.get("id")} missing {field}')
-              body = item['body']
-              paras = [p.strip() for p in re.split(r'\n\s*\n', body) if p.strip()]
+              paras = [p.strip() for p in re.split(r'\n\s*\n', item['body']) if p.strip()]
               if len(paras) < 2:
                   raise SystemExit(f'Live item {item.get("id")} body lacks 2 paragraphs')
               public = ' '.join(str(item.get(k,'')) for k in ('title','dek','summary','body','context','why','watchNext'))
