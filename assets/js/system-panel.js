@@ -30,18 +30,28 @@
     nav.innerHTML = links.join("");
   }
 
-  function loadDeskEnhancer() {
-    if (document.body.dataset.page !== "topic" || document.querySelector('script[data-topic-longform]')) return;
+  function inject(src, marker) {
+    if (document.querySelector(`script[${marker}]`)) return;
     const script = document.createElement("script");
-    script.src = "assets/js/topic-longform.js?v=20260821-1847";
+    script.src = src;
     script.defer = true;
-    script.dataset.topicLongform = "true";
+    script.setAttribute(marker, "true");
     document.head.appendChild(script);
+  }
+
+  function loadArticleEnhancers() {
+    if (document.body.dataset.page === "topic") {
+      inject("assets/js/topic-longform.js?v=20260821-1915", "data-topic-longform");
+      return;
+    }
+    if (document.body.dataset.page !== "archive") {
+      inject("assets/js/article-body-upgrade.js?v=20260821-1915", "data-article-body-upgrade");
+    }
   }
 
   function mountSystemPanel() {
     normalizeDeskNav();
-    loadDeskEnhancer();
+    loadArticleEnhancers();
     if (document.getElementById("system-status-button")) return;
 
     const button = document.createElement("button");
