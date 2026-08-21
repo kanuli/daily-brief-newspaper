@@ -22,7 +22,7 @@
 
 Live item 狀態只使用：
 
-- `NEW` — 新事件。
+- `NEW` — 新事件，或本系統首次發現、而且未在 Daily / Live 出現的仍具即時價值事件。
 - `UPDATED` — 已有事件出現新的可核實事實或進展。
 - `DEVELOPING` — 事件仍在發展，而且下一輪仍值得追蹤。
 
@@ -35,14 +35,39 @@ Live item 狀態只使用：
 - `incrementalCandidateCount` — 與 Daily / topic-more / 現有 Live 去重後仍有新資訊的 candidates。
 - `publishedCount` — 最終刊登 items。
 
-`rawFreshCandidateCount == 0` 視為 **COLLECTION_FAILURE**，不是正常「世界沒有新聞」。第一輪 raw candidates <= 3 會觸發 second pass；若第二輪仍為 0，再做 recovery pass，擴大來源、query、regional/latest pages並檢查是否過度去重或時間窗錯誤。
+`rawFreshCandidateCount == 0` 視為 **SEARCH / COLLECTION BUG SIGNAL**，不是正常「世界沒有新聞」，亦不得作為該輪正常結束條件。
+
+### Mandatory zero-news recovery ladder
+
+若第一輪 `rawFreshCandidateCount <= 3`，必須進行 second pass。若 `rawFreshCandidateCount == 0`，必須在同一輪繼續 recovery：
+
+1. 擴闊 query、來源類型、regional/latest/live newsroom pages；
+2. 重新檢查是否時間窗、去重、搜尋排序或 source fetch 導致漏報；
+3. 搜尋窗由 90 分鐘擴至 3 小時；
+4. 如仍不足，再擴至 6 小時；
+5. 保留原始事件時間，不能把較早事件偽裝成剛剛發生；
+6. external sources 正常時，該輪目標為 3–8 個有實質價值的 verified Live items，最低至少 1 個真正有用的新事件／更新；不得用垃圾、廣告或虛構內容湊數。
+
+即使某一輪仍未找到新的 incremental item，也不得把 `live.items` 清空，令公開頁面看似「世界停止」。仍具即時價值的既有 Live items 應保留，同時繼續 recovery。
+
+## Football results are news
+
+Football 不可只依賴一般新聞搜尋。每一輪必須另外檢查 fixtures / results / live-score / official competition pages。
+
+- 比賽由未完場轉為 **FT**，本身就是 fresh event，必須進入 Football candidate pool。
+- 基本賽果可由官方聯賽／賽事／球會 match page 作 primary verification；重要比賽及額外背景盡量再用第二個獨立來源核實。
+- 不得因「未有 Reuters／報紙另寫一篇文章」而把已由官方確認的 FT 賽果丟棄。
+- 優先：Manchester United、Premier League／EFL、La Liga、Serie A、Bundesliga、Ligue 1、UEFA、國際賽、J-League、香港足球，以及重要爆冷、打吡、冠軍／護級影響、嚴重傷兵、紅牌／停賽、確認轉會、賽程重大改動。
+- 搜尋必須按「何時完場」判斷，而不是只看 kickoff time；比賽可以在搜尋窗之前開波，但在搜尋窗內 FT。
+- 如果 top-priority match 自上輪後已完場，Football `candidateCount` 不得是 0。
 
 ## Coverage / verification
 
-- 每輪至少實際檢查 30 個不同 news organizations / newsrooms。
-- 至少 24 次 fresh / source-specific searches 或 latest newsroom checks。
+- 每輪至少實際檢查 30 個不同 news organizations / newsrooms；現行 v3 automation 使用更高 per-desk minima 時，以 automation prompt 的較嚴格要求為準。
+- 至少 24 次 fresh / source-specific searches 或 latest newsroom checks；現行 v3 automation 使用更高 minima 時，以較嚴格要求為準。
 - country-specific story 除純官方直接公告外，原則上至少兩個獨立可信來源交叉核實；同一 wire copy 的轉載不算第二來源。
 - Live 不只刊「重大」headline；亦可刊當小時最值得知道的 verified noteworthy developments，但禁止低可信、純重複、SEO垃圾或無實質資訊內容。
+- 每輪應覆蓋 World、Whole Asia、Hong Kong、Japan、Finance、AI/Tech、Manga/Anime、Manchester United、Football；不可出現九個 desk 同時 candidateCount=0 而又把 run 當作正常完成。
 
 ## Daily interaction
 
