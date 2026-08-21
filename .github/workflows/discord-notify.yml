@@ -116,6 +116,10 @@ jobs:
               previous = previous_json("data/live.json") or {}
               coverage = current.get("coverage") or {}
 
+              if str(coverage.get("status", "")).upper() == "SCHEDULE_MIGRATION":
+                  print("Hourly Live schedule migration only; Discord notification suppressed.")
+                  raise SystemExit(0)
+
               def fingerprint(item):
                   return (
                       item.get("id"), item.get("status"), item.get("section"),
