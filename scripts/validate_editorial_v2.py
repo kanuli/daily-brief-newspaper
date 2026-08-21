@@ -8,9 +8,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / 'data'
 MANDATORY_FOOTBALL = ['A','B','C','D','E','F','G','H','I','J','K']
 SOURCE_MIN = {'world':12,'asia':10,'hong-kong':8,'japan':8,'market-economy':10,'ai-tech':10,'manga-anime':4,'manchester-united':4,'football':10}
-META_PATTERNS = [
+BASE_META_PATTERNS = [
     r'今日未找到', r'沒有新聞', r'沒有headline', r'已完成.*檢查', r'本輪已檢查',
-    r'J-?League.*已檢查', r'採全產業掃描', r'coverage check', r'no news found',
+    r'J-?League.*已檢查', r'採全產業掃描', r'coverage check', r'no news found'
+]
+V3_PROCESS_PATTERNS = [
     r'本輪真正incremental', r'incremental news', r'duplicate', r'重複刊登',
     r'本報.*版', r'對本報', r'搜集規則', r'collection design', r'coverage test',
     r'這次重新檢查', r'之後每一輪', r'每一輪Football', r'固定檢查HKFA',
@@ -43,11 +45,14 @@ def validate_story(story, label, strict=False):
             fail(f'{label}: missing {key}')
 
     combined = ' '.join(str(story.get(k,'')) for k in ('title','dek','summary','body','context','why','watchNext'))
-    for pattern in META_PATTERNS:
+    for pattern in BASE_META_PATTERNS:
         if re.search(pattern, combined, flags=re.I):
-            fail(f'{label}: editorial/process text cannot be published as news copy ({pattern})')
-
+            fail(f'{label}: meta/coverage text cannot be published as a news article ({pattern})')
     if strict:
+        for pattern in V3_PROCESS_PATTERNS:
+            if re.search(pattern, combined, flags=re.I):
+                fail(f'{label}: editorial/process text cannot be published as news copy ({pattern})')
+
         body = story.get('body','')
         paras = [p.strip() for p in re.split(r'\n\s*\n', body) if p.strip()]
         if len(paras) < 2:
