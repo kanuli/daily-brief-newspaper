@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import hashlib
 import json
 import os
 import re
@@ -25,8 +26,6 @@ MAX_TEXT_CHARS = int(os.environ.get("COSY_MAX_TEXT_CHARS", "520"))
 
 
 class LocalNormalizer:
-    """Offline replacement for wetext's downloader-backed normalizer."""
-
     def __init__(self, *args, **kwargs):
         pass
 
@@ -48,36 +47,28 @@ def ensure_model():
         repo_id="ASLP-lab/Cosyvoice2-Yue",
         local_dir=str(MODEL_DIR),
         allow_patterns=[
-            "cosyvoice2.yaml",
-            "configuration.json",
-            "campplus.onnx",
-            "speech_tokenizer_v2.onnx",
-            "spk2info.pt",
-            "llm.pt",
-            "flow.pt",
-            "hift.pt",
-            "CosyVoice-BlankEN/*",
+            "cosyvoice2.yaml", "configuration.json", "campplus.onnx",
+            "speech_tokenizer_v2.onnx", "spk2info.pt", "llm.pt",
+            "flow.pt", "hift.pt", "CosyVoice-BlankEN/*",
         ],
     )
 
 
 def clean_text(value):
-    text = str(value or "")
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+    return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
 def with_stop(value):
     text = clean_text(value)
-    if not text:
-        return ""
-    if text[-1] not in "。！？!?…":
+    if text and text[-1] not in "。！？!?…":
         text += "。"
     return text
 
 
 def load_lead():
-    data = json.loads(LATEST.read_text(encoding="utf-8"))
+    source_bytes = LATEST.read_bytes()
+    source_sha256 = hashlib.sha256(source_bytes).hexdigest()
+    data = json.loads(source_bytes.decode("utf-8"))
     lead_id = data.get("leadId")
     articles = data.get("articles") or []
     article = next((item for item in articles if item.get("id") == lead_id), None)
@@ -87,18 +78,13 @@ def load_lead():
     if not article or not lead_id:
         raise RuntimeError("data/latest.json has no usable lead article")
 
-    parts = [
-        with_stop(article.get("title")),
-        with_stop(article.get("dek")),
-    ]
-    body = str(article.get("body") or "")
-    paragraphs = [clean_text(p) for p in re.split(r"\n\s*\n", body) if clean_text(p)]
+    parts = [with_stop(article.get("title")), with_stop(article.get("dek"))]
+    paragraphs = [clean_text(p) for p in re.split(r"\n\s*\n", str(article.get("body") or "")) if clean_text(p)]
     parts.extend(with_stop(p) for p in paragraphs[:2])
-    text = "\n\n".join(part for part in parts if part)
-    text = text[:MAX_TEXT_CHARS]
+    text = "\n\n".join(part for part in parts if part)[:MAX_TEXT_CHARS]
     if len(text) < 24:
         raise RuntimeError("lead article text is too short for TTS")
-    return data, article, lead_id, text
+    return data, article, lead_id, text, source_sha256
 
 
 def main():
@@ -106,10 +92,11 @@ def main():
     if not CODE_ROOT.exists():
         raise RuntimeError(f"WenetSpeech-Yue code not found: {CODE_ROOT}")
 
-    data, article, lead_id, text = load_lead()
+    data, article, lead_id, text, source_sha256 = load_lead()
     print(f"lead_id={lead_id}", flush=True)
     print(f"title={article.get('title')}", flush=True)
     print(f"tts_chars={len(text)}", flush=True)
+    print(f"source_sha256={source_sha256}", flush=True)
 
     ensure_model()
     sys.path.insert(0, str(CODE_ROOT))
@@ -126,13 +113,7 @@ def main():
 
     print("Loading CosyVoice2-Yue on CPU...", flush=True)
     t0 = time.time()
-    cosyvoice = CosyVoice2(
-        str(MODEL_DIR),
-        load_jit=False,
-        load_trt=False,
-        load_vllm=False,
-        fp16=False,
-    )
+    cosyvoice = CosyVoice2(str(MODEL_DIR), load_jit=False, load_trt=False, load_vllm=False, fp16=False)
     print(f"Model loaded in {time.time() - t0:.1f}s sample_rate={cosyvoice.sample_rate}", flush=True)
 
     prompt_speech_16k = load_wav(str(ref), 16000)
@@ -140,14 +121,7 @@ def main():
     print("Synthesizing production Daily lead with F01 female reference...", flush=True)
     t1 = time.time()
     with torch.inference_mode():
-        for idx, result in enumerate(
-            cosyvoice.inference_instruct2(
-                text,
-                INSTRUCT,
-                prompt_speech_16k,
-                stream=False,
-            )
-        ):
+        for idx, result in enumerate(cosyvoice.inference_instruct2(text, INSTRUCT, prompt_speech_16k, stream=False)):
             speech = result["tts_speech"].detach().cpu()
             print(f"chunk={idx} shape={tuple(speech.shape)}", flush=True)
             chunks.append(speech)
@@ -160,10 +134,8 @@ def main():
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     torchaudio.save(str(OUTPUT), speech, cosyvoice.sample_rate, backend="soundfile")
     size = OUTPUT.stat().st_size
-    if duration < 2.0:
-        raise RuntimeError(f"production audio too short: {duration:.3f}s")
-    if size < 50000:
-        raise RuntimeError(f"production WAV too small: {size} bytes")
+    if duration < 2.0 or size < 50000:
+        raise RuntimeError(f"invalid production audio: duration={duration:.3f}s bytes={size}")
 
     manifest = {
         "version": 1,
@@ -171,6 +143,7 @@ def main():
         "voice": "F01 female reference",
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "source": "data/latest.json",
+        "sourceSha256": source_sha256,
         "date": data.get("date"),
         "leadId": lead_id,
         "articles": {
@@ -186,8 +159,7 @@ def main():
     MANIFEST.parent.mkdir(parents=True, exist_ok=True)
     MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    elapsed = time.time() - t1
-    print(f"Generated duration={duration:.3f}s bytes={size} inference_seconds={elapsed:.1f}", flush=True)
+    print(f"Generated duration={duration:.3f}s bytes={size} inference_seconds={time.time() - t1:.1f}", flush=True)
     print(f"COSYVOICE_PRODUCTION_PASS={OUTPUT}", flush=True)
     print(f"COSYVOICE_MANIFEST={MANIFEST}", flush=True)
     return 0
