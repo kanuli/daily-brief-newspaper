@@ -8,6 +8,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / 'data'
 MANDATORY_FOOTBALL = ['A','B','C','D','E','F','G','H','I','J','K']
 SOURCE_MIN = {'world':12,'asia':10,'hong-kong':8,'japan':8,'market-economy':10,'ai-tech':10,'manga-anime':4,'manchester-united':4,'football':10}
+DEPTH_FLOOR = {'world':4,'asia':5,'hong-kong':5,'japan':5,'market-economy':5,'ai-tech':4,'manga-anime':3,'manchester-united':3,'football':6}
 BASE_META_PATTERNS = [
     r'今日未找到', r'沒有新聞', r'沒有headline', r'已完成.*檢查', r'本輪已檢查',
     r'J-?League.*已檢查', r'採全產業掃描', r'coverage check', r'no news found'
@@ -67,24 +68,32 @@ def validate_story(story, label, strict=False):
 def main():
     try:
         desk_path = DATA / 'desk-latest.json'
+        desk = None
         if desk_path.exists():
             desk = load(desk_path)
-            strict = int(desk.get('contentVersion', 1) or 1) >= 3
+            version = int(desk.get('contentVersion', 1) or 1)
+            strict = version >= 3
             desks = desk.get('desks')
             if not isinstance(desks, dict): fail('data/desk-latest.json: desks must be object')
             for slug in SOURCE_MIN:
                 stories = desks.get(slug)
                 if not isinstance(stories, list): fail(f'desk-latest: missing desk {slug}')
                 for i, story in enumerate(stories): validate_story(story, f'desk-latest {slug}[{i}]', strict)
-            if int(desk.get('contentVersion', 1) or 1) >= 2:
+            if version >= 2:
                 if len(desks.get('hong-kong', [])) < 3: fail('desk-latest v2+: Hong Kong needs >=3 stories')
                 if len(desks.get('japan', [])) < 3: fail('desk-latest v2+: Japan needs >=3 stories')
                 if len(desks.get('football', [])) < 2: fail('desk-latest v2+: Football needs current real stories, not coverage meta')
+            if version >= 3:
+                for slug, minimum in DEPTH_FLOOR.items():
+                    count = len(desks.get(slug, []))
+                    if count < minimum:
+                        fail(f'desk-latest v3: {slug} story depth {count} < {minimum}')
 
         live_path = DATA / 'live.json'
         if live_path.exists():
             live = load(live_path)
-            strict = int(live.get('contentVersion', 1) or 1) >= 3
+            live_version = int(live.get('contentVersion', 1) or 1)
+            strict = live_version >= 3
             for i, story in enumerate(live.get('items', [])): validate_story(story, f'live[{i}]', strict)
             cov = live.get('coverage', {})
             if int(live.get('editorialStandardVersion', 1) or 1) >= 2 and str(cov.get('status','')).upper() == 'COMPLETE':
@@ -112,6 +121,22 @@ def main():
                     if region not in regions: fail(f'live v2+ COMPLETE: Asia missing region {region}')
                 if asia.get('securityIntegrated') is not True:
                     fail('live v2+ COMPLETE: regional security must be integrated into geographic Asia coverage')
+
+                if live_version >= 3:
+                    counts = cov.get('deskLatestStoryCounts')
+                    if not isinstance(counts, dict):
+                        fail('live v3 COMPLETE requires coverage.deskLatestStoryCounts')
+                    if cov.get('deskLatestDepthMet') is not True:
+                        fail('live v3 COMPLETE requires deskLatestDepthMet=true')
+                    for slug, minimum in DEPTH_FLOOR.items():
+                        value = counts.get(slug)
+                        if not isinstance(value, int) or value < minimum:
+                            fail(f'live v3 COMPLETE: deskLatestStoryCounts.{slug}={value} < {minimum}')
+                    if desk is not None:
+                        for slug in DEPTH_FLOOR:
+                            actual = len(desk.get('desks', {}).get(slug, []))
+                            if counts.get(slug) != actual:
+                                fail(f'live v3 COMPLETE: reported deskLatestStoryCounts.{slug}={counts.get(slug)} but actual={actual}')
         print('EDITORIAL VALIDATION OK')
         return 0
     except Exception as exc:
