@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="每日晨報廣東話聲線實驗室：只收錄免費、可在 GitHub Pages 使用的 Cantonese TTS 選項，支援即時試聽及儲存預設聲線。">
+  <meta name="theme-color" content="#111111">
+  <title>廣東話聲線實驗室 · 每日晨報 Daily Brief</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Noto+Serif+TC:wght@600;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/newspaper.css?v=20260820-1915">
+  <link rel="stylesheet" href="assets/css/voice-lab.css?v=20260821-voice1">
+</head>
+<body>
+  <div class="paper">
+    <div class="utility-bar"><span>PERSONAL EDITION · HONG KONG</span><span>FREE CANTONESE TTS LAB</span></div>
+    <header class="masthead">
+      <div class="masthead-side">免費 · GitHub Pages<br>廣東話 TTS 比較</div>
+      <div class="brand"><div class="brand-kicker">個 人 化 電 子 報</div><h1>每日晨報</h1><div class="brand-en">DAILY BRIEF</div></div>
+      <div class="masthead-side right">CANTONESE VOICE LAB<br>TRADITIONAL CHINESE</div>
+    </header>
+    <nav class="section-nav" aria-label="新聞分版">
+      <a class="live-nav" href="live.html">Live</a><a href="index.html">頭版</a><a href="world.html">世界</a><a href="asia.html">亞洲</a><a href="hong-kong.html">香港</a><a href="japan.html">日本</a><a href="finance.html">📈 財經</a><a href="stocks.html">📊 Stock News</a><a href="technology.html">AI / 科技</a><a href="manga-anime.html">漫畫 / Anime</a><a href="manchester-united.html">Manchester United</a><a href="football.html">Football</a><a href="voice.html" aria-current="page">🔊 廣東話</a><a href="archive.html">Archive</a>
+    </nav>
+    <div class="date-strip"><span>廣東話聲線試聽</span><span>硬條件：免費 · 可由 GitHub Pages 使用 · 不需要付費 API key</span></div>
+
+    <main class="voice-lab-shell">
+      <section class="voice-hero">
+        <h2>🔊 廣東話聲線實驗室</h2>
+        <p>呢一頁會即時讀取你而家部 Windows、Mac、iPhone、Android 或 browser 實際提供嘅 <strong>zh-HK / yue</strong> 聲線。每部裝置可見嘅聲線數目可能唔同，所以唔會硬寫死。你可以逐把試聽，最後儲存一把做《每日晨報》預設廣東話聲線。</p>
+      </section>
+
+      <section class="voice-controls" aria-label="聲線試聽控制">
+        <div>
+          <label for="voice-sample">試聽文字</label>
+          <textarea id="voice-sample"></textarea>
+          <div class="voice-control-row">
+            <label for="voice-rate">語速</label>
+            <input id="voice-rate" type="range" min="0.7" max="1.5" step="0.1" value="1.0">
+            <strong id="voice-rate-value">1.0×</strong>
+          </div>
+        </div>
+        <div class="voice-control-row">
+          <button class="voice-btn secondary" id="voice-refresh" type="button">↻ 重新偵測</button>
+          <button class="voice-btn secondary" id="voice-stop" type="button">■ 停止</button>
+          <button class="voice-btn" id="voice-save" type="button">✓ 儲存預設聲線</button>
+        </div>
+      </section>
+
+      <div class="voice-summary">
+        <span id="voice-count">正在偵測廣東話聲線…</span>
+        <span class="voice-status" id="voice-status" role="status"></span>
+      </div>
+
+      <section class="voice-grid" id="voice-list" aria-live="polite"></section>
+
+      <div class="voice-save-panel">
+        <strong>目前選擇</strong>
+        <span id="voice-saved-summary">未選擇預設聲線</span>
+      </div>
+
+      <section class="voice-research" aria-labelledby="voice-research-title">
+        <h3 id="voice-research-title">全球免費 Cantonese TTS 篩選結果</h3>
+        <div class="voice-table-wrap">
+          <table>
+            <thead><tr><th>方案</th><th>廣東話</th><th>免費條件</th><th>GitHub Pages</th><th>本頁處理</th></tr></thead>
+            <tbody>
+              <tr><td>Browser / OS Web Speech API</td><td>視裝置提供 zh-HK / yue voices</td><td>無 API 計費</td><td>✅ 純 JavaScript</td><td class="voice-eligible">✅ 可試聽 / 可選</td></tr>
+              <tr><td>meSpeak / eSpeak Cantonese</td><td>zh-yue（較機械化）</td><td>GPL 開源、client-side</td><td>✅ 靜態網頁可用</td><td class="voice-eligible">✅ 4 個 eSpeak voice variants 作 fallback</td></tr>
+              <tr><td>WenetSpeech-Yue / CosyVoice2-Yue</td><td>原生 Cantonese neural TTS</td><td>Apache-2.0 模型</td><td>❌ 模型/推理太重，需額外 runtime</td><td>研究保留，不加入 selector</td></tr>
+              <tr><td>MOSS-TTS v1.5</td><td>支援 Cantonese (yue)</td><td>開源模型</td><td>❌ 1.7B–8B 級模型，不適合純 GitHub Pages</td><td>研究保留，不加入 selector</td></tr>
+              <tr><td>VITS Cantonese (xiaomaiiwn / ONNX)</td><td>有 browser WASM demo 路線</td><td>模型權重授權未夠清楚</td><td>技術上可行但檔案約 114MB</td><td class="voice-rejected">❌ 授權不夠清楚，先排除</td></tr>
+              <tr><td>ResponsiveVoice</td><td>有 Hong Kong voice</td><td>Free plan 有字符額度 / 帳戶條件</td><td>✅</td><td class="voice-rejected">❌ 不符合「純免費無付費依賴」原則</td></tr>
+              <tr><td>Azure / Google Cloud / AWS / ElevenLabs 等</td><td>部分有 Cantonese</td><td>免費額度或試用後收費</td><td>需 API / backend / secret</td><td class="voice-rejected">❌ 排除</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="voice-footnote">研究更新：2026-08-21。開源參考：<a href="https://github.com/espeak-ng/espeak-ng" target="_blank" rel="noopener noreferrer">eSpeak NG</a>、<a href="https://github.com/btopro/mespeak" target="_blank" rel="noopener noreferrer">meSpeak</a>、<a href="https://github.com/ASLP-lab/WenetSpeech-Yue" target="_blank" rel="noopener noreferrer">WenetSpeech-Yue</a>。本頁只把符合你兩個硬條件而且可由靜態頁面直接使用嘅方案放入可選清單。</p>
+        <p class="voice-legal">注意：Browser/OS 聲線本身由你嘅作業系統或瀏覽器提供；repository 儲存嘅係選擇與播放程式碼，而唔係複製 Microsoft / Apple / Google 專有 voice model。開源 fallback 由 meSpeak/eSpeak 提供，首次試聽時由 GitHub-hosted CDN 載入。</p>
+      </section>
+    </main>
+
+    <footer class="footer"><span>每日晨報 Daily Brief · Cantonese Voice Lab</span><span><a href="index.html">返回頭版</a> · <a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">GitHub</a></span></footer>
+  </div>
+  <script src="assets/js/voice-lab.js?v=20260821-voice1" defer></script>
+</body>
+</html>
