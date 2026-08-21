@@ -66,6 +66,16 @@
     nav.innerHTML = links.join("");
   }
 
+  function removeVoiceLabLinks() {
+    document.querySelectorAll('a[href="voice.html"], a[href$="/voice.html"]').forEach((link) => {
+      const previous = link.previousSibling;
+      const next = link.nextSibling;
+      link.remove();
+      if (previous?.nodeType === Node.TEXT_NODE && /^\s*·\s*$/.test(previous.textContent || "")) previous.remove();
+      else if (next?.nodeType === Node.TEXT_NODE && /^\s*·\s*$/.test(next.textContent || "")) next.remove();
+    });
+  }
+
   function inject(src, marker) {
     if (document.querySelector(`script[${marker}]`)) return;
     const script = document.createElement("script");
@@ -85,10 +95,17 @@
     }
   }
 
+  function loadSiteTTS() {
+    if (document.body.dataset.page === "archive") return;
+    inject("assets/js/site-tts.js?v=20260822-main1", "data-site-tts");
+  }
+
   function mountSystemPanel() {
     injectNavStyle();
     normalizeDeskNav();
+    removeVoiceLabLinks();
     loadArticleEnhancers();
+    loadSiteTTS();
     if (document.getElementById("system-status-button")) return;
 
     const button = document.createElement("button");
