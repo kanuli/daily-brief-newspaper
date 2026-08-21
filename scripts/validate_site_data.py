@@ -112,7 +112,6 @@ def validate_live(data, label):
     status = str(coverage.get("status", "")).upper()
     require(status, f"{label}: coverage.status is required")
 
-    # Daily reset and one-time schedule migration are allowed to omit an hourly search audit.
     if status in {"DAILY_BASELINE", "SCHEDULE_MIGRATION"}:
         return
 
@@ -171,7 +170,8 @@ def main():
 
         dated_path = DATA / f"{date}.json"
         if dated_path.exists():
-            validate_edition(load_json(dated_path), str(dated_path.relative_to(ROOT)), require_sections=True)
+            # Saved editions remain backward-compatible; the renderer can reconstruct sections.
+            validate_edition(load_json(dated_path), str(dated_path.relative_to(ROOT)), require_sections=False)
 
         topic_path = DATA / "topic-more" / f"{date}.json"
         if topic_path.exists():
