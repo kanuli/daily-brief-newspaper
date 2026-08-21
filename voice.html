@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Noto+Serif+TC:wght@600;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/css/newspaper.css?v=20260820-1915">
-  <link rel="stylesheet" href="assets/css/voice-lab.css?v=20260821-voice1">
+  <link rel="stylesheet" href="assets/css/voice-lab.css?v=20260821-voice2">
 </head>
 <body>
   <div class="paper">
@@ -67,8 +67,8 @@
             <thead><tr><th>方案</th><th>廣東話</th><th>免費條件</th><th>GitHub Pages</th><th>本頁處理</th></tr></thead>
             <tbody>
               <tr><td>Browser / OS Web Speech API</td><td>視裝置提供 zh-HK / yue voices</td><td>無 API 計費</td><td>✅ 純 JavaScript</td><td class="voice-eligible">✅ 可試聽 / 可選</td></tr>
-              <tr><td>meSpeak / eSpeak Cantonese</td><td>zh-yue（較機械化）</td><td>GPL 開源、client-side</td><td>✅ 靜態網頁可用</td><td class="voice-eligible">✅ 4 個 eSpeak voice variants 作 fallback</td></tr>
-              <tr><td>WenetSpeech-Yue / CosyVoice2-Yue</td><td>原生 Cantonese neural TTS</td><td>Apache-2.0 模型</td><td>❌ 模型/推理太重，需額外 runtime</td><td>研究保留，不加入 selector</td></tr>
+              <tr><td>meSpeak / eSpeak Cantonese</td><td>zh-yue（較機械化；繁體相容較弱）</td><td>GPL 開源、client-side</td><td>✅ 靜態網頁可用</td><td class="voice-eligible">✅ 修正版：繁體轉簡體 + Web Audio 播放</td></tr>
+              <tr><td>WenetSpeech-Yue / CosyVoice2-Yue / Llasa-1B-Yue</td><td>原生 Cantonese neural TTS</td><td>官方開源研究模型 / samples</td><td>⚠️ 官方 sample 可直接播；完整模型太重</td><td class="voice-eligible">✅ 官方 neural samples 已加入 A/B 試聽；❌ 暫不作即時 selector</td></tr>
               <tr><td>MOSS-TTS v1.5</td><td>支援 Cantonese (yue)</td><td>開源模型</td><td>❌ 1.7B–8B 級模型，不適合純 GitHub Pages</td><td>研究保留，不加入 selector</td></tr>
               <tr><td>VITS Cantonese (xiaomaiiwn / ONNX)</td><td>有 browser WASM demo 路線</td><td>模型權重授權未夠清楚</td><td>技術上可行但檔案約 114MB</td><td class="voice-rejected">❌ 授權不夠清楚，先排除</td></tr>
               <tr><td>ResponsiveVoice</td><td>有 Hong Kong voice</td><td>Free plan 有字符額度 / 帳戶條件</td><td>✅</td><td class="voice-rejected">❌ 不符合「純免費無付費依賴」原則</td></tr>
@@ -76,13 +76,14 @@
             </tbody>
           </table>
         </div>
-        <p class="voice-footnote">研究更新：2026-08-21。開源參考：<a href="https://github.com/espeak-ng/espeak-ng" target="_blank" rel="noopener noreferrer">eSpeak NG</a>、<a href="https://github.com/btopro/mespeak" target="_blank" rel="noopener noreferrer">meSpeak</a>、<a href="https://github.com/ASLP-lab/WenetSpeech-Yue" target="_blank" rel="noopener noreferrer">WenetSpeech-Yue</a>。本頁只把符合你兩個硬條件而且可由靜態頁面直接使用嘅方案放入可選清單。</p>
-        <p class="voice-legal">注意：Browser/OS 聲線本身由你嘅作業系統或瀏覽器提供；repository 儲存嘅係選擇與播放程式碼，而唔係複製 Microsoft / Apple / Google 專有 voice model。開源 fallback 由 meSpeak/eSpeak 提供，首次試聽時由 GitHub-hosted CDN 載入。</p>
+        <p class="voice-footnote">研究更新：2026-08-21。開源參考：<a href="https://github.com/espeak-ng/espeak-ng" target="_blank" rel="noopener noreferrer">eSpeak NG</a>、<a href="https://github.com/btopro/mespeak" target="_blank" rel="noopener noreferrer">meSpeak</a>、<a href="https://github.com/ASLP-lab/WenetSpeech-Yue" target="_blank" rel="noopener noreferrer">WenetSpeech-Yue</a>。可即時生成並儲存為預設聲線嘅選項仍必須符合「免費 + 靜態 GitHub Pages 可運行」兩個條件；大型 neural 模型目前只提供官方 sample 比較。</p>
+        <p class="voice-legal">注意：Browser/OS 聲線本身由你嘅作業系統或瀏覽器提供；repository 儲存嘅係選擇與播放程式碼，而唔係複製 Microsoft / Apple / Google 專有 voice model。eSpeak 修正版會在 browser 端把香港繁體轉為簡體後交予舊 zh-yue engine，再以 Web Audio API 播放。</p>
       </section>
     </main>
 
     <footer class="footer"><span>每日晨報 Daily Brief · Cantonese Voice Lab</span><span><a href="index.html">返回頭版</a> · <a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">GitHub</a></span></footer>
   </div>
   <script src="assets/js/voice-lab.js?v=20260821-voice1" defer></script>
+  <script src="assets/js/voice-lab-upgrade.js?v=20260821-wenet1" defer></script>
 </body>
 </html>
