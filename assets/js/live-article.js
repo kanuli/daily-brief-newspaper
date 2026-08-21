@@ -8,6 +8,25 @@
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 
+  const META_SENTENCE = /(?:本輪|本報|incremental|duplicate|重複刊登|搜集規則|collection (?:design|test|rule)|coverage (?:test|check)|每一輪Football|之後每一輪|固定檢查(?:HKFA|J-?League|賽程|賽果)?|不應由全球搜尋排名決定|應該看到的核心新聞)/i;
+
+  function cleanCopy(value = "") {
+    return String(value)
+      .split(/(?<=[。！？!?])\s*/)
+      .filter((sentence) => sentence && !META_SENTENCE.test(sentence))
+      .join("")
+      .trim();
+  }
+
+  function bodyParagraphs(value = "") {
+    return String(value)
+      .split(/\n\s*\n/)
+      .map(cleanCopy)
+      .filter(Boolean)
+      .map((paragraph) => `<p>${esc(paragraph)}</p>`)
+      .join("");
+  }
+
   const badge = (status = "UPDATED") => {
     const safe = String(status).toUpperCase();
     return `<span class="live-badge live-${esc(safe.toLowerCase())}">${esc(safe)}</span>`;
@@ -22,17 +41,20 @@
   }
 
   function paragraph(label, value, className) {
-    if (!value) return "";
-    return `<p class="${className}"><strong>${label}</strong>${esc(value)}</p>`;
+    const clean = cleanCopy(value);
+    if (!clean) return "";
+    return `<p class="${className}"><strong>${label}</strong>${esc(clean)}</p>`;
   }
 
   function renderStory(item) {
+    const body = bodyParagraphs(item.body || "");
     return `<article class="live-story live-story-rich">
       <div class="live-story-meta">${badge(item.status)} <span>${esc(item.section || "Live")}</span> <span>${esc(item.timeLabel || "")}</span></div>
       <h2>${esc(item.title || "")}</h2>
-      ${item.dek ? `<p class="live-article-dek">${esc(item.dek)}</p>` : ""}
+      ${item.dek ? `<p class="live-article-dek">${esc(cleanCopy(item.dek))}</p>` : ""}
       <div class="live-article-body">
-        ${paragraph("最新：", item.summary, "live-article-summary")}
+        ${paragraph("摘要：", item.summary, "live-article-summary")}
+        ${body ? `<div class="live-body-main">${body}</div>` : ""}
         ${paragraph("背景：", item.context || item.background, "live-article-context")}
         ${paragraph("為何重要：", item.why || item.whyImportant, "live-article-why")}
         ${paragraph("下一步：", item.watchNext || item.nextStep, "live-article-next")}
@@ -67,7 +89,7 @@
         audit.innerHTML = `<strong>本輪搜集：</strong>${Number(coverage.sourceOrganizationCount || 0)} 個新聞機構 · ${Number(coverage.freshSearchCount || 0)} 次 fresh searches · raw ${Number(coverage.rawFreshCandidateCount || 0)} · verified ${Number(coverage.verifiedCandidateCount || 0)} · incremental ${Number(coverage.incrementalCandidateCount || 0)}`;
       }
 
-      host.innerHTML = items.length ? items.map(renderStory).join("") : `<p class="notice">本輪未有可刊出的 incremental story；頁面仍保留各 Desk 最新已核實內容。</p>`;
+      host.innerHTML = items.length ? items.map(renderStory).join("") : `<p class="notice">本輪未有可刊出的 incremental story；各專版仍保留最近已核實的重要新聞。</p>`;
     } catch (error) {
       console.error(error);
     }
