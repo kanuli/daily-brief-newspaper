@@ -37,10 +37,12 @@ jobs:
 
       - name: Install CPU CosyVoice runtime
         run: |
-          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --upgrade pip wheel
+          python -m pip install "setuptools==69.5.1"
           python -m pip install "numpy==1.26.4"
           python -m pip install "torch==2.3.1" "torchaudio==2.3.1" --index-url https://download.pytorch.org/whl/cpu
           python -m pip install "pynini==2.1.6.post1"
+          python -m pip install --no-build-isolation "openai-whisper==20231117"
           python -m pip install \
             "conformer==0.3.2" \
             "diffusers==0.29.0" \
@@ -52,7 +54,6 @@ jobs:
             "omegaconf==2.3.0" \
             "onnx==1.16.0" \
             "onnxruntime==1.18.0" \
-            "openai-whisper==20231117" \
             "opencc" \
             "protobuf==4.25.8" \
             "pydantic==2.7.0" \
