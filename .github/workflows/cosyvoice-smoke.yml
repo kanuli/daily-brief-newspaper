@@ -6,7 +6,10 @@ on:
       - "assets/js/site-tts-*.js"
       - "scripts/test_cosyvoice_backend.py"
       - "scripts/test_cosyvoice_local_cpu.py"
+      - "scripts/generate_cosyvoice_lead.py"
+      - "data/latest.json"
       - ".github/workflows/cosyvoice-smoke.yml"
+      - ".github/workflows/cosyvoice-publish.yml"
   workflow_dispatch:
 
 permissions:
@@ -15,7 +18,7 @@ permissions:
 jobs:
   cosyvoice-local-cpu:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout site repo
         uses: actions/checkout@v4
@@ -35,7 +38,7 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y ffmpeg sox libsox-dev libsndfile1
 
-      - name: Install CPU CosyVoice runtime
+      - name: Install proven CPU CosyVoice2-Yue runtime
         run: |
           python -m pip install --upgrade pip wheel
           python -m pip install "setuptools==69.5.1"
@@ -83,22 +86,49 @@ jobs:
           free -h
           df -h /
 
-      - name: Generate real Cantonese WAV locally
+      - name: Generate real Cantonese smoke WAV locally
         env:
           HF_HUB_DISABLE_XET: "1"
           WSYUE_ROOT: /tmp/WenetSpeech-Yue
           COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
         run: python scripts/test_cosyvoice_local_cpu.py
 
-      - name: Verify generated WAV
+      - name: Verify smoke WAV
         run: |
           test -s artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
           ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
-          ls -lh artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
+
+      - name: Generate production Daily lead WAV
+        env:
+          HF_HUB_DISABLE_XET: "1"
+          WSYUE_ROOT: /tmp/WenetSpeech-Yue
+          COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
+        run: python scripts/generate_cosyvoice_lead.py
+
+      - name: Verify production WAV and manifest
+        run: |
+          test -s assets/audio/cosyvoice/latest-lead.wav
+          ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 assets/audio/cosyvoice/latest-lead.wav
+          python - <<'PY'
+          import json
+          latest = json.load(open('data/latest.json', encoding='utf-8'))
+          manifest = json.load(open('data/tts-manifest.json', encoding='utf-8'))
+          assert manifest['engine'] == 'ASLP-lab/Cosyvoice2-Yue'
+          assert manifest['voice'] == 'F01 female reference'
+          assert manifest['leadId'] == latest['leadId']
+          entry = manifest['articles'][latest['leadId']]
+          assert entry['audio'] == 'assets/audio/cosyvoice/latest-lead.wav'
+          assert entry['bytes'] > 50000
+          assert entry['durationSeconds'] > 2
+          print('COSYVOICE_PRODUCTION_CHAIN_PASS')
+          PY
 
       - name: Upload tested Cantonese audio
         uses: actions/upload-artifact@v4
         with:
-          name: cosyvoice2-yue-local-cpu-smoke-audio
-          path: artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
+          name: cosyvoice2-yue-tested-audio
+          path: |
+            artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
+            assets/audio/cosyvoice/latest-lead.wav
+            data/tts-manifest.json
           if-no-files-found: error
