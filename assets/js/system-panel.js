@@ -47,6 +47,16 @@
         .section-nav a:nth-child(7n){border-right:0!important}
         .section-nav a:nth-last-child(-n+6){border-bottom:0!important}
       }
+      #main-site-voice-button{
+        position:fixed;right:14px;bottom:72px;z-index:9997;
+        border:2px solid #111;background:#fff;color:#111;
+        padding:10px 13px;border-radius:999px;
+        font:800 12px/1.2 "Noto Sans TC",sans-serif;
+        box-shadow:0 4px 18px rgba(0,0,0,.18);cursor:pointer;
+      }
+      #main-site-voice-button:hover{background:#111;color:#fff}
+      #main-site-voice-button:disabled{opacity:.6;cursor:wait}
+      @media(max-width:620px){#main-site-voice-button{right:10px;bottom:68px;padding:9px 11px;font-size:11px}}
     `;
     document.head.appendChild(style);
   }
@@ -97,7 +107,45 @@
 
   function loadSiteTTS() {
     if (document.body.dataset.page === "archive") return;
-    inject("assets/js/site-tts.js?v=20260822-main2", "data-site-tts");
+    inject("assets/js/site-tts.js?v=20260822-main3", "data-site-tts");
+  }
+
+  function mountVoiceLauncher() {
+    if (document.body.dataset.page === "archive" || document.getElementById("main-site-voice-button")) return;
+    const voiceButton = document.createElement("button");
+    voiceButton.id = "main-site-voice-button";
+    voiceButton.type = "button";
+    voiceButton.textContent = "🔊 廣東話朗讀";
+    voiceButton.setAttribute("aria-label", "朗讀本頁首則新聞");
+
+    voiceButton.addEventListener("click", async () => {
+      const original = "🔊 廣東話朗讀";
+      voiceButton.disabled = true;
+      voiceButton.textContent = "⏳ 尋找新聞…";
+
+      let articleButton = null;
+      for (let i = 0; i < 20; i += 1) {
+        articleButton = document.querySelector("main article .site-tts-button");
+        if (articleButton) break;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+
+      if (articleButton) {
+        articleButton.click();
+        voiceButton.textContent = "🔊 正在朗讀首則新聞";
+        setTimeout(() => {
+          voiceButton.disabled = false;
+          voiceButton.textContent = original;
+        }, 1200);
+        return;
+      }
+
+      voiceButton.disabled = false;
+      voiceButton.textContent = "⚠️ 暫未找到可朗讀新聞";
+      setTimeout(() => { voiceButton.textContent = original; }, 2500);
+    });
+
+    document.body.appendChild(voiceButton);
   }
 
   function mountSystemPanel() {
@@ -106,6 +154,7 @@
     removeVoiceLabLinks();
     loadArticleEnhancers();
     loadSiteTTS();
+    mountVoiceLauncher();
     if (document.getElementById("system-status-button")) return;
 
     const button = document.createElement("button");
