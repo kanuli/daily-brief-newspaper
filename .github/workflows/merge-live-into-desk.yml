@@ -75,16 +75,23 @@ jobs:
                   desks[slug].insert(0, story)
                   desks[slug] = desks[slug][:caps[slug]]
 
+          counts = {slug: len(desks.get(slug, [])) for slug in floors}
           for slug, minimum in floors.items():
-              if len(desks.get(slug, [])) < minimum:
-                  raise SystemExit(f'{slug} depth {len(desks.get(slug, []))} < {minimum}')
+              if counts[slug] < minimum:
+                  raise SystemExit(f'{slug} depth {counts[slug]} < {minimum}')
 
           desk['date'] = live.get('date', desk.get('date'))
           desk['generatedAt'] = live.get('lastUpdated')
           desk['mode'] = 'ROLLING_DESK_LATEST'
           desk['editorialStandardVersion'] = 3
           desk['contentVersion'] = 3
+
+          coverage = live.setdefault('coverage', {})
+          coverage['deskLatestStoryCounts'] = counts
+          coverage['deskLatestDepthMet'] = all(counts[slug] >= minimum for slug, minimum in floors.items())
+
           desk_path.write_text(json.dumps(desk, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          live_path.write_text(json.dumps(live, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
           PY
 
       - name: Validate Daily Brief data schema
@@ -101,12 +108,12 @@ jobs:
 
       - name: Commit Rolling Desk refresh
         run: |
-          if git diff --quiet -- data/desk-latest.json; then
-            echo "No desk changes"
+          if git diff --quiet -- data/desk-latest.json data/live.json; then
+            echo "No rolling data changes"
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -- data/desk-latest.json
+            git add -- data/desk-latest.json data/live.json
             git commit -m "Merge verified Live items into Rolling Desk"
             git push
           fi
