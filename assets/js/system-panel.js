@@ -80,7 +80,7 @@
   }
 
   function loadVoiceProductionStatus() {
-    inject("assets/js/voice-production-status.js?v=20260823-0012", "data-voice-production-status");
+    inject("assets/js/voice-production-status.js?v=20260823-0103maintenance", "data-voice-production-status");
   }
 
   function ensureMainLeadAudio() {
@@ -102,7 +102,6 @@
       button.textContent = "🔊 廣東話朗讀";
       return;
     }
-
     window.SiteTTS?.stop?.();
     const promise = audio.play();
     button.textContent = "⏸ 廣東話朗讀";
