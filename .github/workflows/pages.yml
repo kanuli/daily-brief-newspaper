@@ -3,6 +3,19 @@ name: Deploy Daily Brief to GitHub Pages
 on:
   push:
     branches: ["main"]
+    # News-data commits are deliberately not deployed here. The F01 all-news
+    # workflow publishes the matching news JSON + CosyVoice audio together.
+    paths-ignore:
+      - "data/latest.json"
+      - "data/20*.json"
+      - "data/archive.json"
+      - "data/desk-latest.json"
+      - "data/live.json"
+      - "data/stocks-latest.json"
+      - "data/topic-more/**"
+      - "data/editorial-overrides/**"
+      - "data/tts-manifest.json"
+      - "assets/audio/cosyvoice/**"
   workflow_dispatch:
 
 permissions:
@@ -36,5 +49,15 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: Verify live CosyVoice2-Yue manifest and WAV
-        run: python scripts/check_live_cosyvoice_pages.py
+      - name: Verify live CosyVoice only when all-news manifest is active
+        run: |
+          if python - <<'PY'
+          import json, sys
+          manifest = json.load(open('data/tts-manifest.json', encoding='utf-8'))
+          sys.exit(0 if manifest.get('coveragePolicy') == 'all-current-news-f01-only' else 1)
+          PY
+          then
+            python scripts/check_live_cosyvoice_pages.py
+          else
+            echo "Transition deployment: all-news F01 manifest not active yet; live checker deferred to F01 publisher."
+          fi
