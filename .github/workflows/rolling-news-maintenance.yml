@@ -9,7 +9,7 @@ on:
     workflows: ["Rolling News Search 15m"]
     types: [completed]
   schedule:
-    - cron: "*/5 0-16,22-23 * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -25,28 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Enforce active HKT maintenance window
-        id: window
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "push" ]; then
-            echo "allowed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          HOUR=$(TZ=Asia/Hong_Kong date +%H)
-          MINUTE=$(TZ=Asia/Hong_Kong date +%M)
-          ALLOWED=false
-          if [ "$HOUR" -ge 6 ] && [ "$HOUR" -le 23 ]; then
-            ALLOWED=true
-          elif [ "$HOUR" = "00" ] && [ "$MINUTE" -le 10 ]; then
-            ALLOWED=true
-          fi
-          echo "HKT=${HOUR}:${MINUTE} allowed=${ALLOWED}"
-          echo "allowed=${ALLOWED}" >> "$GITHUB_OUTPUT"
-
       - name: Inspect collector health
-        if: steps.window.outputs.allowed == 'true'
         id: inspect
         env:
           GH_TOKEN: ${{ github.token }}
@@ -103,7 +82,7 @@ jobs:
           echo "reason=${REASON}" >> "$GITHUB_OUTPUT"
 
       - name: Restart rolling search automatically
-        if: steps.window.outputs.allowed == 'true' && steps.inspect.outputs.restart == 'true'
+        if: steps.inspect.outputs.restart == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -111,8 +90,8 @@ jobs:
           set -euo pipefail
           echo "Rolling search auto-restart: ${{ steps.inspect.outputs.reason }}"
           gh workflow run rolling-news-search.yml --repo "${{ github.repository }}" --ref main
-          echo "ROLLING_NEWS_AUTO_MAINTENANCE_RESTART_DISPATCHED"
+          echo "ROLLING_NEWS_AUTO_MAINTENANCE_RESTART_DISPATCHED mode=24x7"
 
       - name: Healthy / replacement already active
-        if: steps.window.outputs.allowed == 'true' && steps.inspect.outputs.restart != 'true'
+        if: steps.inspect.outputs.restart != 'true'
         run: echo "Rolling news search healthy (${{ steps.inspect.outputs.reason }})."
