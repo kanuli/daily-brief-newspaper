@@ -4,13 +4,16 @@
 
 ## Publication layers
 
-1. **15-minute Rolling Search / Discovery** — 香港時間 06:00–24:00，每 15 分鐘搜尋一次；只寫入 staging，不直接改公開新聞頁。
+1. **15-minute Rolling Search / Discovery** — **24 小時、全年無間斷**，每 15 分鐘搜尋一次；只寫入 staging，不直接改公開新聞頁。
 2. **Hourly Live / Stock Publication** — 香港時間 06:00–24:00 每小時發布一次；08:00 跳過，由 Daily Edition 取代。
 3. **Daily Edition** — 每日 08:00 HKT 發布完整晨報並固定保存到 Archive。
+4. **Verified Prepublish Draft + F01 pre-render** — 每個 publication slot 前約 15 分鐘建立 unpublished verified draft；exact-text draft 可預先生成 F01。Voice readiness 永遠不阻塞新聞 publication。
 
 Hourly publish slots：06:00、07:00、09:00、10:00、11:00、12:00、13:00、14:00、15:00、16:00、17:00、18:00、19:00、20:00、21:00、22:00、23:00、24:00／00:00。
 
-15-minute search slots：06:00、06:15、06:30、06:45……一路至 23:45，最後 24:00／00:00。08:00–08:45 仍然繼續搜尋，只是不發布 Live / Stock hourly edition；08:00 Daily 會利用 06:00 起累積的 staging candidates。
+15-minute search slots：**00:00、00:15、00:30、00:45……全天每 15 分鐘持續運作，包括 01:00–05:45 及 08:00。** Search window 與 publication window 完全分離。凌晨搜到的候選會保存在 staging，供 05:45 verified draft 與 06:00 publication 使用。
+
+Prepublish draft slots：05:45 準備 06:00；06:45 準備 07:00；07:45 準備 08:00 Daily；之後每小時 :45 準備下一個 publication，直到 23:45 準備 24:00／00:00。
 
 ## Search scope — exactly 10 desks
 
@@ -35,23 +38,33 @@ Football 是 **完整 worldwide football news research**，不是 FT-results 特
 - Collector：`scripts/rolling_news_collector.py`
 - Staging branch：`news-staging`
 - Staging file：`data/search-staging.json`
-- Search cadence：15 minutes
+- Search cadence：15 minutes, 24x7
 - Staging 不會觸發 Pages、Voice 或公開新聞更新。
 - Staging 是 **discovery only**；headline / RSS result 不可直接當已核實新聞發布。
 - Collector 會 deduplicate、保留近期 candidates、淘汰明顯過期結果，並對 Football / Manchester United / Stock News 做 desk-level relevance filtering。
 
-目前使用免費 discovery sources / RSS；不需要付費新聞 API。若 primary discovery provider 某 desk 回傳過少，collector 可用免費 fallback feed 補 discovery，但仍受 freshness filter；hourly publisher 最終必須重新核實來源。
+目前使用免費 discovery sources / RSS；不需要付費新聞 API。若 primary discovery provider 某 desk 回傳過少，collector 可用免費 fallback feed 補 discovery，但仍受 freshness filter；publisher 最終必須重新核實來源。
+
+## Verified prepublish + F01
+
+- Unpublished branch：`prepublish-news`
+- Verified draft：`data/prepublish.json`
+- 只有已重新核實、已完成繁體中文正文的 `VERIFIED_DRAFT` 才可進入 F01 pre-render；raw staging candidate 不可直接生成可發布 voice。
+- F01 使用 article content hash。整點 publish 時只有文字完全一致的 prebuilt WAV 才可 promotion。
+- 如 draft 後新聞有更新，publisher 必須優先修正新聞；舊 voice hash 自動失效。
+- **News readiness controls publication. Voice readiness does not.** 到 publication time，只要新聞已 ready 就照常 publish；未完成 voice 顯示 pending，由 10-worker F01 pool 繼續補齊。
 
 ## Hourly publisher
 
-每個 publish slot 先讀 `news-staging:data/search-staging.json`，使用過去最多四次 15-minute discovery 所累積的 candidates 作第一層 candidate pool，然後：
+每個 publish slot 先讀有效 `prepublish-news:data/prepublish.json`，再讀 `news-staging:data/search-staging.json`，並重新檢查 draft 建立後是否有重大變化。流程：
 
 1. 重新搜尋／打開可信來源；
 2. 對入選事件做來源核實；
 3. 去重、判斷 NEW / UPDATED / DEVELOPING；
 4. 排序重要性；
-5. 寫完整繁體中文 newspaper copy；
-6. 更新公開 production data。
+5. 寫／修正完整繁體中文 newspaper copy；
+6. 更新公開 production data；
+7. promotion exact-hash ready F01，未 ready 的聲音不阻塞 publication。
 
 Live publisher 寫：
 - `data/live.json`
@@ -60,7 +73,7 @@ Live publisher 寫：
 Stock publisher 寫：
 - `data/stocks-latest.json`
 
-如果 staging missing、stale、malformed 或 coverage 明顯不足，publisher 不可停止；必須在同一 run fallback 到完整 independent search。
+如果 prepublish/staging missing、stale、malformed 或 coverage 明顯不足，publisher 不可停止；必須在同一 run fallback 到完整 independent search。
 
 ## No-news rule
 
@@ -76,11 +89,11 @@ Stock publisher 寫：
 ## Self-healing search maintenance
 
 - Workflow：`.github/workflows/rolling-news-maintenance.yml`
-- Watchdog 約每 5 分鐘巡檢 collector health。
+- Watchdog **24 小時**約每 5 分鐘巡檢 collector health。
 - Collector cancelled：先檢查有沒有 replacement run；有就繼續，無就自動 restart。
 - Collector failed / timed out：沒有 replacement 而 staging 已 stale 時自動 restart。
-- 約 22 分鐘沒有任何新的 staging progress，而仍在 active search window，watchdog 會重新 dispatch rolling search。
-- 因為 staging 與 public publish 分離，單一 collector failure 不應令公開新聞立即消失；hourly publisher 可使用已累積 staging + 自己的 fallback search。
+- 約 22 分鐘沒有任何新的 staging progress，watchdog 會重新 dispatch rolling search；此規則凌晨亦有效。
+- 因為 staging 與 public publish 分離，單一 collector failure 不應令公開新聞立即消失；publisher 可使用已累積 staging + 自己的 fallback search。
 
 ## Verification / public-copy rules
 
@@ -92,7 +105,7 @@ Stock publisher 寫：
 
 ## Daily interaction
 
-08:00 Daily Edition 會讀 06:00–07:45 rolling staging 作 discovery input，再自行完整核實與製作晨報。08:00–08:45 collector 繼續運作，供 09:00 publisher 使用。Daily baseline 只負責去重，不會停止 rolling search。
+08:00 Daily Edition 會讀**全天持續累積**的 rolling staging，特別利用凌晨至 07:45 的最新候選作 discovery input，再自行完整核實與製作晨報。08:00 collector 仍照常運作，供之後 publication 使用。Daily baseline 只負責去重，不會停止 rolling search。
 
 ## Cost policy
 
