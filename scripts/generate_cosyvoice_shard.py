@@ -48,6 +48,19 @@ def stable_slot(story):
     return int.from_bytes(digest[:8], "big") % SHARD_COUNT
 
 
+def remote_reusable(previous, story, digest):
+    old = gen.previous_entry_for_title(previous, gen.clean(story.get("title")))
+    if not old or old.get("contentSha256") != digest:
+        return False
+    audio = str(old.get("audio") or "")
+    if not audio.startswith(("https://", "http://")):
+        return False
+    try:
+        return int(old.get("bytes") or 0) >= 50000 and float(old.get("durationSeconds") or 0) > 2
+    except (TypeError, ValueError):
+        return False
+
+
 def main():
     if SHARD_COUNT < 1 or SHARD_INDEX < 0 or SHARD_INDEX >= SHARD_COUNT:
         raise RuntimeError(f"invalid shard {SHARD_INDEX}/{SHARD_COUNT}")
@@ -66,7 +79,11 @@ def main():
         identity = gen.story_identity(story)
         title = gen.clean(story.get("title"))
         expected.append({"articleId": identity, "title": title, "contentSha256": digest})
-        if gen.reusable_entry(previous, story, digest) or gen.can_reuse_legacy_lead(previous, latest_raw, story, lead_title):
+        if (
+            remote_reusable(previous, story, digest)
+            or gen.reusable_entry(previous, story, digest)
+            or gen.can_reuse_legacy_lead(previous, latest_raw, story, lead_title)
+        ):
             reusable += 1
         else:
             missing.append((story, digest))
