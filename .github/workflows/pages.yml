@@ -3,19 +3,6 @@ name: Deploy Daily Brief to GitHub Pages
 on:
   push:
     branches: ["main"]
-    # News-data commits are deliberately not deployed here. The F01 all-news
-    # workflow publishes the matching news JSON + CosyVoice audio together.
-    paths-ignore:
-      - "data/latest.json"
-      - "data/20*.json"
-      - "data/archive.json"
-      - "data/desk-latest.json"
-      - "data/live.json"
-      - "data/stocks-latest.json"
-      - "data/topic-more/**"
-      - "data/editorial-overrides/**"
-      - "data/tts-manifest.json"
-      - "assets/audio/cosyvoice/**"
   workflow_dispatch:
 
 permissions:
@@ -23,6 +10,10 @@ permissions:
   pages: write
   id-token: write
 
+# Always deploy the newest main snapshot. Hourly news can appear immediately,
+# and every independently completed F01 commit triggers another deployment.
+# If commits arrive close together, only the newest Pages deployment is needed
+# because it contains all earlier successfully pushed voices as well.
 concurrency:
   group: "pages"
   cancel-in-progress: true
@@ -36,6 +27,8 @@ jobs:
     steps:
       - name: Checkout latest main
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -49,15 +42,6 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: Verify live CosyVoice only when all-news manifest is active
-        run: |
-          if python - <<'PY'
-          import json, sys
-          manifest = json.load(open('data/tts-manifest.json', encoding='utf-8'))
-          sys.exit(0 if manifest.get('coveragePolicy') == 'all-current-news-f01-only' else 1)
-          PY
-          then
-            python scripts/check_live_cosyvoice_pages.py
-          else
-            echo "Transition deployment: all-news F01 manifest not active yet; live checker deferred to F01 publisher."
-          fi
+      - name: Verify a newly published F01 voice is live
+        if: startsWith(github.event.head_commit.message, 'Publish F01 voice slot')
+        run: python scripts/check_live_cosyvoice_pages.py
