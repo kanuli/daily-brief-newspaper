@@ -1,6 +1,10 @@
 name: CosyVoice F01 Auto Maintenance
 
 on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/cosyvoice-maintenance.yml"
   workflow_run:
     workflows: ["Publish CosyVoice2-Yue F01 Per Article"]
     types: [completed]
@@ -87,7 +91,7 @@ jobs:
           if [ "${EVENT_NAME}" = "workflow_run" ] && { [ "${EVENT_CONCLUSION}" = "success" ] || [ "${EVENT_CONCLUSION}" = "cancelled" ]; }; then
             RESTART=true
             REASON="completed-or-cancelled-with-backlog"
-          # Scheduled maintenance handles failures/timeouts without creating a tight retry loop.
+          # Scheduled/self-test maintenance restores a stale backlog without creating a tight failure loop.
           elif [ "${AGE_SECONDS}" -ge 420 ]; then
             RESTART=true
             REASON="no-active-worker-and-f01-stale"
