@@ -20,16 +20,16 @@ on:
 permissions:
   contents: write
 
-# A newer hourly snapshot supersedes only unfinished synthesis. Any voice that
-# already reached main remains published and reusable on the next run.
+# A newer hourly snapshot supersedes only unfinished synthesis. Every voice that
+# already reached main stays published and is reused by the replacement run.
 concurrency:
   group: "cosyvoice2-yue-f01-current-news"
   cancel-in-progress: true
 
 jobs:
-  generate-and-publish-one:
+  worker:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     strategy:
       fail-fast: false
       max-parallel: 10
@@ -82,61 +82,72 @@ jobs:
           git clone --depth 1 --recursive https://github.com/ASLP-lab/WenetSpeech-Yue.git /tmp/WenetSpeech-Yue
           test -f /tmp/WenetSpeech-Yue/CosyVoice2-Yue/cosyvoice/cli/cosyvoice.py
 
-      - name: Generate one current-news F01 voice
+      - name: Keep this lane generating and publishing one voice at a time
         env:
+          SLOT: ${{ matrix.slot }}
           HF_HUB_DISABLE_XET: "1"
           WSYUE_ROOT: /tmp/WenetSpeech-Yue
           COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
           COSY_ARTICLE_MAX_TEXT_CHARS: "260"
-          COSY_SHARD_INDEX: ${{ matrix.slot }}
           COSY_SHARD_COUNT: "10"
           COSY_SHARD_ONE_ARTICLE: "1"
-        run: python scripts/generate_cosyvoice_shard.py
-
-      - name: Publish this voice immediately to main
-        env:
-          SLOT: ${{ matrix.slot }}
+          COSY_SHARD_STABLE_SLOT: "1"
         run: |
           set -euo pipefail
-          SHARD="artifacts/cosyvoice-shards/shard-${SLOT}.json"
-          test -f "$SHARD"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          if python - "$SHARD" <<'PY'
+          for cycle in $(seq 1 12); do
+            echo "=== F01 worker slot ${SLOT} cycle ${cycle}/12 ==="
+            git fetch origin main
+            git reset --hard origin/main
+            rm -rf artifacts/cosyvoice-shards
+
+            COSY_SHARD_INDEX="${SLOT}" python scripts/generate_cosyvoice_shard.py
+            SHARD="artifacts/cosyvoice-shards/shard-${SLOT}.json"
+            test -f "$SHARD"
+
+            if python - "$SHARD" <<'PY'
           import json, sys
           data = json.load(open(sys.argv[1], encoding='utf-8'))
           sys.exit(0 if len(data.get('entries') or {}) == 0 else 1)
           PY
-          then
-            echo "No missing article assigned to slot ${SLOT}; nothing to publish."
-            exit 0
-          fi
-
-          cp "$SHARD" /tmp/cosyvoice-one-article.json
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          for attempt in 1 2 3 4 5 6 7 8; do
-            echo "Immediate F01 publish attempt ${attempt}/8 for slot ${SLOT}"
-            git fetch origin main
-            git reset --hard origin/main
-
-            python scripts/publish_cosyvoice_article.py /tmp/cosyvoice-one-article.json
-            git add -- data/tts-manifest.json assets/audio/cosyvoice/articles assets/audio/cosyvoice/latest-lead.wav
-
-            if git diff --cached --quiet; then
-              echo "Generated article is no longer current or is already published; no commit needed."
+            then
+              echo "Worker slot ${SLOT} has no more current F01 work."
               exit 0
             fi
 
-            git commit -m "Publish F01 voice slot ${SLOT}"
-            if git push origin HEAD:main; then
-              echo "COSYVOICE_ONE_ARTICLE_MAIN_PUSH_PASS slot=${SLOT}"
-              exit 0
-            fi
+            cp "$SHARD" /tmp/cosyvoice-one-article-${SLOT}.json
+            published=false
+            for attempt in 1 2 3 4 5 6 7 8; do
+              echo "Immediate publish attempt ${attempt}/8 for slot ${SLOT}, cycle ${cycle}"
+              git fetch origin main
+              git reset --hard origin/main
 
-            echo "Main advanced while this voice was publishing; retrying against latest manifest."
-            sleep $((attempt * 2))
+              python scripts/publish_cosyvoice_article.py "/tmp/cosyvoice-one-article-${SLOT}.json"
+              git add -- data/tts-manifest.json assets/audio/cosyvoice/articles assets/audio/cosyvoice/latest-lead.wav
+
+              if git diff --cached --quiet; then
+                echo "Generated article is stale or already published; move to the next current item."
+                published=true
+                break
+              fi
+
+              git commit -m "Publish F01 voice slot ${SLOT} cycle ${cycle}"
+              if git push origin HEAD:main; then
+                echo "COSYVOICE_ONE_ARTICLE_MAIN_PUSH_PASS slot=${SLOT} cycle=${cycle}"
+                published=true
+                break
+              fi
+
+              echo "Main advanced while this voice was publishing; retry against the newest cumulative manifest."
+              sleep $((attempt * 2))
+            done
+
+            if [ "$published" != "true" ]; then
+              echo "Could not publish F01 voice after conflict retries." >&2
+              exit 1
+            fi
           done
 
-          echo "Could not publish F01 voice after conflict retries." >&2
-          exit 1
+          echo "Worker slot ${SLOT} reached its safety cycle limit; the next hourly run will continue any remaining backlog."
