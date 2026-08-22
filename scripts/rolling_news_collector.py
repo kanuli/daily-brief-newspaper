@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 HKT = timezone(timedelta(hours=8))
-USER_AGENT = "DailyBriefRollingCollector/1.2 (+https://github.com/kanuli/daily-brief-newspaper)"
+USER_AGENT = "DailyBriefRollingCollector/1.3 (+https://github.com/kanuli/daily-brief-newspaper)"
 RETENTION_HOURS = 8
 MAX_PER_DESK = 60
 GOOGLE_MIN_BEFORE_FALLBACK = 4
@@ -96,7 +96,19 @@ LOCALES = {
 }
 
 FOOTBALL_FALSE_POSITIVE = re.compile(
-    r"\b(?:NFL|NCAA|MLB|NBA|quarterback|touchdown|super bowl|pro bowl|baseball)\b|\bAFC\s+(?:East|West|North|South)\b",
+    r"\b(?:NFL|NCAA|MLB|NBA|WNBA|quarterback|touchdown|super bowl|pro bowl|baseball|formula\s*1|\bF1\b)\b|\bAFC\s+(?:East|West|North|South)\b",
+    re.I,
+)
+
+FOOTBALL_POSITIVE = re.compile(
+    r"football|soccer|premier league|\bEFL\b|la liga|serie a|bundesliga|ligue 1|"
+    r"\bUEFA\b|\bFIFA\b|champions league|europa league|conference league|j[- ]?league|"
+    r"hong kong premier league|\bHKPL\b|\bHKFA\b|afc champions league|"
+    r"arsenal|chelsea|liverpool|tottenham|manchester united|man utd|man united|manchester city|"
+    r"newcastle|aston villa|everton|brighton|west ham|fulham|brentford|hull city|wrexham|watford|"
+    r"sunderland|ipswich|afc wimbledon|barcelona|real madrid|atletico|juventus|inter milan|ac milan|"
+    r"bayern|dortmund|paris saint-germain|\bpsg\b|marseille|portland thorns|"
+    r"transfer|striker|midfielder|defender|goalkeeper|manager|fixture|lineup|team news|goal\.com|transfermarkt",
     re.I,
 )
 
@@ -155,18 +167,21 @@ def candidate_is_fresh(desk: str, pub: datetime | None, discovered: datetime) ->
 
 
 def candidate_is_relevant(desk: str, title: str, source: str) -> bool:
-    combined = f" {title} {source} ".lower()
-    if desk == "football" and FOOTBALL_FALSE_POSITIVE.search(combined):
-        return False
+    combined = f" {title} {source} "
+    lowered = combined.lower()
+    if desk == "football":
+        if FOOTBALL_FALSE_POSITIVE.search(combined):
+            return False
+        return bool(FOOTBALL_POSITIVE.search(combined))
     if desk == "manchester-united":
         return (
-            "manchester united" in combined
-            or "man utd" in combined
-            or "man united" in combined
-            or "manchester united website" in combined
+            "manchester united" in lowered
+            or "man utd" in lowered
+            or "man united" in lowered
+            or "manchester united website" in lowered
         )
     if desk == "stock-news":
-        return any(term in combined for term in STOCK_TERMS)
+        return any(term in lowered for term in STOCK_TERMS)
     return True
 
 
@@ -339,7 +354,7 @@ def collect(existing: dict[str, Any]) -> dict[str, Any]:
         "notes": [
             "Staging is discovery only; candidates are not published without independent verification.",
             "Football is researched as the full worldwide football news desk; results are one normal candidate type among transfers, injuries, fixtures, club, league and international developments.",
-            "American-football/baseball false positives and non-Manchester-United noise are filtered before staging.",
+            "Football staging requires positive football relevance and filters American-football/baseball/F1 noise; Manchester United and Stock News use desk-specific relevance filters.",
             "Candidates with an explicit publication time older than the desk freshness limit are discarded before staging.",
         ],
     }
