@@ -14,8 +14,34 @@ concurrency:
   group: "cosyvoice2-yue-f01-prepublish-current-draft"
   cancel-in-progress: true
 
+env:
+  F01_RELEASE_TAG: f01-voice-cache
+  F01_PUBLIC_BASE: https://github.com/${{ github.repository }}/releases/download/f01-voice-cache
+
 jobs:
+  ensure-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ensure rolling F01 release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$F01_RELEASE_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Rolling F01 release already exists."
+          else
+            gh release create "$F01_RELEASE_TAG" \
+              --repo "${{ github.repository }}" \
+              --target main \
+              --title "Rolling F01 Voice Cache" \
+              --notes "Transient CosyVoice2-Yue F01 audio. Assets are automatically pruned after approximately 48 hours." \
+              --prerelease || gh release view "$F01_RELEASE_TAG" --repo "${{ github.repository }}" >/dev/null
+          fi
+
   worker:
+    needs: ensure-release
     runs-on: ubuntu-latest
     timeout-minutes: 50
     strategy:
@@ -73,11 +99,13 @@ jobs:
       - name: Prebuild verified draft voices independently
         env:
           SLOT: ${{ matrix.slot }}
+          GH_TOKEN: ${{ github.token }}
           HF_HUB_DISABLE_XET: "1"
           WSYUE_ROOT: /tmp/WenetSpeech-Yue
           COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
           COSY_ARTICLE_MAX_TEXT_CHARS: "260"
           COSY_SHARD_COUNT: "10"
+          COSY_PUBLIC_AUDIO_BASE: ${{ env.F01_PUBLIC_BASE }}
         shell: bash
         run: |
           set -euo pipefail
@@ -105,22 +133,33 @@ jobs:
             fi
 
             cp "$SHARD" "/tmp/prepublish-shard-${SLOT}.json"
+            ARTIFACT=$(python - "/tmp/prepublish-shard-${SLOT}.json" <<'PY'
+          import json, sys
+          data=json.load(open(sys.argv[1],encoding='utf-8'))
+          entry=next(iter((data.get('entries') or {}).values()))
+          print(entry['artifactAudio'])
+          PY
+            )
+            test -f "$ARTIFACT"
+            gh release upload "$F01_RELEASE_TAG" "$ARTIFACT" --clobber --repo "${{ github.repository }}"
+            echo "Prepublish F01 release asset uploaded: $(basename "$ARTIFACT")"
+
             published=false
             for attempt in 1 2 3 4 5 6 7 8; do
               git fetch origin prepublish-news
               git reset --hard origin/prepublish-news
               python scripts/publish_cosyvoice_prepublish.py "/tmp/prepublish-shard-${SLOT}.json"
-              git add -- data/prepublish-tts-manifest.json assets/audio/cosyvoice/articles assets/audio/cosyvoice/prepublish-latest-lead.wav
+              git add -- data/prepublish-tts-manifest.json
 
               if git diff --cached --quiet; then
-                echo "Draft changed or voice already prepared; continue."
+                echo "Draft changed or voice already prepared; release cleanup will remove any orphan asset later."
                 published=true
                 break
               fi
 
               git commit -m "Prebuild F01 voice slot ${SLOT} cycle ${cycle}"
               if git push origin HEAD:prepublish-news; then
-                echo "COSYVOICE_PREPUBLISH_PUSH_PASS slot=${SLOT} cycle=${cycle}"
+                echo "COSYVOICE_PREPUBLISH_PUSH_PASS slot=${SLOT} cycle=${cycle} storage=github-release"
                 published=true
                 break
               fi
@@ -128,7 +167,7 @@ jobs:
             done
 
             if [ "$published" != "true" ]; then
-              echo "Could not publish prebuilt F01 voice after retries." >&2
+              echo "Could not publish prebuilt F01 manifest after retries." >&2
               exit 1
             fi
           done
