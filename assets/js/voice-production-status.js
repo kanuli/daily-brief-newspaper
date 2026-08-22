@@ -2,16 +2,18 @@
   "use strict";
 
   const MANIFEST_PATH = "data/tts-manifest.json";
-  const WORKFLOW_API = "https://api.github.com/repos/kanuli/daily-brief-newspaper/actions/workflows/cosyvoice-publish.yml/runs?branch=main&per_page=1";
+  const WORKFLOW_API = "https://api.github.com/repos/kanuli/daily-brief-newspaper/actions/workflows/cosyvoice-publish.yml/runs?branch=main&per_page=6";
   const MAX_PARALLEL = 10;
   const MANIFEST_REFRESH_MS = 15000;
-  const WORKFLOW_REFRESH_MS = 60000;
-  const RECENT_PUBLISH_MS = 20 * 60 * 1000;
+  const WORKFLOW_REFRESH_MS = 45000;
+  const RECENT_PUBLISH_MS = 8 * 60 * 1000;
+  const HARD_FAILURE_MS = 30 * 60 * 1000;
+  const ACTIVE_STATUSES = new Set(["in_progress", "queued", "waiting", "pending", "requested"]);
 
   let manifestTimer = null;
   let workflowTimer = null;
   let latestManifest = null;
-  let latestWorkflow = null;
+  let latestWorkflows = [];
 
   function ensureStyles() {
     if (document.getElementById("voice-production-status-style")) return;
@@ -24,8 +26,7 @@
       .voice-progress-track{height:8px;margin:6px 0 5px;border:1px solid #111;background:#ddd5c7;overflow:hidden}
       .voice-progress-fill{display:block;height:100%;width:0;background:#198754;transition:width .25s ease}
       .voice-progress-stats{display:flex!important;flex-wrap:wrap;gap:4px 10px;color:#312d27!important;font-weight:800}
-      .voice-progress-stats span{white-space:nowrap}
-      .voice-progress-detail{margin-top:4px!important}
+      .voice-progress-stats span{white-space:nowrap}.voice-progress-detail{margin-top:4px!important}
       .voice-production-row.status-warn .voice-progress-fill{background:#c17b00}
       .voice-production-row.status-fail .voice-progress-fill{background:#b00016}
     `;
@@ -42,13 +43,8 @@
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return "—";
     return new Intl.DateTimeFormat("zh-HK", {
-      timeZone: "Asia/Hong_Kong",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false
+      timeZone: "Asia/Hong_Kong", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
     }).format(date) + " HKT";
   }
 
@@ -62,11 +58,16 @@
   }
 
   function workflowState() {
-    const run = latestWorkflow;
+    const active = latestWorkflows.find((run) => ACTIVE_STATUSES.has(run?.status));
+    if (active) {
+      if (active.status === "in_progress") return { state: "active", creating: null, label: "10-worker pool active" };
+      return { state: "queued", creating: 0, label: "Worker pool queued / starting" };
+    }
+
+    const run = latestWorkflows[0];
     if (!run) return { state: "unknown", creating: null, label: "Checking workers" };
-    if (run.status === "in_progress") return { state: "active", creating: null, label: "10-worker pool active" };
-    if (run.status === "queued" || run.status === "waiting" || run.status === "pending") return { state: "queued", creating: 0, label: "Worker pool queued" };
     if (run.status === "completed" && run.conclusion === "success") return { state: "idle", creating: 0, label: "Worker run completed" };
+    if (run.status === "completed" && run.conclusion === "cancelled") return { state: "cancelled", creating: 0, label: "Previous worker run cancelled / replaced" };
     if (run.status === "completed" && run.conclusion) return { state: "failed", creating: 0, label: `Worker run ${run.conclusion}` };
     return { state: "unknown", creating: null, label: run.status || "Checking workers" };
   }
@@ -78,17 +79,44 @@
     const snap = manifestSnapshot(latestManifest);
     const wf = workflowState();
     const lastPublish = Date.parse(latestManifest.generatedAt || "");
-    const recentlyPublishing = Number.isFinite(lastPublish) && (Date.now() - lastPublish) <= RECENT_PUBLISH_MS;
+    const ageMs = Number.isFinite(lastPublish) ? Math.max(0, Date.now() - lastPublish) : Infinity;
+    const recentlyPublishing = ageMs <= RECENT_PUBLISH_MS;
+    const hardStale = ageMs >= HARD_FAILURE_MS;
 
     let creating = wf.creating;
     let state = wf.state;
     let stateLabel = wf.label;
+
     if (wf.state === "active") creating = Math.min(MAX_PARALLEL, snap.pending);
-    if (wf.state === "unknown" && snap.pending > 0 && recentlyPublishing) {
-      creating = Math.min(MAX_PARALLEL, snap.pending);
-      state = "active";
-      stateLabel = "Publishing recently · worker API pending";
+
+    if (snap.pending > 0 && wf.state === "cancelled") {
+      creating = 0;
+      state = hardStale ? "failed" : "maintenance";
+      stateLabel = recentlyPublishing
+        ? "Previous run replaced · recent F01 publishing detected"
+        : hardStale
+          ? "Worker run cancelled · no F01 progress for 30+ min"
+          : "Worker run cancelled · auto maintenance will restart it";
     }
+
+    if (snap.pending > 0 && wf.state === "idle") {
+      state = "maintenance";
+      stateLabel = "Worker run completed · auto maintenance continuing backlog";
+    }
+
+    if (snap.pending > 0 && wf.state === "failed") {
+      state = hardStale ? "failed" : "maintenance";
+      stateLabel = hardStale
+        ? `${wf.label} · no F01 progress for 30+ min`
+        : `${wf.label} · auto maintenance retrying`;
+    }
+
+    if (snap.pending > 0 && wf.state === "unknown" && recentlyPublishing) {
+      state = "active";
+      creating = null;
+      stateLabel = "Recent F01 publishing detected · worker API pending";
+    }
+
     if (snap.pending === 0) {
       creating = 0;
       state = "complete";
@@ -107,7 +135,8 @@
     row.querySelector(".voice-creating").textContent = creating == null
       ? `Creating ?/${snap.pending} pending`
       : `Creating ${creating}/${snap.pending} pending`;
-    row.querySelector(".voice-progress-detail").textContent = `${stateLabel} · Last voice ${formatHKT(latestManifest.generatedAt)} · F01 only`;
+    const maintenance = snap.pending > 0 ? " · Auto maintenance: ON" : "";
+    row.querySelector(".voice-progress-detail").textContent = `${stateLabel}${maintenance} · Last voice ${formatHKT(latestManifest.generatedAt)} · F01 only`;
 
     const systemLabel = document.querySelector("#system-status-button .system-status-label");
     if (systemLabel) systemLabel.textContent = "SYSTEM";
@@ -135,26 +164,15 @@
 
   async function loadWorkflow() {
     try {
-      const response = await fetch(WORKFLOW_API, {
-        cache: "no-store",
-        headers: { "Accept": "application/vnd.github+json" }
-      });
+      const response = await fetch(WORKFLOW_API, { cache: "no-store", headers: { "Accept": "application/vnd.github+json" } });
       if (!response.ok) throw new Error(`workflow HTTP ${response.status}`);
       const data = await response.json();
-      latestWorkflow = Array.isArray(data.workflow_runs) ? (data.workflow_runs[0] || null) : null;
+      latestWorkflows = Array.isArray(data.workflow_runs) ? data.workflow_runs : [];
     } catch (error) {
       console.warn("Voice production workflow status unavailable", error);
-      latestWorkflow = null;
+      latestWorkflows = [];
     }
     render();
-  }
-
-  function startLiveRefresh() {
-    stopLiveRefresh();
-    loadManifest();
-    loadWorkflow();
-    manifestTimer = window.setInterval(loadManifest, MANIFEST_REFRESH_MS);
-    workflowTimer = window.setInterval(loadWorkflow, WORKFLOW_REFRESH_MS);
   }
 
   function stopLiveRefresh() {
@@ -162,6 +180,13 @@
     if (workflowTimer) window.clearInterval(workflowTimer);
     manifestTimer = null;
     workflowTimer = null;
+  }
+
+  function startLiveRefresh() {
+    stopLiveRefresh();
+    loadManifest(); loadWorkflow();
+    manifestTimer = window.setInterval(loadManifest, MANIFEST_REFRESH_MS);
+    workflowTimer = window.setInterval(loadWorkflow, WORKFLOW_REFRESH_MS);
   }
 
   function mount() {
@@ -187,24 +212,17 @@
     else panel.querySelector(".system-panel-links")?.insertAdjacentElement("beforebegin", row);
 
     const button = document.getElementById("system-status-button");
-    const syncOpenState = () => {
-      if (!panel.hidden) startLiveRefresh();
-      else stopLiveRefresh();
-    };
+    const syncOpenState = () => panel.hidden ? stopLiveRefresh() : startLiveRefresh();
     button?.addEventListener("click", () => window.setTimeout(syncOpenState, 0));
     panel.querySelector(".system-panel-close")?.addEventListener("click", () => window.setTimeout(syncOpenState, 0));
-
     const observer = new MutationObserver(syncOpenState);
     observer.observe(panel, { attributes: true, attributeFilter: ["hidden"] });
-
     loadManifest();
     return true;
   }
 
   if (!mount()) {
-    const observer = new MutationObserver(() => {
-      if (mount()) observer.disconnect();
-    });
+    const observer = new MutationObserver(() => { if (mount()) observer.disconnect(); });
     observer.observe(document.documentElement, { childList: true, subtree: true });
   }
 })();
