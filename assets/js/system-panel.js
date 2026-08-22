@@ -2,8 +2,8 @@
   "use strict";
 
   const DESKS = [
-    ["index.html", "頭版"], ["world.html", "世界"], ["asia.html", "亞洲"], ["hong-kong.html", "香港"],
-    ["japan.html", "日本"], ["finance.html", "📈 財經"], ["stocks.html", "📊 Stock News"], ["technology.html", "AI / 科技"],
+    ["world.html", "世界"], ["asia.html", "亞洲"], ["hong-kong.html", "香港"], ["japan.html", "日本"],
+    ["finance.html", "📈 財經"], ["stocks.html", "📊 Stock News"], ["technology.html", "AI / 科技"],
     ["manga-anime.html", "漫畫 / Anime"], ["manchester-united.html", "Manchester United"], ["football.html", "Football"], ["archive.html", "Archive"]
   ];
   const LEAD_AUDIO_PATH = "assets/audio/cosyvoice/latest-lead.wav";
@@ -26,11 +26,27 @@
     const nav = document.querySelector('.section-nav[aria-label="新聞分版"]');
     if (!nav) return;
     const page = (location.pathname.split("/").pop() || "index.html").toLowerCase();
-    const links = ['<a class="live-nav" href="live.html">Live</a>', ...DESKS.map(([href, label]) => {
-      const target = href.split("#")[0].toLowerCase();
-      return `<a href="${href}"${target === page ? ' aria-current="page"' : ""}>${label}</a>`;
-    })];
+    const homeCurrent = page === "index.html";
+    const liveCurrent = page === "live.html";
+    const links = [
+      `<a class="home-nav" href="index.html#daily-edition"${homeCurrent ? ' aria-current="page"' : ""}>頭版</a>`,
+      `<a class="live-nav" href="live.html"${liveCurrent ? ' aria-current="page"' : ""}>Live</a>`,
+      ...DESKS.map(([href, label]) => {
+        const target = href.split("#")[0].toLowerCase();
+        return `<a href="${href}"${target === page ? ' aria-current="page"' : ""}>${label}</a>`;
+      })
+    ];
     nav.innerHTML = links.join("");
+
+    // On the front page, 頭版 always means the Daily Edition, never the Live summary.
+    nav.querySelector(".home-nav")?.addEventListener("click", (event) => {
+      if (!homeCurrent) return;
+      const daily = document.getElementById("daily-edition");
+      if (!daily) return;
+      event.preventDefault();
+      daily.scrollIntoView({ block: "start", behavior: "auto" });
+      if (location.hash !== "#daily-edition") history.replaceState(null, "", "#daily-edition");
+    });
   }
 
   function removeVoiceLabLinks() {
@@ -58,7 +74,7 @@
 
   function loadSiteTTS() {
     if (document.body.dataset.page === "archive") return;
-    inject("assets/js/site-tts-v5.js?v=20260822-1636play", "data-site-tts");
+    inject("assets/js/site-tts-v5.js?v=20260822-1705allvoice", "data-site-tts");
   }
 
   function ensureMainLeadAudio() {
@@ -81,6 +97,7 @@
       return;
     }
 
+    window.SiteTTS?.stop?.();
     const promise = audio.play();
     button.textContent = "⏸ 廣東話朗讀";
     if (promise && typeof promise.catch === "function") {
@@ -107,8 +124,9 @@
     voiceButton.id = "main-site-voice-button";
     voiceButton.type = "button";
     voiceButton.textContent = "🔊 廣東話朗讀";
-    voiceButton.setAttribute("aria-label", "播放 CosyVoice2-Yue 廣東話新聞朗讀");
+    voiceButton.setAttribute("aria-label", "播放 CosyVoice2-Yue 廣東話頭條朗讀");
     voiceButton.addEventListener("click", () => playMainLeadFromClick(voiceButton));
+    mainLeadAudio.addEventListener("ended", () => { voiceButton.textContent = "🔊 廣東話朗讀"; });
     document.body.appendChild(voiceButton);
   }
 
