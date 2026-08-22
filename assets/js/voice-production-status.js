@@ -110,9 +110,9 @@
     row.querySelector(".voice-progress-detail").textContent = `${stateLabel} · Last voice ${formatHKT(latestManifest.generatedAt)} · F01 only`;
 
     const systemLabel = document.querySelector("#system-status-button .system-status-label");
-    if (systemLabel) systemLabel.textContent = `SYSTEM · VOICE ${percentText}`;
+    if (systemLabel) systemLabel.textContent = "SYSTEM";
     const systemButton = document.getElementById("system-status-button");
-    if (systemButton) systemButton.title = `Voice ${percentText} · Done ${snap.done}/${snap.total} · Pending ${snap.pending}`;
+    if (systemButton) systemButton.title = "System status";
   }
 
   async function loadManifest() {
