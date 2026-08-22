@@ -15,6 +15,8 @@
     const style = document.createElement("style");
     style.id = "mobile-two-row-nav-style";
     style.textContent = `
+      .section-nav a[aria-current="page"]{background:#b00016!important}
+      .section-nav .live-nav:not([aria-current="page"]){background:transparent!important}
       @media (max-width:620px){.section-nav{display:grid!important;grid-template-columns:repeat(7,minmax(0,1fr))!important;grid-auto-flow:row!important;overflow:visible!important;width:100%!important;flex-wrap:unset!important}.section-nav a{display:flex!important;align-items:center!important;justify-content:center!important;min-width:0!important;padding:7px 2px!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:center!important;font-size:9.5px!important;line-height:1.12!important;border-right:1px solid #444!important;border-bottom:1px solid #444!important}.section-nav a:nth-child(7n){border-right:0!important}.section-nav a:nth-last-child(-n+6){border-bottom:0!important}}
       #main-site-voice-button{position:fixed;right:14px;bottom:72px;z-index:9997;border:2px solid #111;background:#fff;color:#111;padding:10px 13px;border-radius:999px;font:800 12px/1.2 "Noto Sans TC",sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.18);cursor:pointer}
       #main-site-voice-button:hover{background:#111;color:#fff}#main-site-voice-button:disabled{opacity:.6;cursor:wait}@media(max-width:620px){#main-site-voice-button{right:10px;bottom:68px;padding:9px 11px;font-size:11px}}
@@ -29,8 +31,8 @@
     const homeCurrent = page === "index.html";
     const liveCurrent = page === "live.html";
     const links = [
-      `<a class="home-nav" href="index.html#daily-edition"${homeCurrent ? ' aria-current="page"' : ""}>頭版</a>`,
       `<a class="live-nav" href="live.html"${liveCurrent ? ' aria-current="page"' : ""}>Live</a>`,
+      `<a class="home-nav" href="index.html#daily-edition"${homeCurrent ? ' aria-current="page"' : ""}>頭版</a>`,
       ...DESKS.map(([href, label]) => {
         const target = href.split("#")[0].toLowerCase();
         return `<a href="${href}"${target === page ? ' aria-current="page"' : ""}>${label}</a>`;
@@ -138,7 +140,7 @@
     button.innerHTML = '<span class="system-status-dot" aria-hidden="true"></span><span class="system-status-label">SYSTEM</span>';
     const panel = document.createElement("aside");
     panel.id = "system-status-panel"; panel.className = "system-status-panel"; panel.hidden = true;
-    panel.innerHTML = `<div class="system-panel-head"><div><strong>System Status</strong><span>Maintenance & Monitoring</span></div><button type="button" class="system-panel-close" aria-label="關閉">×</button></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Website</strong><small>Static safe mode · no background monitoring loop</small></div></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Daily / Live / Stocks</strong><small>Daily + Hourly Live + Rolling Desk + Stock News JSON are publishing sources</small></div></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Cantonese Voice</strong><small>CosyVoice2-Yue · F01 female only · all current news</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>GitHub Pages / Discord</strong><small>Deployment and push delivery are checked externally</small></div></div><div class="system-panel-links"><a href="https://github.com/kanuli/daily-brief-newspaper/actions" target="_blank" rel="noopener noreferrer">GitHub Actions ↗</a><a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">Repository ↗</a></div>`;
+    panel.innerHTML = `<div class="system-panel-head"><div><strong>System Status</strong><span>Maintenance & Monitoring</span></div><button type="button" class="system-panel-close" aria-label="關閉">×</button></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Website</strong><small>Static safe mode · no background monitoring loop</small></div></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Daily / Live / Stocks</strong><small>Daily + Hourly Live + Rolling Desk + Stock News JSON are publishing sources</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>Cantonese Voice</strong><small>CosyVoice2-Yue · F01 female only · per-article generation</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>GitHub Pages / Discord</strong><small>Deployment and push delivery are checked externally</small></div></div><div class="system-panel-links"><a href="https://github.com/kanuli/daily-brief-newspaper/actions" target="_blank" rel="noopener noreferrer">GitHub Actions ↗</a><a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">Repository ↗</a></div>`;
     function setOpen(open) { panel.hidden = !open; button.setAttribute("aria-expanded", String(open)); }
     button.addEventListener("click", () => setOpen(panel.hidden));
     panel.querySelector(".system-panel-close")?.addEventListener("click", () => setOpen(false));

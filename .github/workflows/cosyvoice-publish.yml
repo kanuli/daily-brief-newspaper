@@ -12,6 +12,8 @@ on:
       - "data/editorial-overrides/**"
       - "scripts/generate_cosyvoice_lead.py"
       - "scripts/generate_cosyvoice_all.py"
+      - "scripts/generate_cosyvoice_shard.py"
+      - "scripts/merge_cosyvoice_shards.py"
       - "scripts/check_live_cosyvoice_pages.py"
       - ".github/workflows/cosyvoice-publish.yml"
   workflow_dispatch:
@@ -21,22 +23,27 @@ permissions:
   pages: write
   id-token: write
 
+# A new hourly news snapshot must supersede stale synthesis. The old serial
+# workflow queued every hourly update and could never catch up.
 concurrency:
   group: "cosyvoice2-yue-f01-all-news"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  generate-and-publish:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  generate-shards:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     steps:
-      - name: Checkout latest main
+      - name: Checkout triggering news snapshot
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: ${{ github.sha }}
+          fetch-depth: 1
 
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
@@ -67,24 +74,61 @@ jobs:
             "tensorboard==2.14.0" "transformers==4.51.3" "wetext==0.0.4" \
             "wget==3.2" "huggingface_hub>=0.30,<2" "tqdm>=4.66"
 
+      - name: Restore CosyVoice2-Yue model cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/Cosyvoice2-Yue
+          key: cosyvoice2-yue-f01-cpu-v1
+
       - name: Clone official WenetSpeech-Yue CosyVoice code
         run: |
           git clone --depth 1 --recursive https://github.com/ASLP-lab/WenetSpeech-Yue.git /tmp/WenetSpeech-Yue
           test -f /tmp/WenetSpeech-Yue/CosyVoice2-Yue/cosyvoice/cli/cosyvoice.py
 
-      - name: Generate or reuse F01 WAV for every current news story
+      - name: Generate this F01 news shard
         env:
           HF_HUB_DISABLE_XET: "1"
           WSYUE_ROOT: /tmp/WenetSpeech-Yue
           COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
-          COSY_ARTICLE_MAX_TEXT_CHARS: "340"
-        run: python scripts/generate_cosyvoice_all.py
+          COSY_ARTICLE_MAX_TEXT_CHARS: "260"
+          COSY_SHARD_INDEX: ${{ matrix.shard }}
+          COSY_SHARD_COUNT: "10"
+        run: python scripts/generate_cosyvoice_shard.py
+
+      - name: Upload F01 shard
+        uses: actions/upload-artifact@v4
+        with:
+          name: cosyvoice-f01-shard-${{ matrix.shard }}
+          path: artifacts/cosyvoice-shards
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-and-publish:
+    needs: generate-shards
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout triggering news snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Download all F01 shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cosyvoice-f01-shard-*
+          path: artifacts/cosyvoice-shards
+          merge-multiple: true
+
+      - name: Merge shards into complete F01 manifest
+        run: python scripts/merge_cosyvoice_shards.py
 
       - name: Verify complete F01 manifest and PCM16 audio set
         run: |
-          test -s assets/audio/cosyvoice/latest-lead.wav
-          codec="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 assets/audio/cosyvoice/latest-lead.wav)"
-          test "$codec" = "pcm_s16le"
           python - <<'PY'
           import json, pathlib, wave
           manifest = json.load(open('data/tts-manifest.json', encoding='utf-8'))
@@ -94,26 +138,38 @@ jobs:
           assert manifest['language'] == 'yue-HK'
           assert manifest['pronunciationPolicy'] == 'cantonese-only'
           assert manifest['coveragePolicy'] == 'all-current-news-f01-only'
-          assert manifest['articleCount'] == manifest['collectedStoryCount']
-          assert manifest['articleCount'] == len(manifest['articles'])
+          assert manifest['generationMode'] == 'parallel-10-shards'
+          assert manifest['articleCount'] == manifest['collectedStoryCount'] == len(manifest['articles'])
           assert manifest['articleCount'] > 1
           titles = set()
-          for key, entry in manifest['articles'].items():
+          for entry in manifest['articles'].values():
               assert entry['title'] not in titles, entry['title']
               titles.add(entry['title'])
               assert entry['wavEncoding'] == 'PCM16'
               assert entry['contentSha256']
               path = pathlib.Path(entry['audio'])
-              assert path.is_file(), path
-              assert path.stat().st_size == entry['bytes'] and entry['bytes'] > 50000
+              assert path.is_file() and path.stat().st_size == entry['bytes'] and entry['bytes'] > 50000
               with wave.open(str(path), 'rb') as wav:
                   assert wav.getsampwidth() == 2
-                  duration = wav.getnframes() / float(wav.getframerate())
-                  assert duration > 2
-          print(f"COSYVOICE_ALL_NEWS_MANIFEST_PASS articles={manifest['articleCount']}")
+                  assert wav.getnframes() / float(wav.getframerate()) > 2
+          print(f"COSYVOICE_PARALLEL_ALL_NEWS_PASS articles={manifest['articleCount']}")
           PY
 
-      - name: Commit verified all-news F01 audio locally
+      - name: Refuse stale F01 snapshot
+        id: freshness
+        run: |
+          git fetch origin main
+          if git diff --quiet "$GITHUB_SHA" origin/main -- \
+            data/latest.json data/desk-latest.json data/live.json data/stocks-latest.json data/topic-more data/editorial-overrides; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+            echo "F01 snapshot still matches newest news data"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "A newer news snapshot exists; this run will not publish stale F01 audio."
+          fi
+
+      - name: Commit verified parallel F01 audio
+        if: steps.freshness.outputs.current == 'true'
         id: commit_audio
         run: |
           git config user.name "github-actions[bot]"
@@ -121,13 +177,13 @@ jobs:
           git add -- assets/audio/cosyvoice/latest-lead.wav assets/audio/cosyvoice/articles data/tts-manifest.json
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "All current F01 audio already published"
           else
-            git commit -m "Publish CosyVoice2-Yue F01 audio for all current news"
+            git commit -m "Publish parallel CosyVoice2-Yue F01 audio for current news"
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Rebase onto newest main and publish reusable F01 snapshot
+      - name: Publish reusable F01 snapshot to main
+        if: steps.freshness.outputs.current == 'true'
         run: |
           git fetch origin main
           if [ "${{ steps.commit_audio.outputs.changed }}" = "true" ]; then
@@ -137,49 +193,21 @@ jobs:
             git reset --hard origin/main
           fi
 
-      - name: Confirm F01 snapshot still covers newest news before deployment
-        id: coverage
-        run: |
-          if python - <<'PY'
-          import json, sys
-          sys.path.insert(0, 'scripts')
-          import generate_cosyvoice_all as gen
-          manifest = json.load(open('data/tts-manifest.json', encoding='utf-8'))
-          _, _, stories, _, _, source_set_sha, _ = gen.collect_current_stories()
-          titles = {gen.clean(entry.get('title')) for entry in (manifest.get('articles') or {}).values()}
-          current_titles = {gen.clean(story.get('title')) for story in stories}
-          if manifest.get('coveragePolicy') != 'all-current-news-f01-only':
-              print('F01 coverage policy missing')
-              sys.exit(1)
-          if manifest.get('sourceSetSha256') != source_set_sha:
-              print('News source changed during F01 generation; keep audio for reuse but do not deploy stale snapshot.')
-              sys.exit(1)
-          if titles != current_titles:
-              print(f'Title coverage mismatch manifest={len(titles)} current={len(current_titles)}')
-              sys.exit(1)
-          print(f'F01 snapshot current for {len(current_titles)} stories')
-          PY
-          then
-            echo "current=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "current=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Configure Pages after verified audio
-        if: steps.coverage.outputs.current == 'true'
+      - name: Configure Pages after verified F01 coverage
+        if: steps.freshness.outputs.current == 'true'
         uses: actions/configure-pages@v5
 
-      - name: Upload site including all F01 audio
-        if: steps.coverage.outputs.current == 'true'
+      - name: Upload site with matching news and F01 audio
+        if: steps.freshness.outputs.current == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: .
 
-      - name: Deploy site including all F01 audio
-        if: steps.coverage.outputs.current == 'true'
+      - name: Deploy site with matching news and F01 audio
+        if: steps.freshness.outputs.current == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
 
       - name: Verify live all-news F01 manifest and WAV availability
-        if: steps.coverage.outputs.current == 'true'
+        if: steps.freshness.outputs.current == 'true'
         run: python scripts/check_live_cosyvoice_pages.py
