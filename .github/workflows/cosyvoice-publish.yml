@@ -76,6 +76,8 @@ jobs:
         run: |
           test -s assets/audio/cosyvoice/latest-lead.wav
           ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 assets/audio/cosyvoice/latest-lead.wav
+          codec="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 assets/audio/cosyvoice/latest-lead.wav)"
+          test "$codec" = "pcm_s16le"
           python - <<'PY'
           import hashlib, json
           source = open('data/latest.json', 'rb').read()
@@ -87,9 +89,10 @@ jobs:
           assert manifest['leadId'] == latest['leadId']
           entry = manifest['articles'][latest['leadId']]
           assert entry['audio'] == 'assets/audio/cosyvoice/latest-lead.wav'
+          assert entry['wavEncoding'] == 'PCM16'
           assert entry['bytes'] > 50000
           assert entry['durationSeconds'] > 2
-          print('COSYVOICE_PRODUCTION_MANIFEST_PASS')
+          print('COSYVOICE_PRODUCTION_MANIFEST_PASS_PCM16')
           PY
 
       - name: Commit verified CosyVoice2-Yue audio locally
@@ -138,3 +141,6 @@ jobs:
       - name: Deploy site including verified CosyVoice audio
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Verify live CosyVoice2-Yue manifest and WAV
+        run: python scripts/check_live_cosyvoice_pages.py
