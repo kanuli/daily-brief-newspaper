@@ -90,7 +90,7 @@ jobs:
           test -s artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
           ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
 
-      - name: Generate two independent one-article F01 workers
+      - name: Generate first one-article F01 worker
         env:
           HF_HUB_DISABLE_XET: "1"
           WSYUE_ROOT: /tmp/WenetSpeech-Yue
@@ -99,11 +99,10 @@ jobs:
           COSY_SHARD_COUNT: "2"
           COSY_SHARD_EXPECTED_LIMIT: "3"
           COSY_SHARD_ONE_ARTICLE: "1"
-        run: |
-          COSY_SHARD_INDEX=0 python scripts/generate_cosyvoice_shard.py
-          COSY_SHARD_INDEX=1 python scripts/generate_cosyvoice_shard.py
+          COSY_SHARD_INDEX: "0"
+        run: python scripts/generate_cosyvoice_shard.py
 
-      - name: Publish first completed voice without waiting for second
+      - name: Publish first completed voice before second generation starts
         run: |
           python scripts/publish_cosyvoice_article.py artifacts/cosyvoice-shards/shard-0.json
           cp data/tts-manifest.json /tmp/manifest-after-first.json
@@ -117,6 +116,18 @@ jobs:
           assert m['pendingArticleCount'] == m['collectedStoryCount'] - m['articleCount']
           print(f"COSYVOICE_FIRST_IMMEDIATE_PUBLISH_PASS available={m['articleCount']} pending={m['pendingArticleCount']}")
           PY
+
+      - name: Generate second one-article F01 worker only after first publish
+        env:
+          HF_HUB_DISABLE_XET: "1"
+          WSYUE_ROOT: /tmp/WenetSpeech-Yue
+          COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
+          COSY_ARTICLE_MAX_TEXT_CHARS: "180"
+          COSY_SHARD_COUNT: "2"
+          COSY_SHARD_EXPECTED_LIMIT: "3"
+          COSY_SHARD_ONE_ARTICLE: "1"
+          COSY_SHARD_INDEX: "1"
+        run: python scripts/generate_cosyvoice_shard.py
 
       - name: Publish second completed voice independently
         run: |
