@@ -1,0 +1,219 @@
+name: Migrate F01 Audio To Rolling Release
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/cosyvoice-storage-migrate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "cosyvoice-f01-storage-migration"
+  cancel-in-progress: false
+
+env:
+  F01_RELEASE_TAG: f01-voice-cache
+  F01_PUBLIC_BASE: https://github.com/${{ github.repository }}/releases/download/f01-voice-cache
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout main with current audio tree
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Ensure rolling F01 release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$F01_RELEASE_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Rolling F01 release already exists."
+          else
+            gh release create "$F01_RELEASE_TAG" \
+              --repo "${{ github.repository }}" \
+              --target main \
+              --title "Rolling F01 Voice Cache" \
+              --notes "Transient CosyVoice2-Yue F01 audio. Assets are automatically pruned after approximately 48 hours." \
+              --prerelease || gh release view "$F01_RELEASE_TAG" --repo "${{ github.repository }}" >/dev/null
+          fi
+
+      - name: Prepare migration assets and rewrite current manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/f01-migration
+          mkdir -p /tmp/f01-migration
+          python - <<'PY'
+          import json
+          import shutil
+          from pathlib import Path
+
+          manifest_path = Path('data/tts-manifest.json')
+          if not manifest_path.is_file():
+              raise SystemExit('data/tts-manifest.json missing')
+          data = json.loads(manifest_path.read_text(encoding='utf-8'))
+          if data.get('engine') != 'ASLP-lab/Cosyvoice2-Yue' or data.get('voice') != 'F01 female reference':
+              raise SystemExit('unexpected TTS manifest')
+
+          out = Path('/tmp/f01-migration')
+          base = '${{ env.F01_PUBLIC_BASE }}'
+          copied = set()
+
+          for article_id, entry in (data.get('articles') or {}).items():
+              audio = str(entry.get('audio') or '')
+              if audio.startswith(('https://', 'http://')):
+                  continue
+              src = Path(audio)
+              if not src.is_file() or src.stat().st_size < 50000:
+                  print(f'MIGRATION_SKIP missing local audio article={article_id} path={audio}')
+                  continue
+              digest = str(entry.get('contentSha256') or '')
+              if src.name in {'latest-lead.wav', 'prepublish-latest-lead.wav'}:
+                  safe_id = ''.join(c if c.isalnum() or c in '._-' else '-' for c in str(article_id).lower()).strip('-._') or 'story'
+                  asset_name = f'{safe_id[:72]}-{digest[:12] or "legacy"}.wav'
+              else:
+                  asset_name = src.name
+              dst = out / asset_name
+              if asset_name not in copied:
+                  shutil.copyfile(src, dst)
+                  copied.add(asset_name)
+              entry['audio'] = f'{base}/{asset_name}'
+
+          # Upload legacy/orphan article WAVs too. They are harmless and the 48h
+          # retention job removes unreferenced copies automatically.
+          for src in Path('assets/audio/cosyvoice/articles').glob('*.wav') if Path('assets/audio/cosyvoice/articles').exists() else []:
+              if src.name in copied:
+                  continue
+              shutil.copyfile(src, out / src.name)
+              copied.add(src.name)
+
+          data['storageBackend'] = 'github-release'
+          data['retentionHours'] = 48
+          manifest_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print(f'F01_MIGRATION_PREPARED assets={len(copied)}')
+          PY
+
+      - name: Upload existing WAVs to rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          COUNT=0
+          shopt -s nullglob
+          for FILE in /tmp/f01-migration/*.wav; do
+            gh release upload "$F01_RELEASE_TAG" "$FILE" --clobber --repo "${{ github.repository }}"
+            COUNT=$((COUNT + 1))
+          done
+          echo "F01_MIGRATION_UPLOAD_PASS assets=${COUNT}"
+
+      - name: Verify release URLs exist before deleting working-tree WAVs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RELEASE_ID=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/releases/tags/${F01_RELEASE_TAG}" \
+            --jq .id)
+          gh api --paginate \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/releases/${RELEASE_ID}/assets?per_page=100" \
+            --jq '.[].name' > /tmp/release-asset-names.txt
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.parse import urlparse
+          data=json.loads(Path('data/tts-manifest.json').read_text(encoding='utf-8'))
+          names=set(Path('/tmp/release-asset-names.txt').read_text(encoding='utf-8').splitlines())
+          missing=[]
+          remote=0
+          for article_id, entry in (data.get('articles') or {}).items():
+              audio=str(entry.get('audio') or '')
+              if '/releases/download/f01-voice-cache/' not in audio:
+                  continue
+              remote += 1
+              name=Path(urlparse(audio).path).name
+              if name not in names:
+                  missing.append((article_id,name))
+          if missing:
+              raise SystemExit(f'release migration verification failed: {missing[:5]}')
+          if remote == 0:
+              raise SystemExit('release migration verification found zero remote manifest entries')
+          print(f'F01_MIGRATION_VERIFY_PASS remote_entries={remote} release_assets={len(names)}')
+          PY
+
+      - name: Remove current WAV copies from Git working tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          find assets/audio/cosyvoice -type f -name '*.wav' -print -delete 2>/dev/null || true
+          git add -A -- assets/audio/cosyvoice data/tts-manifest.json
+          echo "Remaining working-tree WAV count: $(find assets/audio/cosyvoice -type f -name '*.wav' 2>/dev/null | wc -l)"
+
+      - name: Commit migration without touching news publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --cached --quiet; then
+            echo "No local F01 WAVs remain to migrate."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Move F01 audio binaries to rolling release"
+          for attempt in 1 2 3 4 5 6; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo "F01_MIGRATION_MAIN_PUSH_PASS"
+              exit 0
+            fi
+            sleep $((attempt * 2))
+          done
+          echo "Could not push F01 storage migration." >&2
+          exit 1
+
+      - name: Sync cleaned TTS runtime to prepublish branch when safe
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main prepublish-news || true
+          MAIN_SHA=$(git rev-parse origin/main)
+          PRE_SHA=$(git rev-parse origin/prepublish-news 2>/dev/null || true)
+          if [ -z "$PRE_SHA" ]; then
+            git push origin "$MAIN_SHA":refs/heads/prepublish-news
+            echo "Created prepublish branch from cleaned main."
+            exit 0
+          fi
+
+          if git show origin/prepublish-news:data/prepublish.json >/dev/null 2>&1; then
+            echo "A verified draft exists; preserve it and only sync TTS runtime + remove legacy WAVs."
+            git checkout -B prepublish-sync origin/prepublish-news
+            git checkout origin/main -- \
+              .github/workflows/cosyvoice-prepublish.yml \
+              scripts/generate_cosyvoice_all.py \
+              scripts/generate_cosyvoice_prepublish_shard.py \
+              scripts/publish_cosyvoice_prepublish.py
+            find assets/audio/cosyvoice -type f -name '*.wav' -print -delete 2>/dev/null || true
+            git add -A -- .github/workflows/cosyvoice-prepublish.yml scripts assets/audio/cosyvoice
+            if git diff --cached --quiet; then
+              echo "Prepublish branch already clean."
+              exit 0
+            fi
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "Use release-backed F01 storage on prepublish branch"
+            git push origin HEAD:prepublish-news
+          else
+            echo "No verified draft exists; fast-reset prepublish branch to cleaned main runtime."
+            git push --force-with-lease=refs/heads/prepublish-news:${PRE_SHA} origin "$MAIN_SHA":refs/heads/prepublish-news
+          fi
