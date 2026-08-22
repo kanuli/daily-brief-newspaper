@@ -4,8 +4,6 @@ on:
   pull_request:
     paths:
       - "assets/js/site-tts-*.js"
-      - "assets/js/system-panel.js"
-      - "scripts/test_cosyvoice_local_cpu.py"
       - "scripts/generate_cosyvoice_lead.py"
       - "scripts/generate_cosyvoice_all.py"
       - "scripts/generate_cosyvoice_shard.py"
@@ -29,9 +27,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  cosyvoice-local-cpu:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout site repo
+        uses: actions/checkout@v4
+      - name: Verify immediate per-article F01 contract
+        run: python scripts/check_cosyvoice_pages_contract.py
+
+  independent-worker:
+    needs: contract
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        slot: [0, 1]
     steps:
       - name: Checkout site repo
         uses: actions/checkout@v4
@@ -40,14 +52,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-
-      - name: Verify CosyVoice Pages deployment contract
-        run: python scripts/check_cosyvoice_pages_contract.py
-
-      - name: Show runner capacity
-        run: |
-          free -h
-          df -h /
 
       - name: Install system audio libraries
         run: |
@@ -73,24 +77,18 @@ jobs:
             "tensorboard==2.14.0" "transformers==4.51.3" "wetext==0.0.4" \
             "wget==3.2" "huggingface_hub>=0.30,<2" "tqdm>=4.66"
 
+      - name: Restore CosyVoice2-Yue model cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/Cosyvoice2-Yue
+          key: cosyvoice2-yue-f01-cpu-v1
+
       - name: Clone official WenetSpeech-Yue CosyVoice code
         run: |
           git clone --depth 1 --recursive https://github.com/ASLP-lab/WenetSpeech-Yue.git /tmp/WenetSpeech-Yue
           test -f /tmp/WenetSpeech-Yue/CosyVoice2-Yue/cosyvoice/cli/cosyvoice.py
 
-      - name: Generate real Cantonese smoke WAV locally
-        env:
-          HF_HUB_DISABLE_XET: "1"
-          WSYUE_ROOT: /tmp/WenetSpeech-Yue
-          COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
-        run: python scripts/test_cosyvoice_local_cpu.py
-
-      - name: Verify smoke WAV
-        run: |
-          test -s artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
-          ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
-
-      - name: Generate first one-article F01 worker
+      - name: Generate this worker's one F01 voice
         env:
           HF_HUB_DISABLE_XET: "1"
           WSYUE_ROOT: /tmp/WenetSpeech-Yue
@@ -99,64 +97,44 @@ jobs:
           COSY_SHARD_COUNT: "2"
           COSY_SHARD_EXPECTED_LIMIT: "3"
           COSY_SHARD_ONE_ARTICLE: "1"
-          COSY_SHARD_INDEX: "0"
+          COSY_SHARD_INDEX: ${{ matrix.slot }}
         run: python scripts/generate_cosyvoice_shard.py
 
-      - name: Publish first completed voice before second generation starts
+      - name: Immediately publish only this worker's completed voice
+        env:
+          SLOT: ${{ matrix.slot }}
         run: |
-          python scripts/publish_cosyvoice_article.py artifacts/cosyvoice-shards/shard-0.json
-          cp data/tts-manifest.json /tmp/manifest-after-first.json
+          python scripts/publish_cosyvoice_article.py "artifacts/cosyvoice-shards/shard-${SLOT}.json"
           python - <<'PY'
-          import json
-          m = json.load(open('/tmp/manifest-after-first.json', encoding='utf-8'))
+          import json, pathlib, wave
+          m = json.load(open('data/tts-manifest.json', encoding='utf-8'))
           assert m['version'] >= 3
+          assert m['engine'] == 'ASLP-lab/Cosyvoice2-Yue'
+          assert m['voice'] == 'F01 female reference'
+          assert m['language'] == 'yue-HK'
           assert m['coveragePolicy'] == 'progressive-current-news-f01-only'
           assert m['generationMode'] == 'per-article-immediate-10-way'
           assert m['articleCount'] >= 1
           assert m['pendingArticleCount'] == m['collectedStoryCount'] - m['articleCount']
-          print(f"COSYVOICE_FIRST_IMMEDIATE_PUBLISH_PASS available={m['articleCount']} pending={m['pendingArticleCount']}")
+          assert m['lastPublishedArticleId'] in m['articles']
+          entry = m['articles'][m['lastPublishedArticleId']]
+          path = pathlib.Path(entry['audio'])
+          assert path.is_file() and path.stat().st_size > 50000
+          assert entry['wavEncoding'] == 'PCM16'
+          with wave.open(str(path), 'rb') as wav:
+              assert wav.getsampwidth() == 2
+              assert wav.getnframes() / float(wav.getframerate()) > 2
+          print(
+              f"COSYVOICE_INDEPENDENT_WORKER_PASS article={m['lastPublishedArticleId']} "
+              f"available={m['articleCount']} pending={m['pendingArticleCount']}"
+          )
           PY
 
-      - name: Generate second one-article F01 worker only after first publish
-        env:
-          HF_HUB_DISABLE_XET: "1"
-          WSYUE_ROOT: /tmp/WenetSpeech-Yue
-          COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
-          COSY_ARTICLE_MAX_TEXT_CHARS: "180"
-          COSY_SHARD_COUNT: "2"
-          COSY_SHARD_EXPECTED_LIMIT: "3"
-          COSY_SHARD_ONE_ARTICLE: "1"
-          COSY_SHARD_INDEX: "1"
-        run: python scripts/generate_cosyvoice_shard.py
-
-      - name: Publish second completed voice independently
-        run: |
-          python scripts/publish_cosyvoice_article.py artifacts/cosyvoice-shards/shard-1.json
-          python - <<'PY'
-          import json, pathlib, wave
-          first = json.load(open('/tmp/manifest-after-first.json', encoding='utf-8'))
-          second = json.load(open('data/tts-manifest.json', encoding='utf-8'))
-          assert second['version'] >= 3
-          assert second['coveragePolicy'] == 'progressive-current-news-f01-only'
-          assert second['generationMode'] == 'per-article-immediate-10-way'
-          assert second['articleCount'] > first['articleCount']
-          assert second['pendingArticleCount'] < first['pendingArticleCount']
-          for entry in second['articles'].values():
-              path = pathlib.Path(entry['audio'])
-              assert path.is_file() and path.stat().st_size > 50000
-              assert entry['wavEncoding'] == 'PCM16'
-              with wave.open(str(path), 'rb') as wav:
-                  assert wav.getsampwidth() == 2
-                  assert wav.getnframes() / float(wav.getframerate()) > 2
-          print(f"COSYVOICE_SECOND_IMMEDIATE_PUBLISH_PASS available={second['articleCount']} pending={second['pendingArticleCount']}")
-          PY
-
-      - name: Upload tested Cantonese audio
+      - name: Upload this worker's tested F01 result
         uses: actions/upload-artifact@v4
         with:
-          name: cosyvoice2-yue-tested-audio
+          name: cosyvoice2-yue-worker-${{ matrix.slot }}
           path: |
-            artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
             artifacts/cosyvoice-shards/**
             assets/audio/cosyvoice/latest-lead.wav
             assets/audio/cosyvoice/articles/*.wav
