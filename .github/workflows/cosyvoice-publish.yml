@@ -127,24 +127,59 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Rebase onto newest main and publish verified audio snapshot
-        if: steps.commit_audio.outputs.changed == 'true'
+      - name: Rebase onto newest main and publish reusable F01 snapshot
         run: |
           git fetch origin main
-          git rebase origin/main
-          git push origin HEAD:main
+          if [ "${{ steps.commit_audio.outputs.changed }}" = "true" ]; then
+            git rebase origin/main
+            git push origin HEAD:main
+          else
+            git reset --hard origin/main
+          fi
+
+      - name: Confirm F01 snapshot still covers newest news before deployment
+        id: coverage
+        run: |
+          if python - <<'PY'
+          import json, sys
+          sys.path.insert(0, 'scripts')
+          import generate_cosyvoice_all as gen
+          manifest = json.load(open('data/tts-manifest.json', encoding='utf-8'))
+          _, _, stories, _, _, source_set_sha, _ = gen.collect_current_stories()
+          titles = {gen.clean(entry.get('title')) for entry in (manifest.get('articles') or {}).values()}
+          current_titles = {gen.clean(story.get('title')) for story in stories}
+          if manifest.get('coveragePolicy') != 'all-current-news-f01-only':
+              print('F01 coverage policy missing')
+              sys.exit(1)
+          if manifest.get('sourceSetSha256') != source_set_sha:
+              print('News source changed during F01 generation; keep audio for reuse but do not deploy stale snapshot.')
+              sys.exit(1)
+          if titles != current_titles:
+              print(f'Title coverage mismatch manifest={len(titles)} current={len(current_titles)}')
+              sys.exit(1)
+          print(f'F01 snapshot current for {len(current_titles)} stories')
+          PY
+          then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Configure Pages after verified audio
+        if: steps.coverage.outputs.current == 'true'
         uses: actions/configure-pages@v5
 
       - name: Upload site including all F01 audio
+        if: steps.coverage.outputs.current == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: .
 
       - name: Deploy site including all F01 audio
+        if: steps.coverage.outputs.current == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
 
       - name: Verify live all-news F01 manifest and WAV availability
+        if: steps.coverage.outputs.current == 'true'
         run: python scripts/check_live_cosyvoice_pages.py
