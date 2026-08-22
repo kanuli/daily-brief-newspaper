@@ -4,11 +4,16 @@ on:
   pull_request:
     paths:
       - "assets/js/site-tts-*.js"
+      - "assets/js/system-panel.js"
       - "scripts/test_cosyvoice_local_cpu.py"
       - "scripts/generate_cosyvoice_lead.py"
+      - "scripts/generate_cosyvoice_all.py"
       - "scripts/check_cosyvoice_pages_contract.py"
       - "scripts/check_live_cosyvoice_pages.py"
       - "data/latest.json"
+      - "data/desk-latest.json"
+      - "data/live.json"
+      - "data/stocks-latest.json"
       - ".github/workflows/cosyvoice-smoke.yml"
       - ".github/workflows/cosyvoice-publish.yml"
       - ".github/workflows/pages.yml"
@@ -24,7 +29,7 @@ concurrency:
 jobs:
   cosyvoice-local-cpu:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout site repo
         uses: actions/checkout@v4
@@ -33,9 +38,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-
-      - name: Verify current live CosyVoice2-Yue manifest and WAV
-        run: python scripts/check_live_cosyvoice_pages.py
 
       - name: Verify CosyVoice Pages deployment contract
         run: python scripts/check_cosyvoice_pages_contract.py
@@ -91,34 +93,37 @@ jobs:
           test -s artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
           ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
 
-      - name: Generate production Daily lead WAV
+      - name: Generate two real non-lead F01 news WAVs with all-news pipeline
         env:
           HF_HUB_DISABLE_XET: "1"
           WSYUE_ROOT: /tmp/WenetSpeech-Yue
           COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
-        run: python scripts/generate_cosyvoice_lead.py
+          COSY_ARTICLE_MAX_TEXT_CHARS: "220"
+          COSY_MAX_NEW_ARTICLES: "2"
+        run: python scripts/generate_cosyvoice_all.py
 
-      - name: Verify production WAV and manifest
+      - name: Verify multi-article F01 manifest and WAVs
         run: |
           test -s assets/audio/cosyvoice/latest-lead.wav
-          ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 assets/audio/cosyvoice/latest-lead.wav
-          codec="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 assets/audio/cosyvoice/latest-lead.wav)"
-          test "$codec" = "pcm_s16le"
           python - <<'PY'
-          import hashlib, json
-          source = open('data/latest.json', 'rb').read()
-          latest = json.loads(source.decode('utf-8'))
+          import json, pathlib, wave
           manifest = json.load(open('data/tts-manifest.json', encoding='utf-8'))
+          assert manifest['version'] >= 2
           assert manifest['engine'] == 'ASLP-lab/Cosyvoice2-Yue'
           assert manifest['voice'] == 'F01 female reference'
-          assert manifest['sourceSha256'] == hashlib.sha256(source).hexdigest()
-          assert manifest['leadId'] == latest['leadId']
-          entry = manifest['articles'][latest['leadId']]
-          assert entry['audio'] == 'assets/audio/cosyvoice/latest-lead.wav'
-          assert entry['wavEncoding'] == 'PCM16'
-          assert entry['bytes'] > 50000
-          assert entry['durationSeconds'] > 2
-          print('COSYVOICE_PRODUCTION_CHAIN_PASS_PCM16')
+          assert manifest['language'] == 'yue-HK'
+          assert manifest['pronunciationPolicy'] == 'cantonese-only'
+          assert manifest['coveragePolicy'] == 'all-current-news-f01-only'
+          assert manifest['generatedArticleCount'] >= 2
+          assert len(manifest['articles']) >= 3
+          for entry in manifest['articles'].values():
+              path = pathlib.Path(entry['audio'])
+              assert path.is_file() and path.stat().st_size > 50000
+              assert entry['wavEncoding'] == 'PCM16'
+              with wave.open(str(path), 'rb') as wav:
+                  assert wav.getsampwidth() == 2
+                  assert wav.getnframes() / float(wav.getframerate()) > 2
+          print(f"COSYVOICE_MULTI_ARTICLE_SMOKE_PASS entries={len(manifest['articles'])} generated={manifest['generatedArticleCount']}")
           PY
 
       - name: Upload tested Cantonese audio
@@ -128,5 +133,6 @@ jobs:
           path: |
             artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
             assets/audio/cosyvoice/latest-lead.wav
+            assets/audio/cosyvoice/articles/*.wav
             data/tts-manifest.json
           if-no-files-found: error
