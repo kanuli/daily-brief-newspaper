@@ -1,0 +1,112 @@
+name: CosyVoice F01 Auto Maintenance
+
+on:
+  workflow_run:
+    workflows: ["Publish CosyVoice2-Yue F01 Per Article"]
+    types: [completed]
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: "cosyvoice-f01-auto-maintenance"
+  cancel-in-progress: true
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout current production state
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Inspect F01 backlog and worker health
+        id: inspect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python - <<'PY' > /tmp/voice-state.env
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          manifest = json.loads(Path("data/tts-manifest.json").read_text(encoding="utf-8"))
+          pending = int(manifest.get("pendingArticleCount") or 0)
+          done = int(manifest.get("availableArticleCount") or manifest.get("articleCount") or 0)
+          total = int(manifest.get("collectedStoryCount") or done)
+          generated = str(manifest.get("generatedAt") or "")
+          age = 10**9
+          if generated:
+              try:
+                  then = datetime.fromisoformat(generated.replace("Z", "+00:00"))
+                  age = max(0, int((datetime.now(timezone.utc) - then).total_seconds()))
+              except Exception:
+                  pass
+          print(f"PENDING={pending}")
+          print(f"DONE={done}")
+          print(f"TOTAL={total}")
+          print(f"AGE_SECONDS={age}")
+          PY
+          source /tmp/voice-state.env
+
+          echo "Manifest: done=${DONE}/${TOTAL}, pending=${PENDING}, last-publish-age=${AGE_SECONDS}s"
+
+          if [ "${PENDING}" -le 0 ]; then
+            echo "restart=false" >> "$GITHUB_OUTPUT"
+            echo "reason=coverage-complete" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          RUNS_JSON=$(gh run list --workflow cosyvoice-publish.yml --branch main --limit 20 --json status,conclusion,databaseId,createdAt,updatedAt)
+          ACTIVE_COUNT=$(python -c 'import json,sys; runs=json.load(sys.stdin); print(sum(1 for r in runs if r.get("status") != "completed"))' <<< "$RUNS_JSON")
+          echo "Active/queued F01 production runs: ${ACTIVE_COUNT}"
+
+          if [ "${ACTIVE_COUNT}" -gt 0 ]; then
+            echo "restart=false" >> "$GITHUB_OUTPUT"
+            echo "reason=worker-active" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          RESTART=false
+          REASON=""
+
+          # A successful run that still has backlog should continue immediately.
+          # A cancelled run with no replacement should also be restored immediately.
+          if [ "${EVENT_NAME}" = "workflow_run" ] && { [ "${EVENT_CONCLUSION}" = "success" ] || [ "${EVENT_CONCLUSION}" = "cancelled" ]; }; then
+            RESTART=true
+            REASON="completed-or-cancelled-with-backlog"
+          # Scheduled maintenance handles failures/timeouts without creating a tight retry loop.
+          elif [ "${AGE_SECONDS}" -ge 420 ]; then
+            RESTART=true
+            REASON="no-active-worker-and-f01-stale"
+          fi
+
+          echo "restart=${RESTART}" >> "$GITHUB_OUTPUT"
+          echo "reason=${REASON:-healthy-grace-window}" >> "$GITHUB_OUTPUT"
+
+      - name: Restart F01 production automatically
+        if: steps.inspect.outputs.restart == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Auto maintenance restart: ${{ steps.inspect.outputs.reason }}"
+          gh workflow run cosyvoice-publish.yml --ref main
+          echo "COSYVOICE_AUTO_MAINTENANCE_RESTART_DISPATCHED reason=${{ steps.inspect.outputs.reason }}"
+
+      - name: Healthy / no action required
+        if: steps.inspect.outputs.restart != 'true'
+        run: echo "CosyVoice maintenance healthy; no restart required (${{ steps.inspect.outputs.reason }})."
