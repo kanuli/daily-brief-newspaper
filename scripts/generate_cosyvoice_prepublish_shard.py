@@ -7,6 +7,7 @@ from pathlib import Path
 import generate_cosyvoice_all as gen
 
 DRAFT = Path(os.environ.get("COSY_PREPUBLISH_JSON", "data/prepublish.json"))
+MANIFEST = Path(os.environ.get("COSY_PREPUBLISH_MANIFEST", "data/prepublish-tts-manifest.json"))
 SHARD_INDEX = int(os.environ.get("COSY_SHARD_INDEX", "0"))
 SHARD_COUNT = int(os.environ.get("COSY_SHARD_COUNT", "10"))
 OUT_DIR = Path(os.environ.get("COSY_SHARD_OUT_DIR", "artifacts/cosyvoice-prepublish"))
@@ -41,15 +42,54 @@ def collect_draft_stories():
     return data, stories
 
 
+def load_previous():
+    if not MANIFEST.is_file():
+        return {}
+    try:
+        data = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        if data.get("engine") != "ASLP-lab/Cosyvoice2-Yue" or data.get("voice") != "F01 female reference":
+            return {}
+        return data
+    except Exception:
+        return {}
+
+
+def reusable(previous, story, digest):
+    article_id = gen.story_identity(story)
+    title = gen.clean(story.get("title"))
+    old = (previous.get("articles") or {}).get(article_id)
+    if not old:
+        old = next((e for e in (previous.get("articles") or {}).values() if gen.clean(e.get("title")) == title), None)
+    if not old or old.get("contentSha256") != digest:
+        return False
+    audio = str(old.get("audio") or "")
+    if audio.startswith(("https://", "http://")):
+        try:
+            return int(old.get("bytes") or 0) >= 50000 and float(old.get("durationSeconds") or 0) > 2
+        except (TypeError, ValueError):
+            return False
+    path = Path(audio)
+    if not path.is_file() or path.stat().st_size < 50000:
+        return False
+    try:
+        duration, _ = gen.wav_metadata(path)
+        return duration > 2
+    except Exception:
+        return False
+
+
 def main():
     if SHARD_COUNT < 1 or not (0 <= SHARD_INDEX < SHARD_COUNT):
         raise RuntimeError(f"invalid shard {SHARD_INDEX}/{SHARD_COUNT}")
     draft, stories = collect_draft_stories()
+    previous = load_previous()
     assigned = [s for s in stories if stable_slot(s) == SHARD_INDEX]
     missing = []
     for story in assigned:
         digest = gen.content_sha(story)
         final_path = gen.target_path(story, digest)
+        if reusable(previous, story, digest):
+            continue
         if final_path.is_file() and final_path.stat().st_size >= 50000:
             try:
                 duration, _ = gen.wav_metadata(final_path)
