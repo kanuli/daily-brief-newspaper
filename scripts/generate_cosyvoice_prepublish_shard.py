@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+import hashlib
+import json
+import os
+from pathlib import Path
+
+import generate_cosyvoice_all as gen
+
+DRAFT = Path(os.environ.get("COSY_PREPUBLISH_JSON", "data/prepublish.json"))
+SHARD_INDEX = int(os.environ.get("COSY_SHARD_INDEX", "0"))
+SHARD_COUNT = int(os.environ.get("COSY_SHARD_COUNT", "10"))
+OUT_DIR = Path(os.environ.get("COSY_SHARD_OUT_DIR", "artifacts/cosyvoice-prepublish"))
+
+
+def stable_slot(story):
+    digest = hashlib.sha256(gen.story_identity(story).encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big") % SHARD_COUNT
+
+
+def collect_draft_stories():
+    if not DRAFT.is_file():
+        raise RuntimeError(f"prepublish draft missing: {DRAFT}")
+    data = json.loads(DRAFT.read_text(encoding="utf-8"))
+    if data.get("status") != "VERIFIED_DRAFT":
+        raise RuntimeError("prepublish file is not VERIFIED_DRAFT")
+    selected = {}
+    order = []
+    for story in gen.walk_stories(data.get("articles") or []):
+        title = gen.clean(story.get("title"))
+        if not title:
+            continue
+        score = len(gen.speech_source_text(story))
+        if title not in selected:
+            selected[title] = (story, score)
+            order.append(title)
+        elif score > selected[title][1]:
+            selected[title] = (story, score)
+    stories = [selected[t][0] for t in order]
+    if not stories:
+        raise RuntimeError("VERIFIED_DRAFT contains no voice-ready articles")
+    return data, stories
+
+
+def main():
+    if SHARD_COUNT < 1 or not (0 <= SHARD_INDEX < SHARD_COUNT):
+        raise RuntimeError(f"invalid shard {SHARD_INDEX}/{SHARD_COUNT}")
+    draft, stories = collect_draft_stories()
+    assigned = [s for s in stories if stable_slot(s) == SHARD_INDEX]
+    missing = []
+    for story in assigned:
+        digest = gen.content_sha(story)
+        final_path = gen.target_path(story, digest)
+        if final_path.is_file() and final_path.stat().st_size >= 50000:
+            try:
+                duration, _ = gen.wav_metadata(final_path)
+                if duration > 2:
+                    continue
+            except Exception:
+                pass
+        missing.append((story, digest, final_path))
+
+    selected = missing[:1]
+    entries = {}
+    if selected:
+        story, digest, final_path = selected[0]
+        model, prompt = gen.setup_model()
+        artifact_path = OUT_DIR / "audio" / f"shard-{SHARD_INDEX}" / final_path.name
+        meta = gen.synthesize_story(model, prompt, story, artifact_path)
+        article_id = gen.story_identity(story)
+        entries[article_id] = {
+            "articleId": article_id,
+            "title": gen.clean(story.get("title")),
+            "audio": final_path.as_posix(),
+            "artifactAudio": artifact_path.as_posix(),
+            "wavEncoding": "PCM16",
+            "contentSha256": digest,
+            **meta,
+        }
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": 1,
+        "engine": "ASLP-lab/Cosyvoice2-Yue",
+        "voice": "F01 female reference",
+        "language": "yue-HK",
+        "draftId": draft.get("draftId"),
+        "targetPublication": draft.get("targetPublication"),
+        "shardIndex": SHARD_INDEX,
+        "shardCount": SHARD_COUNT,
+        "entries": entries,
+    }
+    out = OUT_DIR / f"shard-{SHARD_INDEX}.json"
+    out.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(
+        f"COSYVOICE_PREPUBLISH_PLAN slot={SHARD_INDEX}/{SHARD_COUNT} assigned={len(assigned)} "
+        f"missing={len(missing)} generated={len(entries)} draft={draft.get('draftId')}",
+        flush=True,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
