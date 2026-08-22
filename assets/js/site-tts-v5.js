@@ -112,6 +112,8 @@
       audio.dataset.ready = "true";
       audio.preload = "auto";
       audio.load();
+    } else {
+      audio.dataset.ready = "true";
     }
     return audio;
   }
@@ -209,9 +211,8 @@
     if (!("speechSynthesis" in window)) return null;
     const voices = window.speechSynthesis.getVoices?.() || [];
     return voices.find((voice) => /^zh[-_]HK$/i.test(voice.lang || ""))
-      || voices.find((voice) => /^yue/i.test(voice.lang || ""))
+      || voices.find((voice) => /^yue(?:[-_]|$)/i.test(voice.lang || ""))
       || voices.find((voice) => /cantonese|hong kong|sin-ji|善怡/i.test(`${voice.name || ""} ${voice.lang || ""}`))
-      || voices.find((voice) => /^zh/i.test(voice.lang || ""))
       || null;
   }
 
@@ -228,6 +229,8 @@
     stopAll();
     const myToken = ++speechToken;
     const voice = cantoneseVoice();
+    const audio = $("#site-tts-audio");
+    if (audio) audio.dataset.ready = "false";
     activateButton(button, "speech");
     setStatus("廣東話朗讀中");
 
@@ -245,6 +248,7 @@
       utterance.pitch = 1;
       utterance.onend = speakNext;
       utterance.onerror = (event) => {
+        if (myToken !== speechToken) return;
         console.warn("Device Cantonese speech error", event);
         finishActive();
       };
