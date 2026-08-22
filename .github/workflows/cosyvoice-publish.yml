@@ -1,11 +1,18 @@
-name: Publish CosyVoice2-Yue Daily Lead
+name: Publish CosyVoice2-Yue F01 All News
 
 on:
   push:
     branches: ["main"]
     paths:
       - "data/latest.json"
+      - "data/desk-latest.json"
+      - "data/live.json"
+      - "data/stocks-latest.json"
+      - "data/topic-more/**"
+      - "data/editorial-overrides/**"
       - "scripts/generate_cosyvoice_lead.py"
+      - "scripts/generate_cosyvoice_all.py"
+      - "scripts/check_live_cosyvoice_pages.py"
       - ".github/workflows/cosyvoice-publish.yml"
   workflow_dispatch:
 
@@ -15,8 +22,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "cosyvoice2-yue-publish"
-  cancel-in-progress: true
+  group: "cosyvoice2-yue-f01-all-news"
+  cancel-in-progress: false
 
 jobs:
   generate-and-publish:
@@ -24,7 +31,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 360
     steps:
       - name: Checkout latest main
         uses: actions/checkout@v4
@@ -65,82 +72,114 @@ jobs:
           git clone --depth 1 --recursive https://github.com/ASLP-lab/WenetSpeech-Yue.git /tmp/WenetSpeech-Yue
           test -f /tmp/WenetSpeech-Yue/CosyVoice2-Yue/cosyvoice/cli/cosyvoice.py
 
-      - name: Generate production Daily lead WAV
+      - name: Generate or reuse F01 WAV for every current news story
         env:
           HF_HUB_DISABLE_XET: "1"
           WSYUE_ROOT: /tmp/WenetSpeech-Yue
           COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
-        run: python scripts/generate_cosyvoice_lead.py
+          COSY_ARTICLE_MAX_TEXT_CHARS: "340"
+        run: python scripts/generate_cosyvoice_all.py
 
-      - name: Verify production audio and manifest
+      - name: Verify complete F01 manifest and PCM16 audio set
         run: |
           test -s assets/audio/cosyvoice/latest-lead.wav
-          ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 assets/audio/cosyvoice/latest-lead.wav
           codec="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 assets/audio/cosyvoice/latest-lead.wav)"
           test "$codec" = "pcm_s16le"
           python - <<'PY'
-          import hashlib, json
-          source = open('data/latest.json', 'rb').read()
-          latest = json.loads(source.decode('utf-8'))
+          import json, pathlib, wave
           manifest = json.load(open('data/tts-manifest.json', encoding='utf-8'))
+          assert manifest['version'] >= 2
           assert manifest['engine'] == 'ASLP-lab/Cosyvoice2-Yue'
           assert manifest['voice'] == 'F01 female reference'
-          assert manifest['sourceSha256'] == hashlib.sha256(source).hexdigest()
-          assert manifest['leadId'] == latest['leadId']
-          entry = manifest['articles'][latest['leadId']]
-          assert entry['audio'] == 'assets/audio/cosyvoice/latest-lead.wav'
-          assert entry['wavEncoding'] == 'PCM16'
-          assert entry['bytes'] > 50000
-          assert entry['durationSeconds'] > 2
-          print('COSYVOICE_PRODUCTION_MANIFEST_PASS_PCM16')
+          assert manifest['language'] == 'yue-HK'
+          assert manifest['pronunciationPolicy'] == 'cantonese-only'
+          assert manifest['coveragePolicy'] == 'all-current-news-f01-only'
+          assert manifest['articleCount'] == manifest['collectedStoryCount']
+          assert manifest['articleCount'] == len(manifest['articles'])
+          assert manifest['articleCount'] > 1
+          titles = set()
+          for key, entry in manifest['articles'].items():
+              assert entry['title'] not in titles, entry['title']
+              titles.add(entry['title'])
+              assert entry['wavEncoding'] == 'PCM16'
+              assert entry['contentSha256']
+              path = pathlib.Path(entry['audio'])
+              assert path.is_file(), path
+              assert path.stat().st_size == entry['bytes'] and entry['bytes'] > 50000
+              with wave.open(str(path), 'rb') as wav:
+                  assert wav.getsampwidth() == 2
+                  duration = wav.getnframes() / float(wav.getframerate())
+                  assert duration > 2
+          print(f"COSYVOICE_ALL_NEWS_MANIFEST_PASS articles={manifest['articleCount']}")
           PY
 
-      - name: Commit verified CosyVoice2-Yue audio locally
+      - name: Commit verified all-news F01 audio locally
         id: commit_audio
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- assets/audio/cosyvoice/latest-lead.wav data/tts-manifest.json
+          git add -- assets/audio/cosyvoice/latest-lead.wav assets/audio/cosyvoice/articles data/tts-manifest.json
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "CosyVoice audio already current"
+            echo "All current F01 audio already published"
           else
-            git commit -m "Publish CosyVoice2-Yue Daily lead audio"
+            git commit -m "Publish CosyVoice2-Yue F01 audio for all current news"
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Rebase and publish only if source article is still current
-        if: steps.commit_audio.outputs.changed == 'true'
+      - name: Rebase onto newest main and publish reusable F01 snapshot
         run: |
           git fetch origin main
-          git rebase origin/main
-          if python - <<'PY'
-          import hashlib, json, sys
-          manifest = json.load(open('data/tts-manifest.json', encoding='utf-8'))
-          current = hashlib.sha256(open('data/latest.json', 'rb').read()).hexdigest()
-          if current != manifest['sourceSha256']:
-              print('Daily lead source changed during synthesis; skip stale audio cleanly.')
-              sys.exit(1)
-          print('CosyVoice source hash still current after rebase.')
-          PY
-          then
+          if [ "${{ steps.commit_audio.outputs.changed }}" = "true" ]; then
+            git rebase origin/main
             git push origin HEAD:main
           else
             git reset --hard origin/main
-            echo "Stale CosyVoice generation safely skipped; no incorrect audio published."
+          fi
+
+      - name: Confirm F01 snapshot still covers newest news before deployment
+        id: coverage
+        run: |
+          if python - <<'PY'
+          import json, sys
+          sys.path.insert(0, 'scripts')
+          import generate_cosyvoice_all as gen
+          manifest = json.load(open('data/tts-manifest.json', encoding='utf-8'))
+          _, _, stories, _, _, source_set_sha, _ = gen.collect_current_stories()
+          titles = {gen.clean(entry.get('title')) for entry in (manifest.get('articles') or {}).values()}
+          current_titles = {gen.clean(story.get('title')) for story in stories}
+          if manifest.get('coveragePolicy') != 'all-current-news-f01-only':
+              print('F01 coverage policy missing')
+              sys.exit(1)
+          if manifest.get('sourceSetSha256') != source_set_sha:
+              print('News source changed during F01 generation; keep audio for reuse but do not deploy stale snapshot.')
+              sys.exit(1)
+          if titles != current_titles:
+              print(f'Title coverage mismatch manifest={len(titles)} current={len(current_titles)}')
+              sys.exit(1)
+          print(f'F01 snapshot current for {len(current_titles)} stories')
+          PY
+          then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Configure Pages after verified audio
+        if: steps.coverage.outputs.current == 'true'
         uses: actions/configure-pages@v5
 
-      - name: Upload site including verified CosyVoice audio
+      - name: Upload site including all F01 audio
+        if: steps.coverage.outputs.current == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: .
 
-      - name: Deploy site including verified CosyVoice audio
+      - name: Deploy site including all F01 audio
+        if: steps.coverage.outputs.current == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: Verify live CosyVoice2-Yue manifest and WAV
+      - name: Verify live all-news F01 manifest and WAV availability
+        if: steps.coverage.outputs.current == 'true'
         run: python scripts/check_live_cosyvoice_pages.py

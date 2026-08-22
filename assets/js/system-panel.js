@@ -38,7 +38,6 @@
     ];
     nav.innerHTML = links.join("");
 
-    // On the front page, 頭版 always means the Daily Edition, never the Live summary.
     nav.querySelector(".home-nav")?.addEventListener("click", (event) => {
       if (!homeCurrent) return;
       const daily = document.getElementById("daily-edition");
@@ -74,7 +73,7 @@
 
   function loadSiteTTS() {
     if (document.body.dataset.page === "archive") return;
-    inject("assets/js/site-tts-v5.js?v=20260822-1705allvoice", "data-site-tts");
+    inject("assets/js/site-tts-v5.js?v=20260822-1716f01all", "data-site-tts");
   }
 
   function ensureMainLeadAudio() {
@@ -85,7 +84,7 @@
     mainLeadAudio.preload = "auto";
     mainLeadAudio.playsInline = true;
     mainLeadAudio.load();
-    mainLeadAudio.addEventListener("error", (event) => console.warn("Main Cantonese lead audio error", event));
+    mainLeadAudio.addEventListener("error", (event) => console.warn("Main CosyVoice2-Yue F01 lead audio error", event));
     return mainLeadAudio;
   }
 
@@ -102,16 +101,16 @@
     button.textContent = "⏸ 廣東話朗讀";
     if (promise && typeof promise.catch === "function") {
       promise.catch((error) => {
-        console.warn("Direct Cantonese lead play rejected; retrying fresh WAV", error);
+        console.warn("Direct F01 lead play rejected; retrying fresh WAV", error);
         const fresh = new URL(LEAD_AUDIO_PATH, document.baseURI);
         fresh.searchParams.set("v", String(Date.now()));
         mainLeadAudio.src = fresh.href;
         mainLeadAudio.preload = "auto";
         try {
           const retry = mainLeadAudio.play();
-          if (retry && typeof retry.catch === "function") retry.catch((retryError) => console.warn("Direct Cantonese lead retry rejected", retryError));
+          if (retry && typeof retry.catch === "function") retry.catch((retryError) => console.warn("Direct F01 lead retry rejected", retryError));
         } catch (retryError) {
-          console.warn("Direct Cantonese lead retry threw", retryError);
+          console.warn("Direct F01 lead retry threw", retryError);
         }
       });
     }
@@ -124,7 +123,7 @@
     voiceButton.id = "main-site-voice-button";
     voiceButton.type = "button";
     voiceButton.textContent = "🔊 廣東話朗讀";
-    voiceButton.setAttribute("aria-label", "播放 CosyVoice2-Yue 廣東話頭條朗讀");
+    voiceButton.setAttribute("aria-label", "播放 CosyVoice2-Yue F01 廣東話頭條朗讀");
     voiceButton.addEventListener("click", () => playMainLeadFromClick(voiceButton));
     mainLeadAudio.addEventListener("ended", () => { voiceButton.textContent = "🔊 廣東話朗讀"; });
     document.body.appendChild(voiceButton);
@@ -139,7 +138,7 @@
     button.innerHTML = '<span class="system-status-dot" aria-hidden="true"></span><span class="system-status-label">SYSTEM</span>';
     const panel = document.createElement("aside");
     panel.id = "system-status-panel"; panel.className = "system-status-panel"; panel.hidden = true;
-    panel.innerHTML = `<div class="system-panel-head"><div><strong>System Status</strong><span>Maintenance & Monitoring</span></div><button type="button" class="system-panel-close" aria-label="關閉">×</button></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Website</strong><small>Static safe mode · no background monitoring loop</small></div></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Daily / Live / Stocks</strong><small>Daily + Hourly Live + Rolling Desk + Stock News JSON are publishing sources</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>GitHub Pages / Discord</strong><small>Deployment and push delivery are checked externally</small></div></div><div class="system-panel-links"><a href="https://github.com/kanuli/daily-brief-newspaper/actions" target="_blank" rel="noopener noreferrer">GitHub Actions ↗</a><a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">Repository ↗</a></div>`;
+    panel.innerHTML = `<div class="system-panel-head"><div><strong>System Status</strong><span>Maintenance & Monitoring</span></div><button type="button" class="system-panel-close" aria-label="關閉">×</button></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Website</strong><small>Static safe mode · no background monitoring loop</small></div></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Daily / Live / Stocks</strong><small>Daily + Hourly Live + Rolling Desk + Stock News JSON are publishing sources</small></div></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Cantonese Voice</strong><small>CosyVoice2-Yue · F01 female only · all current news</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>GitHub Pages / Discord</strong><small>Deployment and push delivery are checked externally</small></div></div><div class="system-panel-links"><a href="https://github.com/kanuli/daily-brief-newspaper/actions" target="_blank" rel="noopener noreferrer">GitHub Actions ↗</a><a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">Repository ↗</a></div>`;
     function setOpen(open) { panel.hidden = !open; button.setAttribute("aria-expanded", String(open)); }
     button.addEventListener("click", () => setOpen(panel.hidden));
     panel.querySelector(".system-panel-close")?.addEventListener("click", () => setOpen(false));
