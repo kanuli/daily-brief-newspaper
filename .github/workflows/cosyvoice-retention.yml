@@ -48,7 +48,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if ! RELEASE_ID=$(gh release view "$F01_RELEASE_TAG" --repo "${{ github.repository }}" --json databaseId --jq .databaseId 2>/dev/null); then
+          if ! RELEASE_ID=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/releases/tags/${F01_RELEASE_TAG}" \
+            --jq .id 2>/dev/null); then
             echo "No F01 release exists yet; nothing to prune."
             exit 0
           fi
