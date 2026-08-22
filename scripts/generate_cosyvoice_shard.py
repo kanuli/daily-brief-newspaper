@@ -11,6 +11,7 @@ SHARD_INDEX = int(os.environ.get("COSY_SHARD_INDEX", "0"))
 SHARD_COUNT = int(os.environ.get("COSY_SHARD_COUNT", "1"))
 EXPECTED_LIMIT = int(os.environ.get("COSY_SHARD_EXPECTED_LIMIT", "0"))
 ONE_ARTICLE = os.environ.get("COSY_SHARD_ONE_ARTICLE", "0").strip().lower() in {"1", "true", "yes", "on"}
+STABLE_SLOT = os.environ.get("COSY_SHARD_STABLE_SLOT", "0").strip().lower() in {"1", "true", "yes", "on"}
 OUT_DIR = Path(os.environ.get("COSY_SHARD_OUT_DIR", "artifacts/cosyvoice-shards"))
 
 
@@ -41,6 +42,12 @@ def priority_map(lead_title):
     return ranking
 
 
+def stable_slot(story):
+    identity = gen.story_identity(story)
+    digest = hashlib.sha256(identity.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big") % SHARD_COUNT
+
+
 def main():
     if SHARD_COUNT < 1 or SHARD_INDEX < 0 or SHARD_INDEX >= SHARD_COUNT:
         raise RuntimeError(f"invalid shard {SHARD_INDEX}/{SHARD_COUNT}")
@@ -67,7 +74,11 @@ def main():
     priorities = priority_map(lead_title)
     missing.sort(key=lambda item: (priorities.get(gen.clean(item[0].get("title")), 10**9), gen.clean(item[0].get("title"))))
 
-    if ONE_ARTICLE:
+    if ONE_ARTICLE and STABLE_SLOT:
+        assigned = [item for item in missing if stable_slot(item[0]) == SHARD_INDEX]
+        selected = assigned[:1]
+        selection_mode = "one-article-stable-worker-lane"
+    elif ONE_ARTICLE:
         selected = [missing[SHARD_INDEX]] if SHARD_INDEX < len(missing) else []
         selection_mode = "one-article-fast-lane"
     else:
@@ -103,7 +114,7 @@ def main():
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     payload = {
-        "version": 2,
+        "version": 3,
         "shardIndex": SHARD_INDEX,
         "shardCount": SHARD_COUNT,
         "selectionMode": selection_mode,
