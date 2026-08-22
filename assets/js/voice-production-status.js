@@ -98,8 +98,10 @@
     row.classList.remove("status-ok", "status-check", "status-warn", "status-fail");
     row.classList.add(state === "complete" || state === "active" ? "status-ok" : state === "failed" ? "status-fail" : "status-warn");
 
-    const percentText = snap.percent >= 10 ? `${snap.percent.toFixed(1)}%` : `${snap.percent.toFixed(1)}%`;
+    const percentText = `${snap.percent.toFixed(1)}%`;
     row.querySelector(".voice-progress-percent").textContent = percentText;
+    const progress = row.querySelector(".voice-progress-track");
+    progress?.setAttribute("aria-valuenow", snap.percent.toFixed(1));
     row.querySelector(".voice-progress-fill").style.width = `${snap.percent.toFixed(2)}%`;
     row.querySelector(".voice-done").textContent = `Done ${snap.done}/${snap.total}`;
     row.querySelector(".voice-creating").textContent = creating == null
@@ -164,7 +166,8 @@
 
   function mount() {
     const panel = document.getElementById("system-status-panel");
-    if (!panel || document.getElementById("voice-production-status-row")) return false;
+    if (!panel) return false;
+    if (document.getElementById("voice-production-status-row")) return true;
     ensureStyles();
 
     const row = document.createElement("div");
@@ -174,7 +177,7 @@
       <span class="status-dot" aria-hidden="true"></span>
       <div class="voice-production-copy">
         <div class="voice-progress-top"><strong>Voice Creation</strong><span class="voice-progress-percent">—</span></div>
-        <div class="voice-progress-track" role="progressbar" aria-label="F01 voice production progress" aria-valuemin="0" aria-valuemax="100"><span class="voice-progress-fill"></span></div>
+        <div class="voice-progress-track" role="progressbar" aria-label="F01 voice production progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="voice-progress-fill"></span></div>
         <small class="voice-progress-stats"><span class="voice-done">Done —/—</span><span class="voice-creating">Creating —/—</span></small>
         <small class="voice-progress-detail">Loading production status…</small>
       </div>`;
