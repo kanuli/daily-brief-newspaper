@@ -14,7 +14,14 @@ import torch
 import torchaudio
 from huggingface_hub import snapshot_download
 
-INSTRUCT = "用粤语说这句话"
+# CosyVoice2's own examples use the explicit assistant/end-of-prompt form for
+# dialect control. Keep this instruction on every independently synthesised
+# segment so a formal news sentence cannot silently drift into Putonghua.
+INSTRUCT = (
+    "You are a helpful assistant. "
+    "请全程用香港粤语（广东话）朗读以下内容；所有汉字必须用粤语发音，"
+    "禁止普通话或国语发音。英文专有名词可以按自然英文发音。<|endofprompt|>"
+)
 F01_URL = "https://raw.githubusercontent.com/ASLP-lab/WenetSpeech-Yue/demo_page/raw/TTS_samples/F01_%E4%B8%AD%E7%AB%8B_20054.wav"
 REPO_ROOT = Path(os.environ.get("WSYUE_ROOT", "/tmp/WenetSpeech-Yue"))
 CODE_ROOT = REPO_ROOT / "CosyVoice2-Yue"
@@ -29,6 +36,8 @@ TITLE_PAUSE_SECONDS = 0.80
 DEK_PAUSE_SECONDS = 0.65
 BODY_PAUSE_SECONDS = 0.26
 INTERNAL_SPLIT_PAUSE_SECONDS = 0.18
+
+_DIGITS = "零一二三四五六七八九"
 
 
 class LocalNormalizer:
@@ -64,12 +73,74 @@ def clean_text(value):
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
+def _small_integer_to_chinese(number):
+    number = int(number)
+    if number < 10:
+        return _DIGITS[number]
+    if number < 100:
+        tens, ones = divmod(number, 10)
+        head = "十" if tens == 1 else f"{_DIGITS[tens]}十"
+        return head + (_DIGITS[ones] if ones else "")
+    if number < 1000:
+        hundreds, remainder = divmod(number, 100)
+        out = f"{_DIGITS[hundreds]}百"
+        if remainder:
+            if remainder < 10:
+                out += "零"
+            out += _small_integer_to_chinese(remainder)
+        return out
+    if number < 10000:
+        thousands, remainder = divmod(number, 1000)
+        out = f"{_DIGITS[thousands]}千"
+        if remainder:
+            if remainder < 100:
+                out += "零"
+            out += _small_integer_to_chinese(remainder)
+        return out
+    return "".join(_DIGITS[int(char)] for char in str(number))
+
+
+def _number_for_speech(match):
+    raw = match.group(0).replace(",", "")
+    if "." in raw:
+        whole, fraction = raw.split(".", 1)
+        return f"{_number_string_for_speech(whole)}點{''.join(_DIGITS[int(c)] for c in fraction)}"
+    return _number_string_for_speech(raw)
+
+
+def _number_string_for_speech(raw):
+    raw = str(raw)
+    if len(raw) == 4 and raw.isdigit() and 1900 <= int(raw) <= 2099:
+        return "".join(_DIGITS[int(char)] for char in raw)
+    if raw.isdigit() and int(raw) < 10000:
+        return _small_integer_to_chinese(int(raw))
+    if raw.isdigit():
+        return "".join(_DIGITS[int(char)] for char in raw)
+    return raw
+
+
+def normalize_numbers_for_cantonese(text):
+    # Arabic numerals and ASCII unit symbols are strong mixed-language cues.
+    # Convert the common news forms to Han text so the Cantonese model keeps
+    # the same language state throughout the Chinese sentence.
+    text = re.sub(r"(?<![A-Za-z])\d[\d,]*(?:\.\d+)?", _number_for_speech, text)
+    text = text.replace("%", "百分比")
+    text = text.replace("£", "英鎊").replace("€", "歐元")
+    text = text.replace("$", "美元")
+    return text
+
+
 def normalize_for_tts(value):
     text = clean_text(value)
     # This phrase triggered an upstream mixed-language sampling edge case in a
     # long chunk. The displayed article is unchanged; only spoken text is made
     # Cantonese-friendly.
     text = re.sub(r"[「『“\"]?double[\-‐‑–— ]?tap[」』”\"]?", "二次打擊", text, flags=re.IGNORECASE)
+    # Source names are safer as their established Chinese newsroom names.
+    text = re.sub(r"\bReuters\b", "路透社", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bAssociated Press\b", "美聯社", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bAP\b", "美聯社", text)
+    text = normalize_numbers_for_cantonese(text)
     text = text.replace("–", "，").replace("—", "，")
     return clean_text(text)
 
@@ -207,6 +278,7 @@ def main():
     print(f"title={article.get('title')}", flush=True)
     print(f"tts_segments={len(segments)} tts_chars={sum(len(item['text']) for item in segments)}", flush=True)
     print(f"source_sha256={source_sha256}", flush=True)
+    print("pronunciation_policy=yue-HK-cantonese-only", flush=True)
     for idx, item in enumerate(segments):
         print(f"PLAN segment={idx} role={item['role']} chars={len(item['text'])} pause={item['pause']:.2f}s", flush=True)
 
@@ -230,7 +302,7 @@ def main():
 
     prompt_speech_16k = load_wav(str(ref), 16000)
     audio_parts = []
-    print("Synthesizing production Daily lead as controlled short segments with F01 female reference...", flush=True)
+    print("Synthesizing production Daily lead with strict yue-HK pronunciation control and F01 female reference...", flush=True)
     t1 = time.time()
 
     for idx, item in enumerate(segments):
@@ -262,6 +334,8 @@ def main():
         "version": 1,
         "engine": "ASLP-lab/Cosyvoice2-Yue",
         "voice": "F01 female reference",
+        "language": "yue-HK",
+        "pronunciationPolicy": "cantonese-only",
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "source": "data/latest.json",
         "sourceSha256": source_sha256,
