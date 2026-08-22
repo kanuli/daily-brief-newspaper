@@ -6,6 +6,7 @@
     ["finance.html", "📈 財經"], ["stocks.html", "📊 Stock News"], ["technology.html", "AI / 科技"],
     ["manga-anime.html", "漫畫 / Anime"], ["manchester-united.html", "Manchester United"], ["football.html", "Football"], ["archive.html", "Archive"]
   ];
+  const HOME_HREF = "index.html?v=20260822-2110homefix#daily-edition";
   const LEAD_AUDIO_PATH = "assets/audio/cosyvoice/latest-lead.wav";
   const AUDIO_PAGE_KEY = Date.now();
   let mainLeadAudio = null;
@@ -32,7 +33,7 @@
     const liveCurrent = page === "live.html";
     const links = [
       `<a class="live-nav" href="live.html"${liveCurrent ? ' aria-current="page"' : ""}>Live</a>`,
-      `<a class="home-nav" href="index.html#daily-edition"${homeCurrent ? ' aria-current="page"' : ""}>頭版</a>`,
+      `<a class="home-nav" href="${HOME_HREF}"${homeCurrent ? ' aria-current="page"' : ""}>頭版</a>`,
       ...DESKS.map(([href, label]) => {
         const target = href.split("#")[0].toLowerCase();
         return `<a href="${href}"${target === page ? ' aria-current="page"' : ""}>${label}</a>`;
@@ -150,4 +151,5 @@
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountSystemPanel, { once: true });
   else mountSystemPanel();
+  window.addEventListener("pageshow", normalizeDeskNav);
 })();
