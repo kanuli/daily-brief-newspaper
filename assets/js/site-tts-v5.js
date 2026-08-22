@@ -5,7 +5,6 @@
   const STOP_TEXT = "■ 停止朗讀";
   const PENDING_TEXT = "⏳ F01 音訊準備中";
   const MANIFEST_URL = "data/tts-manifest.json";
-  const LEAD_AUDIO_URL = "assets/audio/cosyvoice/latest-lead.wav";
   const MANIFEST_REFRESH_MS = 15000;
   const PAGE_CACHE_KEY = Date.now();
 
@@ -74,17 +73,19 @@
     setStatus("朗讀已停止。", false);
   }
 
-  function leadUrl() {
-    const url = new URL(LEAD_AUDIO_URL, document.baseURI);
-    url.searchParams.set("v", String(PAGE_CACHE_KEY));
-    return url.href;
-  }
-
   function entryUrl(entry) {
     if (!entry?.audio) return null;
     const url = new URL(entry.audio, document.baseURI);
     url.searchParams.set("v", String(entry.bytes || entry.contentSha256 || manifestData?.generatedAt || PAGE_CACHE_KEY));
     return url.href;
+  }
+
+  function leadEntry(manifest = manifestData) {
+    if (!manifest?.articles) return null;
+    if (manifest.leadId && manifest.articles[manifest.leadId]) return manifest.articles[manifest.leadId];
+    const leadTitle = clean(manifest.leadTitle);
+    if (!leadTitle) return null;
+    return Object.values(manifest.articles).find((entry) => clean(entry?.title) === leadTitle) || null;
   }
 
   function playAudioUrl(url, button = null) {
@@ -258,7 +259,10 @@
   }
 
   window.SiteTTS = {
-    playLeadFromUserGesture() { return playAudioUrl(leadUrl(), null); },
+    playLeadFromUserGesture() {
+      const entry = leadEntry();
+      return entry?.audio ? playAudioUrl(entryUrl(entry), null) : false;
+    },
     stop: stopAll,
     isReady() { return true; }
   };
