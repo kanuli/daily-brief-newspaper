@@ -6,6 +6,9 @@
     ["japan.html", "日本"], ["finance.html", "📈 財經"], ["stocks.html", "📊 Stock News"], ["technology.html", "AI / 科技"],
     ["manga-anime.html", "漫畫 / Anime"], ["manchester-united.html", "Manchester United"], ["football.html", "Football"], ["archive.html", "Archive"]
   ];
+  const LEAD_AUDIO_PATH = "assets/audio/cosyvoice/latest-lead.wav";
+  const AUDIO_PAGE_KEY = Date.now();
+  let mainLeadAudio = null;
 
   function injectNavStyle() {
     if (document.getElementById("mobile-two-row-nav-style")) return;
@@ -55,37 +58,57 @@
 
   function loadSiteTTS() {
     if (document.body.dataset.page === "archive") return;
-    inject("assets/js/site-tts-v5.js?v=20260822-1609fix", "data-site-tts");
+    inject("assets/js/site-tts-v5.js?v=20260822-1636play", "data-site-tts");
+  }
+
+  function ensureMainLeadAudio() {
+    if (mainLeadAudio) return mainLeadAudio;
+    const url = new URL(LEAD_AUDIO_PATH, document.baseURI);
+    url.searchParams.set("v", String(AUDIO_PAGE_KEY));
+    mainLeadAudio = new Audio(url.href);
+    mainLeadAudio.preload = "auto";
+    mainLeadAudio.playsInline = true;
+    mainLeadAudio.load();
+    mainLeadAudio.addEventListener("error", (event) => console.warn("Main Cantonese lead audio error", event));
+    return mainLeadAudio;
+  }
+
+  function playMainLeadFromClick(button) {
+    const audio = ensureMainLeadAudio();
+    if (!audio.paused) {
+      audio.pause();
+      button.textContent = "🔊 廣東話朗讀";
+      return;
+    }
+
+    const promise = audio.play();
+    button.textContent = "⏸ 廣東話朗讀";
+    if (promise && typeof promise.catch === "function") {
+      promise.catch((error) => {
+        console.warn("Direct Cantonese lead play rejected; retrying fresh WAV", error);
+        const fresh = new URL(LEAD_AUDIO_PATH, document.baseURI);
+        fresh.searchParams.set("v", String(Date.now()));
+        mainLeadAudio.src = fresh.href;
+        mainLeadAudio.preload = "auto";
+        try {
+          const retry = mainLeadAudio.play();
+          if (retry && typeof retry.catch === "function") retry.catch((retryError) => console.warn("Direct Cantonese lead retry rejected", retryError));
+        } catch (retryError) {
+          console.warn("Direct Cantonese lead retry threw", retryError);
+        }
+      });
+    }
   }
 
   function mountVoiceLauncher() {
     if (document.body.dataset.page === "archive" || document.getElementById("main-site-voice-button")) return;
+    ensureMainLeadAudio();
     const voiceButton = document.createElement("button");
     voiceButton.id = "main-site-voice-button";
     voiceButton.type = "button";
     voiceButton.textContent = "🔊 廣東話朗讀";
-    voiceButton.setAttribute("aria-label", "用 CosyVoice2-Yue 朗讀本頁新聞");
-    voiceButton.addEventListener("click", () => {
-      const original = "🔊 廣東話朗讀";
-      // Direct synchronous playback preserves iPhone/Safari user activation.
-      if (window.SiteTTS?.playLeadFromUserGesture?.()) {
-        voiceButton.textContent = "🔊 CosyVoice2-Yue 朗讀中";
-        setTimeout(() => { voiceButton.textContent = original; }, 1200);
-        return;
-      }
-      // Synchronous fallback only; never await/retry before audio.play().
-      const page = (location.pathname.split("/").pop() || "index.html").toLowerCase();
-      const selector = page === "index.html" ? "#lead-story .site-tts-button" : "main article .site-tts-button";
-      const articleButton = document.querySelector(selector);
-      if (articleButton) {
-        articleButton.click();
-        voiceButton.textContent = "🔊 CosyVoice2-Yue 朗讀中";
-        setTimeout(() => { voiceButton.textContent = original; }, 1200);
-        return;
-      }
-      voiceButton.textContent = "⚠️ 音訊載入中，請再按一次";
-      setTimeout(() => { voiceButton.textContent = original; }, 1800);
-    });
+    voiceButton.setAttribute("aria-label", "播放 CosyVoice2-Yue 廣東話新聞朗讀");
+    voiceButton.addEventListener("click", () => playMainLeadFromClick(voiceButton));
     document.body.appendChild(voiceButton);
   }
 
