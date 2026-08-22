@@ -10,7 +10,35 @@ import generate_cosyvoice_all as gen
 SHARD_INDEX = int(os.environ.get("COSY_SHARD_INDEX", "0"))
 SHARD_COUNT = int(os.environ.get("COSY_SHARD_COUNT", "1"))
 EXPECTED_LIMIT = int(os.environ.get("COSY_SHARD_EXPECTED_LIMIT", "0"))
+ONE_ARTICLE = os.environ.get("COSY_SHARD_ONE_ARTICLE", "0").strip().lower() in {"1", "true", "yes", "on"}
 OUT_DIR = Path(os.environ.get("COSY_SHARD_OUT_DIR", "artifacts/cosyvoice-shards"))
+
+
+def priority_map(lead_title):
+    """Prioritise the current lead, then hourly Live/Stock stories, then the rest."""
+    ranking = {}
+    next_rank = 0
+
+    def add_title(title):
+        nonlocal next_rank
+        title = gen.clean(title)
+        if title and title not in ranking:
+            ranking[title] = next_rank
+            next_rank += 1
+
+    add_title(lead_title)
+    for path in (
+        Path("data/live.json"),
+        Path("data/stocks-latest.json"),
+        Path("data/latest.json"),
+        Path("data/desk-latest.json"),
+    ):
+        data, _ = gen.load_json(path)
+        if data is None:
+            continue
+        for story in gen.walk_stories(data):
+            add_title(story.get("title"))
+    return ranking
 
 
 def main():
@@ -36,9 +64,18 @@ def main():
         else:
             missing.append((story, digest))
 
-    selected = [item for position, item in enumerate(missing) if position % SHARD_COUNT == SHARD_INDEX]
+    priorities = priority_map(lead_title)
+    missing.sort(key=lambda item: (priorities.get(gen.clean(item[0].get("title")), 10**9), gen.clean(item[0].get("title"))))
+
+    if ONE_ARTICLE:
+        selected = [missing[SHARD_INDEX]] if SHARD_INDEX < len(missing) else []
+        selection_mode = "one-article-fast-lane"
+    else:
+        selected = [item for position, item in enumerate(missing) if position % SHARD_COUNT == SHARD_INDEX]
+        selection_mode = "distributed-backfill"
+
     print(
-        f"COSYVOICE_SHARD_PLAN shard={SHARD_INDEX}/{SHARD_COUNT} stories={len(stories)} "
+        f"COSYVOICE_SHARD_PLAN shard={SHARD_INDEX}/{SHARD_COUNT} mode={selection_mode} stories={len(stories)} "
         f"reusable={reusable} missing={len(missing)} selected={len(selected)} source_set_sha256={source_set_sha}",
         flush=True,
     )
@@ -66,9 +103,10 @@ def main():
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     payload = {
-        "version": 1,
+        "version": 2,
         "shardIndex": SHARD_INDEX,
         "shardCount": SHARD_COUNT,
+        "selectionMode": selection_mode,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "engine": "ASLP-lab/Cosyvoice2-Yue",
         "voice": "F01 female reference",
@@ -85,7 +123,7 @@ def main():
     }
     out = OUT_DIR / f"shard-{SHARD_INDEX}.json"
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"COSYVOICE_SHARD_PASS shard={SHARD_INDEX} generated={len(entries)} output={out}", flush=True)
+    print(f"COSYVOICE_SHARD_PASS shard={SHARD_INDEX} mode={selection_mode} generated={len(entries)} output={out}", flush=True)
     return 0
 
 
