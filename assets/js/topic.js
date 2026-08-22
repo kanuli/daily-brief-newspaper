@@ -11,8 +11,8 @@
   const dedupe = (ids = []) => [...new Set(ids.filter(Boolean))];
 
   const SECTION_DEFS = [
-    ["world", "世界", "歐洲 · 中東 · 美洲 · 非洲 · 大洋洲"],
-    ["asia", "亞洲", "中國 · 台灣 · 韓國 · 東南亞 · 南亞"],
+    ["world", "世界", "歐洲 · 北美洲 · 南美洲 · 非洲 · 大洋洲（亞洲另見亞洲版）"],
+    ["asia", "亞洲", "東亞 · 東南亞 · 南亞 · 中亞 · 西亞／中東 · 全亞洲"],
     ["hong-kong", "香港", "社會 · 法庭 · 公共政策 · 民生 · 文化"],
     ["japan", "日本", "社會 · 法庭 · 政策 · 交通 · 教育 · 醫療 · 生活"],
     ["market-economy", "📈 財經 / 全球市場", "美國 · 歐洲 · 台灣 · 日本 · 香港 · 中國 · 全球"],
@@ -22,7 +22,7 @@
     ["software-apps", "📱 軟件 / App / 消費科技", "Software · Apps"],
     ["manga-anime", "漫畫 / Anime", "作品 · 產業 · 票房 · 聲優 · 出版"],
     ["manchester-united", "Manchester United", "Club · Squad · Transfers"],
-    ["football", "Football", "Europe · J-League · Hong Kong · Worldwide"],
+    ["football", "Football", "Europe · UEFA · International · J-League · Hong Kong · Worldwide"],
     ["breaking-news", "📰 突發新聞", "Breaking"],
     ["worth-following", "🔎 今日值得跟進", "Follow-up"],
     ["upcoming-events", "📅 Upcoming events / 明日焦點", "Upcoming"]
@@ -103,15 +103,49 @@
     return data;
   }
 
+  function titleKey(value = "") {
+    return String(value)
+      .normalize("NFKC")
+      .toLowerCase()
+      .replace(/[\s\p{P}\p{S}]+/gu, "")
+      .replace(/(最新|正式|今日|今晚|新季|開季)/g, "")
+      .slice(0, 120);
+  }
+
+  function sameEvent(a, b) {
+    if (!a || !b) return false;
+    const ak = titleKey(a.title);
+    const bk = titleKey(b.title);
+    if (ak && bk && ak === bk) return true;
+    if (ak.length >= 18 && bk.length >= 18 && (ak.includes(bk) || bk.includes(ak))) return true;
+    return false;
+  }
+
   function mergeArticle(data, article, slugs = [], prepend = true) {
     if (!article?.id) return;
-    const index = data.articles.findIndex((item) => item.id === article.id);
-    if (index >= 0) data.articles[index] = { ...data.articles[index], ...article };
-    else data.articles.push(article);
+    let index = data.articles.findIndex((item) => item.id === article.id);
+    if (index < 0) index = data.articles.findIndex((item) => sameEvent(item, article));
+
+    let canonicalId = article.id;
+    if (index >= 0) {
+      canonicalId = data.articles[index].id;
+      data.articles[index] = { ...data.articles[index], ...article, id: canonicalId };
+      data.sections.forEach((section) => {
+        if (article.id !== canonicalId) {
+          section.articleIds = (section.articleIds || []).map((id) => id === article.id ? canonicalId : id);
+        }
+        section.articleIds = dedupe(section.articleIds || []);
+      });
+    } else {
+      data.articles.push(article);
+    }
+
     slugs.forEach((slug) => {
       if (!SECTION_META.has(slug)) return;
       const section = ensureSection(data, slug);
-      section.articleIds = prepend ? dedupe([article.id, ...(section.articleIds || [])]) : dedupe([...(section.articleIds || []), article.id]);
+      section.articleIds = prepend
+        ? dedupe([canonicalId, ...(section.articleIds || [])])
+        : dedupe([...(section.articleIds || []), canonicalId]);
     });
   }
 
@@ -215,6 +249,12 @@
     return `<p class="${cls}"><strong>${label}</strong>${esc(value)}</p>`;
   }
 
+  function bodyMarkup(article) {
+    if (!article?.body) return "";
+    const paragraphs = String(article.body).split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+    return `<div class="topic-full-body">${paragraphs.map((p) => `<p>${esc(p)}</p>`).join("")}</div>`;
+  }
+
   function renderArticle(article, featured = false) {
     const badge = article.isLive
       ? `<span class="topic-live-badge">${esc(article.status || "LIVE")}</span>`
@@ -225,6 +265,7 @@
       ${article.dek ? `<p class="topic-dek">${esc(article.dek)}</p>` : ""}
       <div class="topic-article-body">
         ${detail("最新：", article.summary, "topic-summary")}
+        ${bodyMarkup(article)}
         ${detail("背景：", article.context || article.background, "topic-context")}
         ${detail("為何重要：", article.why || article.whyImportant, "why-mini")}
         ${detail("下一步：", article.watchNext || article.nextStep, "topic-next")}
@@ -232,6 +273,15 @@
       <div class="story-meta">${esc(article.timeLabel || "")} ${article.sourceName ? `· ${esc(article.sourceName)}` : ""}</div>
       ${sourceMarkup(article)}
     </article>`;
+  }
+
+  function uniqueStoriesForSection(data, section) {
+    const stories = dedupe(section.articleIds || []).map((id) => articleById(data, id)).filter(Boolean);
+    const kept = [];
+    stories.forEach((story) => {
+      if (!kept.some((existing) => sameEvent(existing, story))) kept.push(story);
+    });
+    return kept;
   }
 
   function renderTopic(data) {
@@ -242,12 +292,12 @@
     const sections = (data.sections || []).filter((section) => wanted.has(section.slug));
 
     $("#topic-date")?.replaceChildren(document.createTextNode(data.dateLabel || data.date || ""));
-    const editionCount = sections.reduce((sum, section) => sum + dedupe(section.articleIds || []).filter((id) => articleById(data, id)).length, 0);
+    const editionCount = sections.reduce((sum, section) => sum + uniqueStoriesForSection(data, section).length, 0);
     const count = $("#topic-count");
     if (count) count.textContent = `${editionCount} stories · Daily + Rolling Desk + Live`;
 
     host.innerHTML = sections.map((section) => {
-      const stories = dedupe(section.articleIds || []).map((id) => articleById(data, id)).filter(Boolean);
+      const stories = uniqueStoriesForSection(data, section);
       if (!stories.length) return "";
       return `<section class="topic-section" id="${esc(section.slug)}"><div class="section-heading"><h2>${esc(section.title)}</h2><span>${esc(section.subtitle || `${stories.length} 則`)}</span></div><div class="topic-story-grid">${stories.map((article, index) => renderArticle(article, index === 0)).join("")}</div></section>`;
     }).join("") || `<p class="notice">本版目前未有可核實內容；這會被視為 Desk coverage gap，而不是「沒有新聞」。</p>`;
