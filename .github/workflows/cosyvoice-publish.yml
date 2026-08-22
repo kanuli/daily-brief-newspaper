@@ -22,6 +22,8 @@ permissions:
 
 # A newer hourly snapshot supersedes only unfinished synthesis. Every voice that
 # already reached main stays published and is reused by the replacement run.
+# If a run is cancelled or stops while backlog remains, cosyvoice-maintenance.yml
+# detects the missing worker pool and dispatches a replacement automatically.
 concurrency:
   group: "cosyvoice2-yue-f01-current-news"
   cancel-in-progress: true
@@ -150,4 +152,4 @@ jobs:
             fi
           done
 
-          echo "Worker slot ${SLOT} reached its safety cycle limit; the next hourly run will continue any remaining backlog."
+          echo "Worker slot ${SLOT} reached its safety cycle limit; auto maintenance will continue any remaining backlog."
