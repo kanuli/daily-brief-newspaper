@@ -8,6 +8,17 @@ from pathlib import Path
 import generate_cosyvoice_all as gen
 
 
+def is_remote_audio(value):
+    return str(value or "").startswith(("https://", "http://"))
+
+
+def valid_remote(entry):
+    try:
+        return is_remote_audio(entry.get("audio")) and int(entry.get("bytes") or 0) >= 50000 and float(entry.get("durationSeconds") or 0) > 2
+    except (TypeError, ValueError):
+        return False
+
+
 def main():
     if len(sys.argv) != 2:
         raise RuntimeError("usage: promote_cosyvoice_prepublish.py <prepublish-worktree>")
@@ -40,7 +51,11 @@ def main():
         _, article_id, current_title, digest = wanted
         if entry.get("contentSha256") != digest:
             continue
-        rel_audio = Path(str(entry.get("audio") or ""))
+        audio = str(entry.get("audio") or "")
+        if valid_remote(entry):
+            candidates.append((article_id, current_title, digest, entry, None))
+            continue
+        rel_audio = Path(audio)
         source_audio = root / rel_audio
         if not source_audio.is_file() or source_audio.stat().st_size < 50000:
             continue
@@ -53,8 +68,11 @@ def main():
             "articleId": article_id,
             "title": title,
             "contentSha256": digest,
-            "artifactAudio": str(source_audio),
         })
+        if source_audio is None:
+            payload_entry["remoteAudio"] = True
+        else:
+            payload_entry["artifactAudio"] = str(source_audio)
         shard = {
             "version": 1,
             "engine": "ASLP-lab/Cosyvoice2-Yue",
