@@ -76,7 +76,7 @@
 
   function loadSiteTTS() {
     if (document.body.dataset.page === "archive") return;
-    inject("assets/js/site-tts-v5.js?v=20260822-1716f01all", "data-site-tts");
+    inject("assets/js/site-tts-v5.js?v=20260823-0020autorefresh", "data-site-tts");
   }
 
   function loadVoiceProductionStatus() {
