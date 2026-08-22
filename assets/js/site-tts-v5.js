@@ -5,6 +5,7 @@
   const MANIFEST_URL = "data/tts-manifest.json";
   let activeButton = null;
   let manifestPromise = null;
+  let manifestData = null;
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -27,9 +28,14 @@
       const panel = document.createElement("div");
       panel.id = "site-tts-player";
       panel.dataset.open = "false";
-      panel.innerHTML = '<div class="site-tts-player-row"><div class="site-tts-status" id="site-tts-status">準備 CosyVoice2-Yue…</div><button type="button" class="site-tts-stop" id="site-tts-stop">■ 停止</button></div><audio class="site-tts-audio" id="site-tts-audio" controls preload="none"></audio>';
+      panel.innerHTML = '<div class="site-tts-player-row"><div class="site-tts-status" id="site-tts-status">準備 CosyVoice2-Yue…</div><button type="button" class="site-tts-stop" id="site-tts-stop">■ 停止</button></div><audio class="site-tts-audio" id="site-tts-audio" controls preload="metadata" playsinline></audio>';
       document.body.appendChild(panel);
       $("#site-tts-stop")?.addEventListener("click", stopAll);
+      $("#site-tts-audio")?.addEventListener("error", () => {
+        const audio = $("#site-tts-audio");
+        const code = audio?.error?.code || "unknown";
+        setStatus(`CosyVoice2-Yue 音訊播放失敗（audio error ${code}）。`);
+      });
     }
   }
 
@@ -39,14 +45,18 @@
     $("#site-tts-status").textContent = text;
   }
 
-  function stopAll() {
+  function resetAudio() {
     const audio = $("#site-tts-audio");
-    if (audio) {
-      try { audio.pause(); } catch (_) {}
-      audio.removeAttribute("src");
-      audio.dataset.ready = "false";
-      audio.load();
-    }
+    if (!audio) return null;
+    try { audio.pause(); } catch (_) {}
+    audio.removeAttribute("src");
+    audio.dataset.ready = "false";
+    audio.load();
+    return audio;
+  }
+
+  function stopAll() {
+    resetAudio();
     if (activeButton) {
       activeButton.disabled = false;
       activeButton.textContent = BUTTON_TEXT;
@@ -55,20 +65,18 @@
     setStatus("朗讀已停止。");
   }
 
-  async function loadManifest() {
+  function loadManifest() {
     if (!manifestPromise) {
-      manifestPromise = fetch(MANIFEST_URL, { cache: "no-store" }).then(async (response) => {
+      manifestPromise = fetch(`${MANIFEST_URL}?v=${Date.now()}`, { cache: "no-store" }).then(async (response) => {
         if (!response.ok) throw new Error(`CosyVoice manifest HTTP ${response.status}`);
         const manifest = await response.json();
-        if (manifest?.engine !== "ASLP-lab/Cosyvoice2-Yue") {
-          throw new Error("Unexpected TTS engine in manifest");
-        }
-        if (!manifest?.articles || typeof manifest.articles !== "object") {
-          throw new Error("CosyVoice manifest has no articles");
-        }
+        if (manifest?.engine !== "ASLP-lab/Cosyvoice2-Yue") throw new Error("Unexpected TTS engine in manifest");
+        if (!manifest?.articles || typeof manifest.articles !== "object") throw new Error("CosyVoice manifest has no articles");
+        manifestData = manifest;
         return manifest;
       }).catch((error) => {
         manifestPromise = null;
+        manifestData = null;
         throw error;
       });
     }
@@ -85,47 +93,49 @@
     return Object.values(manifest.articles).find((entry) => clean(entry?.title) === title) || null;
   }
 
-  async function playEntry(entry, button) {
+  function playEntry(entry, button = null) {
     ensureUi();
-    const audio = $("#site-tts-audio");
-    if (!audio || !entry?.audio) throw new Error("CosyVoice audio path missing");
+    const audio = resetAudio();
+    if (!audio || !entry?.audio) {
+      setStatus("CosyVoice2-Yue 音訊路徑不存在。");
+      return false;
+    }
 
+    if (activeButton && activeButton !== button) {
+      activeButton.disabled = false;
+      activeButton.textContent = BUTTON_TEXT;
+    }
     activeButton = button;
-    button.disabled = true;
-    button.textContent = "⏳ 載入 CosyVoice…";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "⏳ 載入 CosyVoice…";
+    }
+
+    const cacheKey = entry.bytes || entry.generatedAt || manifestData?.generatedAt || Date.now();
+    audio.src = `${entry.audio}?v=${encodeURIComponent(String(cacheKey))}`;
+    audio.dataset.ready = "true";
     setStatus("使用中：CosyVoice2-Yue · F01 女聲");
 
-    audio.src = `${entry.audio}?v=${encodeURIComponent(String(entry.bytes || entry.generatedAt || "1"))}`;
-    audio.dataset.ready = "true";
-    audio.load();
-
-    try {
-      await audio.play();
-      setStatus("使用中：CosyVoice2-Yue · F01 女聲");
-    } catch (_) {
-      setStatus("CosyVoice2-Yue 音訊已載入；如瀏覽器阻止自動播放，請按下方播放器。 ");
-    } finally {
-      button.disabled = false;
-      button.textContent = BUTTON_TEXT;
-      activeButton = null;
+    // IMPORTANT: call play() synchronously from the user's click handler.
+    // iPhone/Safari may reject playback if we await manifest/network work first.
+    const promise = audio.play();
+    if (promise && typeof promise.then === "function") {
+      promise.then(() => {
+        setStatus("使用中：CosyVoice2-Yue · F01 女聲");
+      }).catch((error) => {
+        const name = error?.name || "PlaybackError";
+        const code = audio?.error?.code || "none";
+        console.warn("CosyVoice2-Yue play() rejected", error);
+        setStatus(`CosyVoice2-Yue 播放失敗（${name}; audio error ${code}）。請按下方播放器重試。`);
+      }).finally(() => {
+        if (button) {
+          button.disabled = false;
+          button.textContent = BUTTON_TEXT;
+        }
+        activeButton = null;
+      });
     }
-  }
-
-  async function speakArticle(article, button) {
-    stopAll();
-    try {
-      setStatus("正在讀取已驗證的 CosyVoice2-Yue 音訊…");
-      const manifest = await loadManifest();
-      const entry = findEntry(manifest, article);
-      if (!entry) {
-        setStatus("這則新聞暫未有 CosyVoice2-Yue 預生成音訊；不會改用其他 TTS。 ");
-        return;
-      }
-      await playEntry(entry, button);
-    } catch (error) {
-      console.warn("CosyVoice2-Yue playback unavailable", error);
-      setStatus("CosyVoice2-Yue 暫時不可用；Google / Microsoft TTS 已移除，不會自動替換聲音。 ");
-    }
+    return true;
   }
 
   function addButton(article, manifest) {
@@ -133,7 +143,6 @@
     if (article.dataset.siteTtsReady === "true" || article.closest(".study-desk,[data-no-tts]")) return;
     const entry = findEntry(manifest, article);
     if (!entry) return;
-
     article.dataset.siteTtsReady = "true";
     const wrap = document.createElement("div");
     wrap.className = "site-tts-controls";
@@ -142,9 +151,9 @@
     button.className = "site-tts-button";
     button.textContent = BUTTON_TEXT;
     button.setAttribute("aria-label", "用 CosyVoice2-Yue F01 女聲朗讀這則新聞");
-    button.addEventListener("click", () => speakArticle(article, button));
+    // Entry is already resolved here, so no async manifest fetch occurs after click.
+    button.addEventListener("click", () => playEntry(entry, button));
     wrap.appendChild(button);
-
     const heading = $("h1,h2,h3", article);
     if (heading?.nextSibling) heading.parentNode.insertBefore(wrap, heading.nextSibling);
     else article.prepend(wrap);
@@ -161,6 +170,21 @@
     $$("main article").forEach((article) => addButton(article, manifest));
   }
 
+  window.SiteTTS = {
+    playLeadFromUserGesture() {
+      const manifest = manifestData;
+      const entry = manifest?.leadId ? manifest.articles?.[manifest.leadId] : null;
+      if (!entry) {
+        setStatus("CosyVoice2-Yue 音訊資料仍在載入，請再按一次。");
+        return false;
+      }
+      return playEntry(entry, null);
+    },
+    isReady() {
+      return Boolean(manifestData?.leadId && manifestData?.articles?.[manifestData.leadId]);
+    }
+  };
+
   async function boot() {
     ensureUi();
     let manifest;
@@ -168,16 +192,14 @@
       manifest = await loadManifest();
     } catch (error) {
       console.warn("CosyVoice2-Yue manifest unavailable", error);
+      setStatus(`CosyVoice2-Yue manifest 載入失敗：${error?.message || error}`);
       return;
     }
-
     scan(manifest);
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.target instanceof Element) scan(manifest, mutation.target);
-        for (const node of mutation.addedNodes) {
-          if (node instanceof Element) scan(manifest, node);
-        }
+        for (const node of mutation.addedNodes) if (node instanceof Element) scan(manifest, node);
       }
     });
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
