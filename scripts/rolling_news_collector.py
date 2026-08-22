@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Free rolling news discovery collector for Daily Brief.
 
-This script is intentionally a discovery/staging layer, not a publisher.
-It collects recent candidate headlines for all public desks every 15 minutes,
-deduplicates them, and writes data/search-staging.json. The hourly publisher
-must independently verify, rank, rewrite and source-check candidates before
-publishing them.
+This is a discovery/staging layer, not a publisher. It collects recent
+candidate headlines for all public desks every 15 minutes, deduplicates them,
+and writes data/search-staging.json. Hourly publishers must independently
+verify, rank, rewrite and source-check candidates before publication.
 """
 
 from __future__ import annotations
@@ -25,53 +24,68 @@ from pathlib import Path
 from typing import Any
 
 HKT = timezone(timedelta(hours=8))
-USER_AGENT = "DailyBriefRollingCollector/1.0 (+https://github.com/kanuli/daily-brief-newspaper)"
+USER_AGENT = "DailyBriefRollingCollector/1.1 (+https://github.com/kanuli/daily-brief-newspaper)"
 RETENTION_HOURS = 8
 MAX_PER_DESK = 100
 GOOGLE_MIN_BEFORE_FALLBACK = 4
 
+# Maximum age of a candidate's stated publication time. This prevents RSS
+# fallback providers from contaminating rolling staging with old search hits.
+FRESHNESS_HOURS = {
+    "world": 8,
+    "asia": 8,
+    "hong-kong": 8,
+    "japan": 8,
+    "finance": 8,
+    "stock-news": 8,
+    "ai-tech": 8,
+    "manga-anime": 24,
+    "manchester-united": 12,
+    "football": 12,
+}
+
 QUERY_PLAN: dict[str, list[str]] = {
     "world": [
-        "world news Europe Africa Americas Oceania latest when:2h",
-        "breaking international politics court disaster public safety latest when:2h",
+        '(Europe OR Africa OR "North America" OR "South America" OR Oceania) when:4h',
+        'international breaking politics court disaster public safety when:4h',
     ],
     "asia": [
-        "Asia news East Southeast South Central West Asia Middle East latest when:2h",
-        "Asia politics society disaster diplomacy security economy latest when:2h",
+        '(Asia OR China OR Korea OR India OR ASEAN OR "Middle East" OR "Central Asia") when:4h',
+        'Asia politics society disaster diplomacy economy technology when:4h',
     ],
     "hong-kong": [
-        "Hong Kong news society court transport housing health education latest when:2h",
-        "香港 新聞 社會 法庭 交通 房屋 醫療 教育 最新 when:2h",
+        '"Hong Kong" when:4h',
+        '香港 when:4h',
     ],
     "japan": [
-        "Japan news society politics court transport weather culture technology latest when:2h",
-        "日本 ニュース 社会 政治 事件 交通 天気 文化 最新 when:2h",
+        'Japan when:4h',
+        '日本 when:4h',
     ],
     "finance": [
-        "global markets economy central bank rates stocks bonds currency oil latest when:2h",
-        "US Europe Asia market economy companies finance latest when:2h",
+        '(markets OR economy OR "central bank" OR rates OR bonds OR currency OR oil) when:4h',
+        '(Wall Street OR Europe markets OR Asia markets OR companies finance) when:4h',
     ],
     "stock-news": [
-        "NVDA AAPL TSM PLTR MSFT GOOG stock company news latest when:2h",
-        "EMXC EWY VT ETF market holdings flows latest when:2h",
+        '(NVDA OR AAPL OR TSM OR PLTR OR MSFT OR GOOG) when:4h',
+        '(EMXC OR EWY OR VT) ETF when:8h',
     ],
     "ai-tech": [
-        "AI technology semiconductor cloud cybersecurity software regulation latest when:2h",
-        "artificial intelligence chips consumer tech research latest when:2h",
+        '(AI OR "artificial intelligence" OR semiconductor OR cloud OR cybersecurity) when:4h',
+        '(technology OR software OR chips OR consumer tech OR tech regulation) when:4h',
     ],
     "manga-anime": [
-        "anime manga industry production release delay publisher voice actor latest when:6h",
-        "アニメ 漫画 最新 ニュース 制作 放送 出版 when:6h",
+        '(anime OR manga) industry production release publisher when:24h',
+        '(アニメ OR 漫画) 最新 制作 放送 出版 when:24h',
     ],
     "manchester-united": [
-        "Manchester United latest news transfer injury match training club when:2h",
-        "Manchester United official news latest when:6h",
+        '"Manchester United" when:6h',
+        '"Manchester United" transfer injury match club when:12h',
     ],
     "football": [
-        "football soccer latest news Premier League EFL La Liga Serie A Bundesliga Ligue 1 when:2h",
-        "football transfer injury suspension manager club latest when:2h",
-        "UEFA Champions League Europa Conference international football latest when:2h",
-        "J League Japan football Hong Kong football HKPL AFC latest when:2h",
+        '(football OR soccer) (Premier League OR EFL OR "La Liga" OR "Serie A" OR Bundesliga OR "Ligue 1") when:4h',
+        'football transfer injury suspension manager club when:4h',
+        '(UEFA OR "Champions League" OR "Europa League" OR international football) when:6h',
+        '("J League" OR J-League OR "Hong Kong football" OR HKPL OR AFC) when:8h',
     ],
 }
 
@@ -122,6 +136,13 @@ def parse_date(value: str | None) -> datetime | None:
         return None
 
 
+def candidate_is_fresh(desk: str, pub: datetime | None, discovered: datetime) -> bool:
+    if pub is None:
+        return True
+    max_age = timedelta(hours=FRESHNESS_HOURS[desk])
+    return discovered - max_age <= pub <= discovered + timedelta(hours=1)
+
+
 def http_get(url: str, timeout: int = 15) -> bytes:
     request = urllib.request.Request(
         url,
@@ -165,6 +186,8 @@ def rss_items(payload: bytes, provider: str, desk: str, query: str, discovered: 
         if not title or not link:
             continue
         pub = parse_date(item.findtext("pubDate"))
+        if not candidate_is_fresh(desk, pub, discovered):
+            continue
         source_node = item.find("source")
         source = clean_text(source_node.text if source_node is not None else "")
         if not source:
@@ -197,7 +220,8 @@ def load_existing(path: Path | None) -> dict[str, Any]:
         return {}
 
 
-def retained_candidates(existing: dict[str, Any], cutoff: datetime) -> dict[str, dict[str, dict[str, Any]]]:
+def retained_candidates(existing: dict[str, Any], now: datetime) -> dict[str, dict[str, dict[str, Any]]]:
+    seen_cutoff = now - timedelta(hours=RETENTION_HOURS)
     desks: dict[str, dict[str, dict[str, Any]]] = {desk: {} for desk in QUERY_PLAN}
     old_desks = existing.get("desks") if isinstance(existing.get("desks"), dict) else {}
     for desk in QUERY_PLAN:
@@ -205,15 +229,18 @@ def retained_candidates(existing: dict[str, Any], cutoff: datetime) -> dict[str,
             if not isinstance(item, dict) or not item.get("id"):
                 continue
             seen = parse_date(str(item.get("lastSeenAt") or item.get("firstSeenAt") or ""))
-            if seen and seen >= cutoff:
-                desks[desk][str(item["id"])] = item
+            pub = parse_date(str(item.get("publishedAt") or ""))
+            if not seen or seen < seen_cutoff:
+                continue
+            if pub and not candidate_is_fresh(desk, pub, now):
+                continue
+            desks[desk][str(item["id"])] = item
     return desks
 
 
 def collect(existing: dict[str, Any]) -> dict[str, Any]:
     started = now_utc()
-    cutoff = started - timedelta(hours=RETENTION_HOURS)
-    merged = retained_candidates(existing, cutoff)
+    merged = retained_candidates(existing, started)
     errors: list[dict[str, str]] = []
     query_audit: dict[str, dict[str, int]] = {}
 
@@ -251,7 +278,8 @@ def collect(existing: dict[str, Any]) -> dict[str, Any]:
     for desk, by_id in merged.items():
         items = list(by_id.values())
         items.sort(
-            key=lambda x: parse_date(str(x.get("publishedAt") or x.get("lastSeenAt") or "")) or datetime.min.replace(tzinfo=timezone.utc),
+            key=lambda x: parse_date(str(x.get("publishedAt") or x.get("lastSeenAt") or ""))
+            or datetime.min.replace(tzinfo=timezone.utc),
             reverse=True,
         )
         items = items[:MAX_PER_DESK]
@@ -278,6 +306,7 @@ def collect(existing: dict[str, Any]) -> dict[str, Any]:
         "notes": [
             "Staging is discovery only; candidates are not published without independent verification.",
             "Football is researched as the full worldwide football news desk; results are one normal candidate type among transfers, injuries, fixtures, club, league and international developments.",
+            "Candidates with an explicit publication time older than the desk freshness limit are discarded before staging.",
         ],
     }
 
