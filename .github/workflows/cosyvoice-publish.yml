@@ -1,4 +1,4 @@
-name: Publish CosyVoice2-Yue F01 All News
+name: Publish CosyVoice2-Yue F01 Per Article
 
 on:
   push:
@@ -13,37 +13,34 @@ on:
       - "scripts/generate_cosyvoice_lead.py"
       - "scripts/generate_cosyvoice_all.py"
       - "scripts/generate_cosyvoice_shard.py"
-      - "scripts/merge_cosyvoice_shards.py"
-      - "scripts/check_live_cosyvoice_pages.py"
+      - "scripts/publish_cosyvoice_article.py"
       - ".github/workflows/cosyvoice-publish.yml"
   workflow_dispatch:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
-# A new hourly news snapshot must supersede stale synthesis. The old serial
-# workflow queued every hourly update and could never catch up.
+# A newer hourly snapshot supersedes only unfinished synthesis. Every voice that
+# already reached main stays published and is reused by the replacement run.
 concurrency:
-  group: "cosyvoice2-yue-f01-all-news"
+  group: "cosyvoice2-yue-f01-current-news"
   cancel-in-progress: true
 
 jobs:
-  generate-shards:
+  worker:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 55
     strategy:
       fail-fast: false
       max-parallel: 10
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        slot: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     steps:
       - name: Checkout triggering news snapshot
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
@@ -85,129 +82,72 @@ jobs:
           git clone --depth 1 --recursive https://github.com/ASLP-lab/WenetSpeech-Yue.git /tmp/WenetSpeech-Yue
           test -f /tmp/WenetSpeech-Yue/CosyVoice2-Yue/cosyvoice/cli/cosyvoice.py
 
-      - name: Generate this F01 news shard
+      - name: Keep this lane generating and publishing one voice at a time
         env:
+          SLOT: ${{ matrix.slot }}
           HF_HUB_DISABLE_XET: "1"
           WSYUE_ROOT: /tmp/WenetSpeech-Yue
           COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
           COSY_ARTICLE_MAX_TEXT_CHARS: "260"
-          COSY_SHARD_INDEX: ${{ matrix.shard }}
           COSY_SHARD_COUNT: "10"
-        run: python scripts/generate_cosyvoice_shard.py
-
-      - name: Upload F01 shard
-        uses: actions/upload-artifact@v4
-        with:
-          name: cosyvoice-f01-shard-${{ matrix.shard }}
-          path: artifacts/cosyvoice-shards
-          if-no-files-found: error
-          retention-days: 1
-
-  merge-and-publish:
-    needs: generate-shards
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Checkout triggering news snapshot
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-
-      - name: Download all F01 shards
-        uses: actions/download-artifact@v4
-        with:
-          pattern: cosyvoice-f01-shard-*
-          path: artifacts/cosyvoice-shards
-          merge-multiple: true
-
-      - name: Merge shards into complete F01 manifest
-        run: python scripts/merge_cosyvoice_shards.py
-
-      - name: Verify complete F01 manifest and PCM16 audio set
+          COSY_SHARD_ONE_ARTICLE: "1"
+          COSY_SHARD_STABLE_SLOT: "1"
         run: |
-          python - <<'PY'
-          import json, pathlib, wave
-          manifest = json.load(open('data/tts-manifest.json', encoding='utf-8'))
-          assert manifest['version'] >= 2
-          assert manifest['engine'] == 'ASLP-lab/Cosyvoice2-Yue'
-          assert manifest['voice'] == 'F01 female reference'
-          assert manifest['language'] == 'yue-HK'
-          assert manifest['pronunciationPolicy'] == 'cantonese-only'
-          assert manifest['coveragePolicy'] == 'all-current-news-f01-only'
-          assert manifest['generationMode'] == 'parallel-10-shards'
-          assert manifest['articleCount'] == manifest['collectedStoryCount'] == len(manifest['articles'])
-          assert manifest['articleCount'] > 1
-          titles = set()
-          for entry in manifest['articles'].values():
-              assert entry['title'] not in titles, entry['title']
-              titles.add(entry['title'])
-              assert entry['wavEncoding'] == 'PCM16'
-              assert entry['contentSha256']
-              path = pathlib.Path(entry['audio'])
-              assert path.is_file() and path.stat().st_size == entry['bytes'] and entry['bytes'] > 50000
-              with wave.open(str(path), 'rb') as wav:
-                  assert wav.getsampwidth() == 2
-                  assert wav.getnframes() / float(wav.getframerate()) > 2
-          print(f"COSYVOICE_PARALLEL_ALL_NEWS_PASS articles={manifest['articleCount']}")
-          PY
-
-      - name: Refuse stale F01 snapshot
-        id: freshness
-        run: |
-          git fetch origin main
-          if git diff --quiet "$GITHUB_SHA" origin/main -- \
-            data/latest.json data/desk-latest.json data/live.json data/stocks-latest.json data/topic-more data/editorial-overrides; then
-            echo "current=true" >> "$GITHUB_OUTPUT"
-            echo "F01 snapshot still matches newest news data"
-          else
-            echo "current=false" >> "$GITHUB_OUTPUT"
-            echo "A newer news snapshot exists; this run will not publish stale F01 audio."
-          fi
-
-      - name: Commit verified parallel F01 audio
-        if: steps.freshness.outputs.current == 'true'
-        id: commit_audio
-        run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- assets/audio/cosyvoice/latest-lead.wav assets/audio/cosyvoice/articles data/tts-manifest.json
-          if git diff --cached --quiet; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            git commit -m "Publish parallel CosyVoice2-Yue F01 audio for current news"
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
 
-      - name: Publish reusable F01 snapshot to main
-        if: steps.freshness.outputs.current == 'true'
-        run: |
-          git fetch origin main
-          if [ "${{ steps.commit_audio.outputs.changed }}" = "true" ]; then
-            git rebase origin/main
-            git push origin HEAD:main
-          else
+          for cycle in $(seq 1 12); do
+            echo "=== F01 worker slot ${SLOT} cycle ${cycle}/12 ==="
+            git fetch origin main
             git reset --hard origin/main
-          fi
+            rm -rf artifacts/cosyvoice-shards
 
-      - name: Configure Pages after verified F01 coverage
-        if: steps.freshness.outputs.current == 'true'
-        uses: actions/configure-pages@v5
+            COSY_SHARD_INDEX="${SLOT}" python scripts/generate_cosyvoice_shard.py
+            SHARD="artifacts/cosyvoice-shards/shard-${SLOT}.json"
+            test -f "$SHARD"
 
-      - name: Upload site with matching news and F01 audio
-        if: steps.freshness.outputs.current == 'true'
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: .
+            if python - "$SHARD" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding='utf-8'))
+          sys.exit(0 if len(data.get('entries') or {}) == 0 else 1)
+          PY
+            then
+              echo "Worker slot ${SLOT} has no more current F01 work."
+              exit 0
+            fi
 
-      - name: Deploy site with matching news and F01 audio
-        if: steps.freshness.outputs.current == 'true'
-        id: deployment
-        uses: actions/deploy-pages@v4
+            cp "$SHARD" /tmp/cosyvoice-one-article-${SLOT}.json
+            published=false
+            for attempt in 1 2 3 4 5 6 7 8; do
+              echo "Immediate publish attempt ${attempt}/8 for slot ${SLOT}, cycle ${cycle}"
+              git fetch origin main
+              git reset --hard origin/main
 
-      - name: Verify live all-news F01 manifest and WAV availability
-        if: steps.freshness.outputs.current == 'true'
-        run: python scripts/check_live_cosyvoice_pages.py
+              python scripts/publish_cosyvoice_article.py "/tmp/cosyvoice-one-article-${SLOT}.json"
+              git add -- data/tts-manifest.json assets/audio/cosyvoice/articles assets/audio/cosyvoice/latest-lead.wav
+
+              if git diff --cached --quiet; then
+                echo "Generated article is stale or already published; move to the next current item."
+                published=true
+                break
+              fi
+
+              git commit -m "Publish F01 voice slot ${SLOT} cycle ${cycle}"
+              if git push origin HEAD:main; then
+                echo "COSYVOICE_ONE_ARTICLE_MAIN_PUSH_PASS slot=${SLOT} cycle=${cycle}"
+                published=true
+                break
+              fi
+
+              echo "Main advanced while this voice was publishing; retry against the newest cumulative manifest."
+              sleep $((attempt * 2))
+            done
+
+            if [ "$published" != "true" ]; then
+              echo "Could not publish F01 voice after conflict retries." >&2
+              exit 1
+            fi
+          done
+
+          echo "Worker slot ${SLOT} reached its safety cycle limit; the next hourly run will continue any remaining backlog."
