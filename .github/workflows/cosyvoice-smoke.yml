@@ -9,7 +9,7 @@ on:
       - "scripts/generate_cosyvoice_lead.py"
       - "scripts/generate_cosyvoice_all.py"
       - "scripts/generate_cosyvoice_shard.py"
-      - "scripts/merge_cosyvoice_shards.py"
+      - "scripts/publish_cosyvoice_article.py"
       - "scripts/check_cosyvoice_pages_contract.py"
       - "scripts/check_live_cosyvoice_pages.py"
       - "data/latest.json"
@@ -78,11 +78,6 @@ jobs:
           git clone --depth 1 --recursive https://github.com/ASLP-lab/WenetSpeech-Yue.git /tmp/WenetSpeech-Yue
           test -f /tmp/WenetSpeech-Yue/CosyVoice2-Yue/cosyvoice/cli/cosyvoice.py
 
-      - name: Show capacity before model download
-        run: |
-          free -h
-          df -h /
-
       - name: Generate real Cantonese smoke WAV locally
         env:
           HF_HUB_DISABLE_XET: "1"
@@ -95,7 +90,7 @@ jobs:
           test -s artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
           ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
 
-      - name: Generate real F01 news with two parallel-compatible shards
+      - name: Generate two independent one-article F01 workers
         env:
           HF_HUB_DISABLE_XET: "1"
           WSYUE_ROOT: /tmp/WenetSpeech-Yue
@@ -103,36 +98,46 @@ jobs:
           COSY_ARTICLE_MAX_TEXT_CHARS: "180"
           COSY_SHARD_COUNT: "2"
           COSY_SHARD_EXPECTED_LIMIT: "3"
+          COSY_SHARD_ONE_ARTICLE: "1"
         run: |
           COSY_SHARD_INDEX=0 python scripts/generate_cosyvoice_shard.py
           COSY_SHARD_INDEX=1 python scripts/generate_cosyvoice_shard.py
 
-      - name: Merge the two F01 shards
-        run: python scripts/merge_cosyvoice_shards.py
-
-      - name: Verify parallel multi-article F01 manifest and WAVs
+      - name: Publish first completed voice without waiting for second
         run: |
-          test -s assets/audio/cosyvoice/latest-lead.wav
+          python scripts/publish_cosyvoice_article.py artifacts/cosyvoice-shards/shard-0.json
+          cp data/tts-manifest.json /tmp/manifest-after-first.json
+          python - <<'PY'
+          import json
+          m = json.load(open('/tmp/manifest-after-first.json', encoding='utf-8'))
+          assert m['version'] >= 3
+          assert m['coveragePolicy'] == 'progressive-current-news-f01-only'
+          assert m['generationMode'] == 'per-article-immediate-10-way'
+          assert m['articleCount'] >= 1
+          assert m['pendingArticleCount'] == m['collectedStoryCount'] - m['articleCount']
+          print(f"COSYVOICE_FIRST_IMMEDIATE_PUBLISH_PASS available={m['articleCount']} pending={m['pendingArticleCount']}")
+          PY
+
+      - name: Publish second completed voice independently
+        run: |
+          python scripts/publish_cosyvoice_article.py artifacts/cosyvoice-shards/shard-1.json
           python - <<'PY'
           import json, pathlib, wave
-          manifest = json.load(open('data/tts-manifest.json', encoding='utf-8'))
-          assert manifest['version'] >= 2
-          assert manifest['engine'] == 'ASLP-lab/Cosyvoice2-Yue'
-          assert manifest['voice'] == 'F01 female reference'
-          assert manifest['language'] == 'yue-HK'
-          assert manifest['pronunciationPolicy'] == 'cantonese-only'
-          assert manifest['coveragePolicy'] == 'all-current-news-f01-only'
-          assert manifest['generationMode'] == 'parallel-2-shards'
-          assert manifest['articleCount'] == manifest['collectedStoryCount'] == 3
-          assert manifest['generatedArticleCount'] >= 2
-          for entry in manifest['articles'].values():
+          first = json.load(open('/tmp/manifest-after-first.json', encoding='utf-8'))
+          second = json.load(open('data/tts-manifest.json', encoding='utf-8'))
+          assert second['version'] >= 3
+          assert second['coveragePolicy'] == 'progressive-current-news-f01-only'
+          assert second['generationMode'] == 'per-article-immediate-10-way'
+          assert second['articleCount'] > first['articleCount']
+          assert second['pendingArticleCount'] < first['pendingArticleCount']
+          for entry in second['articles'].values():
               path = pathlib.Path(entry['audio'])
               assert path.is_file() and path.stat().st_size > 50000
               assert entry['wavEncoding'] == 'PCM16'
               with wave.open(str(path), 'rb') as wav:
                   assert wav.getsampwidth() == 2
                   assert wav.getnframes() / float(wav.getframerate()) > 2
-          print(f"COSYVOICE_PARALLEL_SMOKE_PASS entries={len(manifest['articles'])} generated={manifest['generatedArticleCount']}")
+          print(f"COSYVOICE_SECOND_IMMEDIATE_PUBLISH_PASS available={second['articleCount']} pending={second['pendingArticleCount']}")
           PY
 
       - name: Upload tested Cantonese audio
