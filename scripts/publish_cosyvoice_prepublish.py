@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import os
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -10,6 +11,11 @@ import generate_cosyvoice_all as gen
 DRAFT = Path("data/prepublish.json")
 MANIFEST = Path("data/prepublish-tts-manifest.json")
 LEAD_ALIAS = Path("assets/audio/cosyvoice/prepublish-latest-lead.wav")
+PUBLIC_AUDIO_BASE = os.environ.get("COSY_PUBLIC_AUDIO_BASE", "").strip().rstrip("/")
+
+
+def is_remote_audio(value):
+    return str(value or "").startswith(("https://", "http://"))
 
 
 def collect_draft():
@@ -18,6 +24,25 @@ def collect_draft():
         raise RuntimeError("prepublish file is not VERIFIED_DRAFT")
     stories = list(gen.walk_stories(data.get("articles") or []))
     return data, stories
+
+
+def valid_existing(entry, digest):
+    if not entry or entry.get("contentSha256") != digest:
+        return False
+    audio = str(entry.get("audio") or "")
+    if is_remote_audio(audio):
+        try:
+            return int(entry.get("bytes") or 0) >= 50000 and float(entry.get("durationSeconds") or 0) > 2
+        except (TypeError, ValueError):
+            return False
+    path = Path(audio)
+    if not path.is_file() or path.stat().st_size < 50000:
+        return False
+    try:
+        duration, _ = gen.wav_metadata(path)
+        return duration > 2
+    except Exception:
+        return False
 
 
 def main():
@@ -39,6 +64,7 @@ def main():
     artifact = Path(str(generated.pop("artifactAudio", "")))
     if not artifact.is_file() or artifact.stat().st_size < 50000:
         raise RuntimeError(f"missing generated artifact: {artifact}")
+    duration, size = gen.wav_metadata(artifact)
 
     current = {}
     current_by_title = {}
@@ -57,9 +83,23 @@ def main():
 
     story, article_id, title, digest = wanted
     final_path = gen.target_path(story, digest)
-    final_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(artifact, final_path)
-    duration, size = gen.wav_metadata(final_path)
+    if PUBLIC_AUDIO_BASE:
+        public_audio = f"{PUBLIC_AUDIO_BASE}/{final_path.name}"
+    else:
+        final_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(artifact, final_path)
+        duration, size = gen.wav_metadata(final_path)
+        public_audio = final_path.as_posix()
+
+    generated.update({
+        "articleId": article_id,
+        "title": title,
+        "audio": public_audio,
+        "wavEncoding": "PCM16",
+        "contentSha256": digest,
+        "durationSeconds": round(duration, 3),
+        "bytes": size,
+    })
 
     previous = {}
     if MANIFEST.is_file():
@@ -69,35 +109,31 @@ def main():
             previous = {}
 
     entries = {}
+    previous_articles = previous.get("articles") or {}
     for item in stories:
         item_id = gen.story_identity(item)
         item_title = gen.clean(item.get("title"))
         item_digest = gen.content_sha(item)
-        item_path = gen.target_path(item, item_digest)
-        if not item_path.is_file() or item_path.stat().st_size < 50000:
+        if item_id == article_id or (item_title == title and item_digest == digest):
+            entries[item_id] = generated
             continue
-        try:
-            item_duration, item_size = gen.wav_metadata(item_path)
-        except Exception:
+        old = previous_articles.get(item_id)
+        if not old:
+            old = next((e for e in previous_articles.values() if gen.clean(e.get("title")) == item_title), None)
+        if not valid_existing(old, item_digest):
             continue
-        old = (previous.get("articles") or {}).get(item_id) or {}
         entries[item_id] = {
             **old,
             "articleId": item_id,
             "title": item_title,
-            "audio": item_path.as_posix(),
-            "wavEncoding": "PCM16",
             "contentSha256": item_digest,
-            "durationSeconds": round(item_duration, 3),
-            "bytes": item_size,
+            "wavEncoding": "PCM16",
         }
-        if item_id == article_id:
-            entries[item_id].update({k: v for k, v in generated.items() if k not in {"audio", "articleId", "title", "contentSha256"}})
 
     lead_id = draft.get("leadId") or (gen.story_identity(stories[0]) if stories else None)
     lead_entry = entries.get(lead_id)
-    if lead_entry:
-        lead_path = Path(lead_entry["audio"])
+    if lead_entry and not is_remote_audio(lead_entry.get("audio")):
+        lead_path = Path(str(lead_entry.get("audio") or ""))
         if lead_path.is_file():
             LEAD_ALIAS.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(lead_path, LEAD_ALIAS)
@@ -110,6 +146,8 @@ def main():
         "voice": "F01 female reference",
         "language": "yue-HK",
         "mode": "verified-draft-prepublish",
+        "storageBackend": "github-release" if PUBLIC_AUDIO_BASE or any(is_remote_audio(e.get("audio")) for e in entries.values()) else "git-tree",
+        "retentionHours": 48,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "draftId": draft.get("draftId"),
         "targetPublication": draft.get("targetPublication"),
@@ -124,7 +162,7 @@ def main():
         "articles": entries,
     }
     MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"COSYVOICE_PREPUBLISH_PASS article={article_id} ready={available}/{total} pending={total-available} duration={duration:.3f}s bytes={size}", flush=True)
+    print(f"COSYVOICE_PREPUBLISH_PASS article={article_id} ready={available}/{total} pending={total-available} duration={duration:.3f}s bytes={size} storage={manifest['storageBackend']}", flush=True)
     return 0
 
 
