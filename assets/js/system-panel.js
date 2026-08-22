@@ -7,9 +7,6 @@
     ["manga-anime.html", "漫畫 / Anime"], ["manchester-united.html", "Manchester United"], ["football.html", "Football"], ["archive.html", "Archive"]
   ];
   const HOME_HREF = "index.html?v=20260822-2110homefix#daily-edition";
-  const LEAD_AUDIO_PATH = "assets/audio/cosyvoice/latest-lead.wav";
-  const AUDIO_PAGE_KEY = Date.now();
-  let mainLeadAudio = null;
 
   function injectNavStyle() {
     if (document.getElementById("mobile-two-row-nav-style")) return;
@@ -76,62 +73,37 @@
 
   function loadSiteTTS() {
     if (document.body.dataset.page === "archive") return;
-    inject("assets/js/site-tts-v5.js?v=20260823-0020autorefresh", "data-site-tts");
+    inject("assets/js/site-tts-v5.js?v=20260823-0218release", "data-site-tts");
   }
 
   function loadVoiceProductionStatus() {
     inject("assets/js/voice-production-status.js?v=20260823-0103maintenance", "data-voice-production-status");
   }
 
-  function ensureMainLeadAudio() {
-    if (mainLeadAudio) return mainLeadAudio;
-    const url = new URL(LEAD_AUDIO_PATH, document.baseURI);
-    url.searchParams.set("v", String(AUDIO_PAGE_KEY));
-    mainLeadAudio = new Audio(url.href);
-    mainLeadAudio.preload = "auto";
-    mainLeadAudio.playsInline = true;
-    mainLeadAudio.load();
-    mainLeadAudio.addEventListener("error", (event) => console.warn("Main CosyVoice2-Yue F01 lead audio error", event));
-    return mainLeadAudio;
-  }
-
   function playMainLeadFromClick(button) {
-    const audio = ensureMainLeadAudio();
-    if (!audio.paused) {
-      audio.pause();
+    window.SiteTTS?.stop?.();
+    const played = window.SiteTTS?.playLeadFromUserGesture?.() || false;
+    if (played) {
       button.textContent = "🔊 廣東話朗讀";
+      button.title = "使用 CosyVoice2-Yue F01 女聲播放目前頭條";
       return;
     }
-    window.SiteTTS?.stop?.();
-    const promise = audio.play();
-    button.textContent = "⏸ 廣東話朗讀";
-    if (promise && typeof promise.catch === "function") {
-      promise.catch((error) => {
-        console.warn("Direct F01 lead play rejected; retrying fresh WAV", error);
-        const fresh = new URL(LEAD_AUDIO_PATH, document.baseURI);
-        fresh.searchParams.set("v", String(Date.now()));
-        mainLeadAudio.src = fresh.href;
-        mainLeadAudio.preload = "auto";
-        try {
-          const retry = mainLeadAudio.play();
-          if (retry && typeof retry.catch === "function") retry.catch((retryError) => console.warn("Direct F01 lead retry rejected", retryError));
-        } catch (retryError) {
-          console.warn("Direct F01 lead retry threw", retryError);
-        }
-      });
-    }
+    button.textContent = "⏳ F01 音訊準備中";
+    button.disabled = true;
+    window.setTimeout(() => {
+      button.textContent = "🔊 廣東話朗讀";
+      button.disabled = false;
+    }, 2500);
   }
 
   function mountVoiceLauncher() {
     if (document.body.dataset.page === "archive" || document.getElementById("main-site-voice-button")) return;
-    ensureMainLeadAudio();
     const voiceButton = document.createElement("button");
     voiceButton.id = "main-site-voice-button";
     voiceButton.type = "button";
     voiceButton.textContent = "🔊 廣東話朗讀";
     voiceButton.setAttribute("aria-label", "播放 CosyVoice2-Yue F01 廣東話頭條朗讀");
     voiceButton.addEventListener("click", () => playMainLeadFromClick(voiceButton));
-    mainLeadAudio.addEventListener("ended", () => { voiceButton.textContent = "🔊 廣東話朗讀"; });
     document.body.appendChild(voiceButton);
   }
 
