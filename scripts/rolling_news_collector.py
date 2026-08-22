@@ -24,13 +24,11 @@ from pathlib import Path
 from typing import Any
 
 HKT = timezone(timedelta(hours=8))
-USER_AGENT = "DailyBriefRollingCollector/1.1 (+https://github.com/kanuli/daily-brief-newspaper)"
+USER_AGENT = "DailyBriefRollingCollector/1.2 (+https://github.com/kanuli/daily-brief-newspaper)"
 RETENTION_HOURS = 8
-MAX_PER_DESK = 100
+MAX_PER_DESK = 60
 GOOGLE_MIN_BEFORE_FALLBACK = 4
 
-# Maximum age of a candidate's stated publication time. This prevents RSS
-# fallback providers from contaminating rolling staging with old search hits.
 FRESHNESS_HOURS = {
     "world": 8,
     "asia": 8,
@@ -39,7 +37,7 @@ FRESHNESS_HOURS = {
     "finance": 8,
     "stock-news": 8,
     "ai-tech": 8,
-    "manga-anime": 24,
+    "manga-anime": 48,
     "manchester-united": 12,
     "football": 12,
 }
@@ -66,7 +64,7 @@ QUERY_PLAN: dict[str, list[str]] = {
         '(Wall Street OR Europe markets OR Asia markets OR companies finance) when:4h',
     ],
     "stock-news": [
-        '(NVDA OR AAPL OR TSM OR PLTR OR MSFT OR GOOG) when:4h',
+        '(NVDA OR Nvidia OR AAPL OR Apple OR TSM OR TSMC OR PLTR OR Palantir OR MSFT OR Microsoft OR GOOG OR Alphabet) when:4h',
         '(EMXC OR EWY OR VT) ETF when:8h',
     ],
     "ai-tech": [
@@ -74,18 +72,20 @@ QUERY_PLAN: dict[str, list[str]] = {
         '(technology OR software OR chips OR consumer tech OR tech regulation) when:4h',
     ],
     "manga-anime": [
-        '(anime OR manga) industry production release publisher when:24h',
-        '(アニメ OR 漫画) 最新 制作 放送 出版 when:24h',
+        'anime when:48h',
+        'manga when:48h',
+        'アニメ when:48h',
+        '漫画 when:48h',
     ],
     "manchester-united": [
         '"Manchester United" when:6h',
-        '"Manchester United" transfer injury match club when:12h',
+        '"Man Utd" transfer injury match club when:12h',
     ],
     "football": [
         '(football OR soccer) (Premier League OR EFL OR "La Liga" OR "Serie A" OR Bundesliga OR "Ligue 1") when:4h',
         'football transfer injury suspension manager club when:4h',
         '(UEFA OR "Champions League" OR "Europa League" OR international football) when:6h',
-        '("J League" OR J-League OR "Hong Kong football" OR HKPL OR AFC) when:8h',
+        '("J League" OR J-League OR "Hong Kong Premier League" OR HKFA OR "AFC Champions League") when:8h',
     ],
 }
 
@@ -94,6 +94,17 @@ LOCALES = {
     "japan": ("ja", "JP", "JP:ja"),
     "manga-anime": ("ja", "JP", "JP:ja"),
 }
+
+FOOTBALL_FALSE_POSITIVE = re.compile(
+    r"\b(?:NFL|NCAA|MLB|NBA|quarterback|touchdown|super bowl|pro bowl|baseball)\b|\bAFC\s+(?:East|West|North|South)\b",
+    re.I,
+)
+
+STOCK_TERMS = (
+    "nvda", "nvidia", "aapl", "apple", "tsm", "tsmc", "taiwan semiconductor",
+    "pltr", "palantir", "msft", "microsoft", "goog", "google", "alphabet",
+    "emxc", "ewy", " vt ", "vanguard total world", "emerging markets ex china",
+)
 
 
 def now_utc() -> datetime:
@@ -141,6 +152,22 @@ def candidate_is_fresh(desk: str, pub: datetime | None, discovered: datetime) ->
         return True
     max_age = timedelta(hours=FRESHNESS_HOURS[desk])
     return discovered - max_age <= pub <= discovered + timedelta(hours=1)
+
+
+def candidate_is_relevant(desk: str, title: str, source: str) -> bool:
+    combined = f" {title} {source} ".lower()
+    if desk == "football" and FOOTBALL_FALSE_POSITIVE.search(combined):
+        return False
+    if desk == "manchester-united":
+        return (
+            "manchester united" in combined
+            or "man utd" in combined
+            or "man united" in combined
+            or "manchester united website" in combined
+        )
+    if desk == "stock-news":
+        return any(term in combined for term in STOCK_TERMS)
+    return True
 
 
 def http_get(url: str, timeout: int = 15) -> bytes:
@@ -192,6 +219,8 @@ def rss_items(payload: bytes, provider: str, desk: str, query: str, discovered: 
         source = clean_text(source_node.text if source_node is not None else "")
         if not source:
             source = clean_text(item.findtext("author")) or provider
+        if not candidate_is_relevant(desk, title, source):
+            continue
         cid = candidate_id(desk, title)
         out.append(
             {
@@ -227,6 +256,10 @@ def retained_candidates(existing: dict[str, Any], now: datetime) -> dict[str, di
     for desk in QUERY_PLAN:
         for item in old_desks.get(desk, []) if isinstance(old_desks.get(desk), list) else []:
             if not isinstance(item, dict) or not item.get("id"):
+                continue
+            title = str(item.get("title") or "")
+            source = str(item.get("source") or "")
+            if not candidate_is_relevant(desk, title, source):
                 continue
             seen = parse_date(str(item.get("lastSeenAt") or item.get("firstSeenAt") or ""))
             pub = parse_date(str(item.get("publishedAt") or ""))
@@ -306,6 +339,7 @@ def collect(existing: dict[str, Any]) -> dict[str, Any]:
         "notes": [
             "Staging is discovery only; candidates are not published without independent verification.",
             "Football is researched as the full worldwide football news desk; results are one normal candidate type among transfers, injuries, fixtures, club, league and international developments.",
+            "American-football/baseball false positives and non-Manchester-United noise are filtered before staging.",
             "Candidates with an explicit publication time older than the desk freshness limit are discarded before staging.",
         ],
     }
