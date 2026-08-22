@@ -2,18 +2,9 @@
   "use strict";
 
   const DESKS = [
-    ["index.html", "頭版"],
-    ["world.html", "世界"],
-    ["asia.html", "亞洲"],
-    ["hong-kong.html", "香港"],
-    ["japan.html", "日本"],
-    ["finance.html", "📈 財經"],
-    ["stocks.html", "📊 Stock News"],
-    ["technology.html", "AI / 科技"],
-    ["manga-anime.html", "漫畫 / Anime"],
-    ["manchester-united.html", "Manchester United"],
-    ["football.html", "Football"],
-    ["archive.html", "Archive"]
+    ["index.html", "頭版"], ["world.html", "世界"], ["asia.html", "亞洲"], ["hong-kong.html", "香港"],
+    ["japan.html", "日本"], ["finance.html", "📈 財經"], ["stocks.html", "📊 Stock News"], ["technology.html", "AI / 科技"],
+    ["manga-anime.html", "漫畫 / Anime"], ["manchester-united.html", "Manchester United"], ["football.html", "Football"], ["archive.html", "Archive"]
   ];
 
   function injectNavStyle() {
@@ -21,14 +12,9 @@
     const style = document.createElement("style");
     style.id = "mobile-two-row-nav-style";
     style.textContent = `
-      @media (max-width:620px){
-        .section-nav{display:grid!important;grid-template-columns:repeat(7,minmax(0,1fr))!important;grid-auto-flow:row!important;overflow:visible!important;width:100%!important;flex-wrap:unset!important}
-        .section-nav a{display:flex!important;align-items:center!important;justify-content:center!important;min-width:0!important;padding:7px 2px!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:center!important;font-size:9.5px!important;line-height:1.12!important;border-right:1px solid #444!important;border-bottom:1px solid #444!important}
-        .section-nav a:nth-child(7n){border-right:0!important}.section-nav a:nth-last-child(-n+6){border-bottom:0!important}
-      }
+      @media (max-width:620px){.section-nav{display:grid!important;grid-template-columns:repeat(7,minmax(0,1fr))!important;grid-auto-flow:row!important;overflow:visible!important;width:100%!important;flex-wrap:unset!important}.section-nav a{display:flex!important;align-items:center!important;justify-content:center!important;min-width:0!important;padding:7px 2px!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:center!important;font-size:9.5px!important;line-height:1.12!important;border-right:1px solid #444!important;border-bottom:1px solid #444!important}.section-nav a:nth-child(7n){border-right:0!important}.section-nav a:nth-last-child(-n+6){border-bottom:0!important}}
       #main-site-voice-button{position:fixed;right:14px;bottom:72px;z-index:9997;border:2px solid #111;background:#fff;color:#111;padding:10px 13px;border-radius:999px;font:800 12px/1.2 "Noto Sans TC",sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.18);cursor:pointer}
-      #main-site-voice-button:hover{background:#111;color:#fff}#main-site-voice-button:disabled{opacity:.6;cursor:wait}
-      @media(max-width:620px){#main-site-voice-button{right:10px;bottom:68px;padding:9px 11px;font-size:11px}}
+      #main-site-voice-button:hover{background:#111;color:#fff}#main-site-voice-button:disabled{opacity:.6;cursor:wait}@media(max-width:620px){#main-site-voice-button{right:10px;bottom:68px;padding:9px 11px;font-size:11px}}
     `;
     document.head.appendChild(style);
   }
@@ -39,20 +25,13 @@
     const page = (location.pathname.split("/").pop() || "index.html").toLowerCase();
     const links = ['<a class="live-nav" href="live.html">Live</a>', ...DESKS.map(([href, label]) => {
       const target = href.split("#")[0].toLowerCase();
-      const current = target === page ? ' aria-current="page"' : "";
-      return `<a href="${href}"${current}>${label}</a>`;
+      return `<a href="${href}"${target === page ? ' aria-current="page"' : ""}>${label}</a>`;
     })];
     nav.innerHTML = links.join("");
   }
 
   function removeVoiceLabLinks() {
-    document.querySelectorAll('a[href="voice.html"], a[href$="/voice.html"]').forEach((link) => {
-      const previous = link.previousSibling;
-      const next = link.nextSibling;
-      link.remove();
-      if (previous?.nodeType === Node.TEXT_NODE && /^\s*·\s*$/.test(previous.textContent || "")) previous.remove();
-      else if (next?.nodeType === Node.TEXT_NODE && /^\s*·\s*$/.test(next.textContent || "")) next.remove();
-    });
+    document.querySelectorAll('a[href="voice.html"], a[href$="/voice.html"]').forEach((link) => link.remove());
   }
 
   function inject(src, marker) {
@@ -76,7 +55,7 @@
 
   function loadSiteTTS() {
     if (document.body.dataset.page === "archive") return;
-    inject("assets/js/site-tts-v5.js?v=20260822-cosy2only1", "data-site-tts");
+    inject("assets/js/site-tts-v5.js?v=20260822-1609fix", "data-site-tts");
   }
 
   function mountVoiceLauncher() {
@@ -86,61 +65,40 @@
     voiceButton.type = "button";
     voiceButton.textContent = "🔊 廣東話朗讀";
     voiceButton.setAttribute("aria-label", "用 CosyVoice2-Yue 朗讀本頁新聞");
-    voiceButton.addEventListener("click", async () => {
+    voiceButton.addEventListener("click", () => {
       const original = "🔊 廣東話朗讀";
-      const page = (location.pathname.split("/").pop() || "index.html").toLowerCase();
-      const selector = page === "index.html"
-        ? "#lead-story .site-tts-button"
-        : "main article .site-tts-button";
-      voiceButton.disabled = true;
-      voiceButton.textContent = "⏳ 尋找 CosyVoice…";
-      let articleButton = null;
-      for (let i = 0; i < 30; i += 1) {
-        articleButton = document.querySelector(selector);
-        if (articleButton) break;
-        await new Promise((resolve) => setTimeout(resolve, 200));
+      // Direct synchronous playback preserves iPhone/Safari user activation.
+      if (window.SiteTTS?.playLeadFromUserGesture?.()) {
+        voiceButton.textContent = "🔊 CosyVoice2-Yue 朗讀中";
+        setTimeout(() => { voiceButton.textContent = original; }, 1200);
+        return;
       }
+      // Synchronous fallback only; never await/retry before audio.play().
+      const page = (location.pathname.split("/").pop() || "index.html").toLowerCase();
+      const selector = page === "index.html" ? "#lead-story .site-tts-button" : "main article .site-tts-button";
+      const articleButton = document.querySelector(selector);
       if (articleButton) {
         articleButton.click();
         voiceButton.textContent = "🔊 CosyVoice2-Yue 朗讀中";
-        setTimeout(() => { voiceButton.disabled = false; voiceButton.textContent = original; }, 1200);
+        setTimeout(() => { voiceButton.textContent = original; }, 1200);
         return;
       }
-      voiceButton.disabled = false;
-      voiceButton.textContent = "⚠️ 暫未有 CosyVoice2-Yue 音訊";
-      setTimeout(() => { voiceButton.textContent = original; }, 3000);
+      voiceButton.textContent = "⚠️ 音訊載入中，請再按一次";
+      setTimeout(() => { voiceButton.textContent = original; }, 1800);
     });
     document.body.appendChild(voiceButton);
   }
 
   function mountSystemPanel() {
-    injectNavStyle();
-    normalizeDeskNav();
-    removeVoiceLabLinks();
-    loadArticleEnhancers();
-    loadSiteTTS();
-    mountVoiceLauncher();
+    injectNavStyle(); normalizeDeskNav(); removeVoiceLabLinks(); loadArticleEnhancers(); loadSiteTTS(); mountVoiceLauncher();
     if (document.getElementById("system-status-button")) return;
-
     const button = document.createElement("button");
-    button.id = "system-status-button";
-    button.className = "system-status-button";
-    button.type = "button";
-    button.setAttribute("aria-label", "System status");
-    button.setAttribute("aria-expanded", "false");
+    button.id = "system-status-button"; button.className = "system-status-button"; button.type = "button";
+    button.setAttribute("aria-label", "System status"); button.setAttribute("aria-expanded", "false");
     button.innerHTML = '<span class="system-status-dot" aria-hidden="true"></span><span class="system-status-label">SYSTEM</span>';
-
     const panel = document.createElement("aside");
-    panel.id = "system-status-panel";
-    panel.className = "system-status-panel";
-    panel.hidden = true;
-    panel.innerHTML = `
-      <div class="system-panel-head"><div><strong>System Status</strong><span>Maintenance & Monitoring</span></div><button type="button" class="system-panel-close" aria-label="關閉">×</button></div>
-      <div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Website</strong><small>Static safe mode · no background monitoring loop</small></div></div>
-      <div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Daily / Live / Stocks</strong><small>Daily + Hourly Live + Rolling Desk + Stock News JSON are publishing sources</small></div></div>
-      <div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>GitHub Pages / Discord</strong><small>Deployment and push delivery are checked externally</small></div></div>
-      <div class="system-panel-links"><a href="https://github.com/kanuli/daily-brief-newspaper/actions" target="_blank" rel="noopener noreferrer">GitHub Actions ↗</a><a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">Repository ↗</a></div>`;
-
+    panel.id = "system-status-panel"; panel.className = "system-status-panel"; panel.hidden = true;
+    panel.innerHTML = `<div class="system-panel-head"><div><strong>System Status</strong><span>Maintenance & Monitoring</span></div><button type="button" class="system-panel-close" aria-label="關閉">×</button></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Website</strong><small>Static safe mode · no background monitoring loop</small></div></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Daily / Live / Stocks</strong><small>Daily + Hourly Live + Rolling Desk + Stock News JSON are publishing sources</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>GitHub Pages / Discord</strong><small>Deployment and push delivery are checked externally</small></div></div><div class="system-panel-links"><a href="https://github.com/kanuli/daily-brief-newspaper/actions" target="_blank" rel="noopener noreferrer">GitHub Actions ↗</a><a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">Repository ↗</a></div>`;
     function setOpen(open) { panel.hidden = !open; button.setAttribute("aria-expanded", String(open)); }
     button.addEventListener("click", () => setOpen(panel.hidden));
     panel.querySelector(".system-panel-close")?.addEventListener("click", () => setOpen(false));

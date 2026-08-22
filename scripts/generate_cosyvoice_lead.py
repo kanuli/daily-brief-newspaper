@@ -14,14 +14,9 @@ import torch
 import torchaudio
 from huggingface_hub import snapshot_download
 
-# CosyVoice2's own examples use the explicit assistant/end-of-prompt form for
-# dialect control. Keep this instruction on every independently synthesised
-# segment so a formal news sentence cannot silently drift into Putonghua.
-INSTRUCT = (
-    "You are a helpful assistant. "
-    "请全程用香港粤语（广东话）朗读以下内容；所有汉字必须用粤语发音，"
-    "禁止普通话或国语发音。英文专有名词可以按自然英文发音。<|endofprompt|>"
-)
+# Keep the dialect instruction short. A long assistant-style prompt can leak
+# into generated speech with CosyVoice2 instruct inference.
+INSTRUCT = "用地道香港粤语说这句话"
 F01_URL = "https://raw.githubusercontent.com/ASLP-lab/WenetSpeech-Yue/demo_page/raw/TTS_samples/F01_%E4%B8%AD%E7%AB%8B_20054.wav"
 REPO_ROOT = Path(os.environ.get("WSYUE_ROOT", "/tmp/WenetSpeech-Yue"))
 CODE_ROOT = REPO_ROOT / "CosyVoice2-Yue"
@@ -36,7 +31,6 @@ TITLE_PAUSE_SECONDS = 0.80
 DEK_PAUSE_SECONDS = 0.65
 BODY_PAUSE_SECONDS = 0.26
 INTERNAL_SPLIT_PAUSE_SECONDS = 0.18
-
 _DIGITS = "零一二三四五六七八九"
 
 
@@ -100,14 +94,6 @@ def _small_integer_to_chinese(number):
     return "".join(_DIGITS[int(char)] for char in str(number))
 
 
-def _number_for_speech(match):
-    raw = match.group(0).replace(",", "")
-    if "." in raw:
-        whole, fraction = raw.split(".", 1)
-        return f"{_number_string_for_speech(whole)}點{''.join(_DIGITS[int(c)] for c in fraction)}"
-    return _number_string_for_speech(raw)
-
-
 def _number_string_for_speech(raw):
     raw = str(raw)
     if len(raw) == 4 and raw.isdigit() and 1900 <= int(raw) <= 2099:
@@ -119,24 +105,24 @@ def _number_string_for_speech(raw):
     return raw
 
 
+def _number_for_speech(match):
+    raw = match.group(0).replace(",", "")
+    if "." in raw:
+        whole, fraction = raw.split(".", 1)
+        return f"{_number_string_for_speech(whole)}點{''.join(_DIGITS[int(c)] for c in fraction)}"
+    return _number_string_for_speech(raw)
+
+
 def normalize_numbers_for_cantonese(text):
-    # Arabic numerals and ASCII unit symbols are strong mixed-language cues.
-    # Convert the common news forms to Han text so the Cantonese model keeps
-    # the same language state throughout the Chinese sentence.
     text = re.sub(r"(?<![A-Za-z])\d[\d,]*(?:\.\d+)?", _number_for_speech, text)
     text = text.replace("%", "百分比")
-    text = text.replace("£", "英鎊").replace("€", "歐元")
-    text = text.replace("$", "美元")
+    text = text.replace("£", "英鎊").replace("€", "歐元").replace("$", "美元")
     return text
 
 
 def normalize_for_tts(value):
     text = clean_text(value)
-    # This phrase triggered an upstream mixed-language sampling edge case in a
-    # long chunk. The displayed article is unchanged; only spoken text is made
-    # Cantonese-friendly.
     text = re.sub(r"[「『“\"]?double[\-‐‑–— ]?tap[」』”\"]?", "二次打擊", text, flags=re.IGNORECASE)
-    # Source names are safer as their established Chinese newsroom names.
     text = re.sub(r"\bReuters\b", "路透社", text, flags=re.IGNORECASE)
     text = re.sub(r"\bAssociated Press\b", "美聯社", text, flags=re.IGNORECASE)
     text = re.sub(r"\bAP\b", "美聯社", text)
@@ -176,14 +162,11 @@ def split_for_tts(value, max_chars=MAX_SEGMENT_CHARS):
     text = normalize_for_tts(value)
     if not text:
         return []
-
-    strong_pieces = [clean_text(part) for part in re.split(r"(?<=[。！？!?；;])", text) if clean_text(part)]
+    strong = [clean_text(p) for p in re.split(r"(?<=[。！？!?；;])", text) if clean_text(p)]
     atoms = []
-    for piece in strong_pieces:
+    for piece in strong:
         atoms.extend(split_long_piece(piece, max_chars))
-
-    segments = []
-    buffer = ""
+    segments, buffer = [], ""
     for atom in atoms:
         candidate = clean_text(f"{buffer}{atom}") if buffer else atom
         if buffer and len(candidate) > max_chars:
@@ -193,7 +176,6 @@ def split_for_tts(value, max_chars=MAX_SEGMENT_CHARS):
             buffer = candidate
     if buffer:
         segments.append(with_stop(buffer))
-
     return [segment for segment in segments if segment]
 
 
@@ -207,18 +189,12 @@ def add_role_segments(target, role, text, final_pause):
 def build_tts_segments(article):
     segments = []
     budget = MAX_TEXT_CHARS
-
     fields = [
         ("title", article.get("title"), TITLE_PAUSE_SECONDS),
         ("dek", article.get("dek"), DEK_PAUSE_SECONDS),
     ]
-    paragraphs = [
-        clean_text(p)
-        for p in re.split(r"\n\s*\n", str(article.get("body") or ""))
-        if clean_text(p)
-    ]
+    paragraphs = [clean_text(p) for p in re.split(r"\n\s*\n", str(article.get("body") or "")) if clean_text(p)]
     fields.extend(("body", paragraph, BODY_PAUSE_SECONDS) for paragraph in paragraphs[:2])
-
     for role, raw_text, final_pause in fields:
         text = normalize_for_tts(raw_text)
         if not text or budget <= 0:
@@ -227,7 +203,6 @@ def build_tts_segments(article):
             text = text[:budget]
         budget -= len(text)
         add_role_segments(segments, role, text, final_pause)
-
     if not segments or sum(len(item["text"]) for item in segments) < 24:
         raise RuntimeError("lead article text is too short for TTS")
     return segments
@@ -245,19 +220,15 @@ def load_lead():
         lead_id = article.get("id")
     if not article or not lead_id:
         raise RuntimeError("data/latest.json has no usable lead article")
-    segments = build_tts_segments(article)
-    return data, article, lead_id, segments, source_sha256
+    return data, article, lead_id, build_tts_segments(article), source_sha256
 
 
 def synthesize_segment(cosyvoice, prompt_speech_16k, item, index):
     text = item["text"]
-    role = item["role"]
-    print(f"segment={index} role={role} chars={len(text)} text={text}", flush=True)
+    print(f"segment={index} role={item['role']} chars={len(text)} text={text}", flush=True)
     chunks = []
     with torch.inference_mode():
-        for chunk_idx, result in enumerate(
-            cosyvoice.inference_instruct2(text, INSTRUCT, prompt_speech_16k, stream=False)
-        ):
+        for chunk_idx, result in enumerate(cosyvoice.inference_instruct2(text, INSTRUCT, prompt_speech_16k, stream=False)):
             speech = result["tts_speech"].detach().cpu()
             if speech.numel() == 0:
                 continue
@@ -272,21 +243,17 @@ def main():
     print("=== COSYVOICE2-YUE PRODUCTION LEAD GENERATOR ===", flush=True)
     if not CODE_ROOT.exists():
         raise RuntimeError(f"WenetSpeech-Yue code not found: {CODE_ROOT}")
-
     data, article, lead_id, segments, source_sha256 = load_lead()
+    speech_chars = sum(len(item["text"]) for item in segments)
     print(f"lead_id={lead_id}", flush=True)
     print(f"title={article.get('title')}", flush=True)
-    print(f"tts_segments={len(segments)} tts_chars={sum(len(item['text']) for item in segments)}", flush=True)
+    print(f"tts_segments={len(segments)} tts_chars={speech_chars}", flush=True)
     print(f"source_sha256={source_sha256}", flush=True)
-    print("pronunciation_policy=yue-HK-cantonese-only", flush=True)
-    for idx, item in enumerate(segments):
-        print(f"PLAN segment={idx} role={item['role']} chars={len(item['text'])} pause={item['pause']:.2f}s", flush=True)
-
+    print("pronunciation_policy=yue-HK-cantonese-only; instruct=short-no-leak", flush=True)
     ensure_model()
     sys.path.insert(0, str(CODE_ROOT))
     sys.path.insert(0, str(CODE_ROOT / "third_party" / "Matcha-TTS"))
     install_offline_wetext_stub()
-
     from cosyvoice.cli.cosyvoice import CosyVoice2
     from cosyvoice.utils.file_utils import load_wav
 
@@ -294,48 +261,44 @@ def main():
     urllib.request.urlretrieve(F01_URL, ref)
     if ref.stat().st_size < 10000:
         raise RuntimeError("F01 female reference download is too small")
-
     print("Loading CosyVoice2-Yue on CPU...", flush=True)
     t0 = time.time()
     cosyvoice = CosyVoice2(str(MODEL_DIR), load_jit=False, load_trt=False, load_vllm=False, fp16=False)
     print(f"Model loaded in {time.time() - t0:.1f}s sample_rate={cosyvoice.sample_rate}", flush=True)
-
     prompt_speech_16k = load_wav(str(ref), 16000)
     audio_parts = []
-    print("Synthesizing production Daily lead with strict yue-HK pronunciation control and F01 female reference...", flush=True)
     t1 = time.time()
-
     for idx, item in enumerate(segments):
         segment_audio = synthesize_segment(cosyvoice, prompt_speech_16k, item, idx)
         audio_parts.append(segment_audio)
         pause_samples = int(round(cosyvoice.sample_rate * item["pause"]))
         if pause_samples > 0:
             audio_parts.append(torch.zeros((1, pause_samples), dtype=segment_audio.dtype))
-
     if not audio_parts:
         raise RuntimeError("CosyVoice2-Yue returned zero production audio")
-
     speech = torch.cat(audio_parts, dim=1).clamp(-1.0, 1.0)
     duration = speech.shape[1] / cosyvoice.sample_rate
+    # Guard against accidental spoken-instruction leakage. The bad long-prompt
+    # build was ~200 s for this article; normal news speech should stay well
+    # below this conservative text-length envelope.
+    max_reasonable_duration = max(60.0, speech_chars * 0.45)
+    if duration > max_reasonable_duration:
+        raise RuntimeError(
+            f"production audio suspiciously long; possible prompt leakage: duration={duration:.3f}s "
+            f"limit={max_reasonable_duration:.3f}s chars={speech_chars}"
+        )
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    torchaudio.save(
-        str(OUTPUT),
-        speech,
-        cosyvoice.sample_rate,
-        encoding="PCM_S",
-        bits_per_sample=16,
-        backend="soundfile",
-    )
+    torchaudio.save(str(OUTPUT), speech, cosyvoice.sample_rate, encoding="PCM_S", bits_per_sample=16, backend="soundfile")
     size = OUTPUT.stat().st_size
     if duration < 2.0 or size < 50000:
         raise RuntimeError(f"invalid production audio: duration={duration:.3f}s bytes={size}")
-
     manifest = {
         "version": 1,
         "engine": "ASLP-lab/Cosyvoice2-Yue",
         "voice": "F01 female reference",
         "language": "yue-HK",
         "pronunciationPolicy": "cantonese-only",
+        "instructionPolicy": "short-no-leak",
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "source": "data/latest.json",
         "sourceSha256": source_sha256,
@@ -348,6 +311,7 @@ def main():
                 "audio": OUTPUT.as_posix(),
                 "wavEncoding": "PCM16",
                 "segmentCount": len(segments),
+                "speechTextChars": speech_chars,
                 "durationSeconds": round(duration, 3),
                 "bytes": size,
             }
@@ -355,12 +319,7 @@ def main():
     }
     MANIFEST.parent.mkdir(parents=True, exist_ok=True)
     MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-    print(
-        f"Generated duration={duration:.3f}s bytes={size} encoding=PCM16 segments={len(segments)} "
-        f"inference_seconds={time.time() - t1:.1f}",
-        flush=True,
-    )
+    print(f"Generated duration={duration:.3f}s bytes={size} encoding=PCM16 segments={len(segments)} inference_seconds={time.time()-t1:.1f}", flush=True)
     print(f"COSYVOICE_PRODUCTION_PASS={OUTPUT}", flush=True)
     print(f"COSYVOICE_MANIFEST={MANIFEST}", flush=True)
     return 0
