@@ -15,7 +15,7 @@ def get(url, method="GET"):
     request = urllib.request.Request(
         url,
         method=method,
-        headers={"User-Agent": "daily-brief-cosyvoice-live-smoke/2.0", "Cache-Control": "no-cache"},
+        headers={"User-Agent": "daily-brief-cosyvoice-live-smoke/3.0", "Cache-Control": "no-cache"},
     )
     with urllib.request.urlopen(request, timeout=25) as response:
         return response.status, response.headers, response.read() if method != "HEAD" else b""
@@ -61,19 +61,21 @@ def validate_once(expected):
         raise RuntimeError(f"manifest HTTP {status}")
     remote = json.loads(body.decode("utf-8"))
 
-    for key in ("engine", "voice", "language", "pronunciationPolicy", "coveragePolicy", "leadId", "sourceSetSha256"):
+    for key in (
+        "engine", "voice", "language", "pronunciationPolicy", "coveragePolicy",
+        "generationMode", "leadId", "sourceSetSha256", "articleCount",
+        "collectedStoryCount", "pendingArticleCount", "lastPublishedArticleId",
+    ):
         if expected.get(key) is not None and remote.get(key) != expected.get(key):
             raise RuntimeError(f"live manifest {key} mismatch: {remote.get(key)!r} != {expected.get(key)!r}")
 
     expected_articles = expected.get("articles") or {}
     remote_articles = remote.get("articles") or {}
-    if len(remote_articles) != len(expected_articles):
-        raise RuntimeError(f"live manifest article count mismatch: {len(remote_articles)} != {len(expected_articles)}")
+    if set(remote_articles) != set(expected_articles):
+        raise RuntimeError("live manifest article keys do not match the committed progressive manifest")
     if remote.get("articleCount") != len(remote_articles):
         raise RuntimeError("live manifest articleCount is inconsistent")
 
-    # Every current story must expose an actual F01 WAV URL. HEAD avoids downloading
-    # the entire corpus while still proving Pages published every file.
     checked = 0
     for key, expected_entry in expected_articles.items():
         entry = remote_articles.get(key)
@@ -95,21 +97,22 @@ def validate_once(expected):
 
     lead_title = expected.get("leadTitle")
     lead_entry = next((entry for entry in remote_articles.values() if entry.get("title") == lead_title), None)
-    if not lead_entry:
-        raise RuntimeError("live manifest has no lead-title F01 entry")
-    status, headers, wav_bytes = get(f"{BASE}{lead_entry['audio']}?smoke={stamp}")
-    if status != 200:
-        raise RuntimeError(f"lead audio HTTP {status}")
-    info = wav_info(wav_bytes)
-    if info["audioFormat"] != 1 or info["bits"] != 16 or info["duration"] <= 2:
-        raise RuntimeError(
-            f"lead F01 WAV invalid format={info['audioFormat']} bits={info['bits']} duration={info['duration']:.3f}"
-        )
+    lead_summary = "lead=pending"
+    if lead_entry:
+        status, headers, wav_bytes = get(f"{BASE}{lead_entry['audio']}?smoke={stamp}")
+        if status != 200:
+            raise RuntimeError(f"lead audio HTTP {status}")
+        info = wav_info(wav_bytes)
+        if info["audioFormat"] != 1 or info["bits"] != 16 or info["duration"] <= 2:
+            raise RuntimeError(
+                f"lead F01 WAV invalid format={info['audioFormat']} bits={info['bits']} duration={info['duration']:.3f}"
+            )
+        lead_summary = f"lead_bytes={len(wav_bytes)} lead_duration={info['duration']:.3f}s"
 
     print(
-        "COSYVOICE_LIVE_ALL_NEWS_PASS "
-        f"articles={checked} lead_bytes={len(wav_bytes)} lead_duration={info['duration']:.3f}s "
-        f"format={info['audioFormat']} bits={info['bits']} content_type={headers.get('Content-Type')}"
+        "COSYVOICE_LIVE_PROGRESSIVE_PASS "
+        f"available={checked}/{remote.get('collectedStoryCount', checked)} "
+        f"pending={remote.get('pendingArticleCount')} {lead_summary}"
     )
 
 
@@ -119,8 +122,13 @@ def main():
         raise RuntimeError("local manifest is not CosyVoice2-Yue")
     if expected.get("voice") != "F01 female reference":
         raise RuntimeError("local manifest is not F01 female reference")
-    if expected.get("coveragePolicy") != "all-current-news-f01-only":
-        raise RuntimeError("local manifest is not all-news F01-only")
+    if expected.get("language") != "yue-HK":
+        raise RuntimeError("local manifest is not yue-HK")
+    if expected.get("coveragePolicy") not in {
+        "progressive-current-news-f01-only",
+        "all-current-news-f01-only",
+    }:
+        raise RuntimeError("local manifest is not an approved F01-only coverage mode")
 
     last_error = None
     for attempt in range(1, ATTEMPTS + 1):
@@ -132,7 +140,7 @@ def main():
             print(f"live smoke attempt {attempt}/{ATTEMPTS} not ready: {error}", flush=True)
             if attempt < ATTEMPTS:
                 time.sleep(SLEEP_SECONDS)
-    raise RuntimeError(f"live GitHub Pages all-news F01 validation failed: {last_error}")
+    raise RuntimeError(f"live GitHub Pages progressive F01 validation failed: {last_error}")
 
 
 if __name__ == "__main__":
