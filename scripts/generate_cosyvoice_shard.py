@@ -9,6 +9,7 @@ import generate_cosyvoice_all as gen
 
 SHARD_INDEX = int(os.environ.get("COSY_SHARD_INDEX", "0"))
 SHARD_COUNT = int(os.environ.get("COSY_SHARD_COUNT", "1"))
+EXPECTED_LIMIT = int(os.environ.get("COSY_SHARD_EXPECTED_LIMIT", "0"))
 OUT_DIR = Path(os.environ.get("COSY_SHARD_OUT_DIR", "artifacts/cosyvoice-shards"))
 
 
@@ -17,6 +18,9 @@ def main():
         raise RuntimeError(f"invalid shard {SHARD_INDEX}/{SHARD_COUNT}")
 
     latest, latest_raw, stories, lead_id, lead_title, source_set_sha, loaded_paths = gen.collect_current_stories()
+    if EXPECTED_LIMIT > 0:
+        stories = stories[:EXPECTED_LIMIT]
+        print(f"TEST LIMIT: shard expected article set limited to {len(stories)} stories", flush=True)
     previous = gen.load_previous_manifest()
 
     expected = []
@@ -40,7 +44,6 @@ def main():
     )
 
     entries = {}
-    model = prompt = None
     if selected:
         model, prompt = gen.setup_model()
         audio_dir = OUT_DIR / "audio" / f"shard-{SHARD_INDEX}"
