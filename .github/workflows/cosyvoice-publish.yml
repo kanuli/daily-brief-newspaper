@@ -14,22 +14,62 @@ on:
       - "scripts/generate_cosyvoice_all.py"
       - "scripts/generate_cosyvoice_shard.py"
       - "scripts/publish_cosyvoice_article.py"
+      - "scripts/promote_cosyvoice_prepublish.py"
       - ".github/workflows/cosyvoice-publish.yml"
   workflow_dispatch:
 
 permissions:
   contents: write
 
-# A newer hourly snapshot supersedes only unfinished synthesis. Every voice that
-# already reached main stays published and is reused by the replacement run.
-# If a run is cancelled or stops while backlog remains, cosyvoice-maintenance.yml
-# detects the missing worker pool and dispatches a replacement automatically.
+# A newer public news snapshot supersedes only unfinished synthesis. Published
+# voices stay on main. Verified-draft voices prepared on prepublish-news are
+# promoted only when their content hash exactly matches the public article.
 concurrency:
   group: "cosyvoice2-yue-f01-current-news"
   cancel-in-progress: true
 
 jobs:
+  promote-prebuilt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout current public news
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Promote only exact-hash prebuilt F01 voices
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git fetch origin prepublish-news; then
+            echo "No prepublish-news branch yet; normal F01 backfill will handle this edition."
+            exit 0
+          fi
+          rm -rf /tmp/prepublish-news
+          git worktree add --detach /tmp/prepublish-news origin/prepublish-news
+          python scripts/promote_cosyvoice_prepublish.py /tmp/prepublish-news
+          git add -- data/tts-manifest.json assets/audio/cosyvoice/articles assets/audio/cosyvoice/latest-lead.wav
+          if git diff --cached --quiet; then
+            echo "No matching prebuilt F01 voices to promote."
+            exit 0
+          fi
+          git commit -m "Promote verified prebuilt F01 voices"
+          for attempt in 1 2 3 4 5 6; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo "COSYVOICE_PREPUBLISH_PROMOTION_PUSH_PASS"
+              exit 0
+            fi
+            sleep $((attempt * 2))
+          done
+          echo "Prebuilt promotion could not push; do not block news or normal F01 backfill." >&2
+          exit 0
+
   worker:
+    needs: promote-prebuilt
     runs-on: ubuntu-latest
     timeout-minutes: 55
     strategy:
