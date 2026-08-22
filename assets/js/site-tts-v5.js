@@ -3,6 +3,8 @@
 
   const BUTTON_TEXT = "🔊 廣東話朗讀";
   const MANIFEST_URL = "data/tts-manifest.json";
+  const LEAD_AUDIO_URL = "assets/audio/cosyvoice/latest-lead.wav";
+  const PAGE_CACHE_KEY = Date.now();
   let activeButton = null;
   let manifestPromise = null;
   let manifestData = null;
@@ -28,13 +30,11 @@
       const panel = document.createElement("div");
       panel.id = "site-tts-player";
       panel.dataset.open = "false";
-      panel.innerHTML = '<div class="site-tts-player-row"><div class="site-tts-status" id="site-tts-status">準備 CosyVoice2-Yue…</div><button type="button" class="site-tts-stop" id="site-tts-stop">■ 停止</button></div><audio class="site-tts-audio" id="site-tts-audio" controls preload="metadata" playsinline></audio>';
+      panel.innerHTML = '<div class="site-tts-player-row"><div class="site-tts-status" id="site-tts-status">CosyVoice2-Yue · F01 女聲</div><button type="button" class="site-tts-stop" id="site-tts-stop">■ 停止</button></div><audio class="site-tts-audio" id="site-tts-audio" controls preload="auto" playsinline></audio>';
       document.body.appendChild(panel);
       $("#site-tts-stop")?.addEventListener("click", stopAll);
-      $("#site-tts-audio")?.addEventListener("error", () => {
-        const audio = $("#site-tts-audio");
-        const code = audio?.error?.code || "unknown";
-        setStatus(`CosyVoice2-Yue 音訊播放失敗（audio error ${code}）。`);
+      $("#site-tts-audio")?.addEventListener("error", (event) => {
+        console.warn("CosyVoice2-Yue audio element error", event);
       });
     }
   }
@@ -45,24 +45,99 @@
     $("#site-tts-status").textContent = text;
   }
 
-  function resetAudio() {
+  function leadUrl() {
+    const url = new URL(LEAD_AUDIO_URL, document.baseURI);
+    url.searchParams.set("v", String(PAGE_CACHE_KEY));
+    return url.href;
+  }
+
+  function entryUrl(entry) {
+    if (!entry?.audio) return null;
+    const url = new URL(entry.audio, document.baseURI);
+    url.searchParams.set("v", String(entry.bytes || entry.generatedAt || PAGE_CACHE_KEY));
+    return url.href;
+  }
+
+  function primeAudio(url = leadUrl()) {
+    ensureUi();
     const audio = $("#site-tts-audio");
     if (!audio) return null;
-    try { audio.pause(); } catch (_) {}
-    audio.removeAttribute("src");
-    audio.dataset.ready = "false";
-    audio.load();
+    if (audio.dataset.sourceUrl !== url) {
+      try { audio.pause(); } catch (_) {}
+      audio.src = url;
+      audio.dataset.sourceUrl = url;
+      audio.dataset.ready = "true";
+      audio.preload = "auto";
+      audio.load();
+    }
     return audio;
   }
 
   function stopAll() {
-    resetAudio();
+    const audio = $("#site-tts-audio");
+    if (audio) {
+      try { audio.pause(); } catch (_) {}
+      try { audio.currentTime = 0; } catch (_) {}
+    }
     if (activeButton) {
       activeButton.disabled = false;
       activeButton.textContent = BUTTON_TEXT;
       activeButton = null;
     }
     setStatus("朗讀已停止。");
+  }
+
+  function playPreparedAudio(audio, button = null) {
+    if (!audio) return false;
+    if (activeButton && activeButton !== button) {
+      activeButton.disabled = false;
+      activeButton.textContent = BUTTON_TEXT;
+    }
+    activeButton = button;
+    if (button) {
+      button.disabled = true;
+      button.textContent = "🔊 朗讀中";
+    }
+    setStatus("使用中：CosyVoice2-Yue · F01 女聲");
+
+    let promise;
+    try {
+      promise = audio.play();
+    } catch (error) {
+      console.warn("CosyVoice2-Yue play() threw", error);
+      return false;
+    }
+
+    if (promise && typeof promise.catch === "function") {
+      promise.catch((error) => {
+        console.warn("CosyVoice2-Yue initial play() rejected; retrying with fresh source", error);
+        const fresh = new URL(LEAD_AUDIO_URL, document.baseURI);
+        fresh.searchParams.set("v", String(Date.now()));
+        audio.src = fresh.href;
+        audio.dataset.sourceUrl = fresh.href;
+        audio.dataset.ready = "true";
+        try {
+          const retry = audio.play();
+          if (retry && typeof retry.catch === "function") retry.catch((retryError) => console.warn("CosyVoice2-Yue retry rejected", retryError));
+        } catch (retryError) {
+          console.warn("CosyVoice2-Yue retry threw", retryError);
+        }
+      }).finally(() => {
+        if (button) {
+          button.disabled = false;
+          button.textContent = BUTTON_TEXT;
+        }
+        activeButton = null;
+      });
+    }
+    return true;
+  }
+
+  function playEntry(entry, button = null) {
+    const url = entryUrl(entry);
+    if (!url) return false;
+    const audio = primeAudio(url);
+    return playPreparedAudio(audio, button);
   }
 
   function loadManifest() {
@@ -93,51 +168,6 @@
     return Object.values(manifest.articles).find((entry) => clean(entry?.title) === title) || null;
   }
 
-  function playEntry(entry, button = null) {
-    ensureUi();
-    const audio = resetAudio();
-    if (!audio || !entry?.audio) {
-      setStatus("CosyVoice2-Yue 音訊路徑不存在。");
-      return false;
-    }
-
-    if (activeButton && activeButton !== button) {
-      activeButton.disabled = false;
-      activeButton.textContent = BUTTON_TEXT;
-    }
-    activeButton = button;
-    if (button) {
-      button.disabled = true;
-      button.textContent = "⏳ 載入 CosyVoice…";
-    }
-
-    const cacheKey = entry.bytes || entry.generatedAt || manifestData?.generatedAt || Date.now();
-    audio.src = `${entry.audio}?v=${encodeURIComponent(String(cacheKey))}`;
-    audio.dataset.ready = "true";
-    setStatus("使用中：CosyVoice2-Yue · F01 女聲");
-
-    // IMPORTANT: call play() synchronously from the user's click handler.
-    // iPhone/Safari may reject playback if we await manifest/network work first.
-    const promise = audio.play();
-    if (promise && typeof promise.then === "function") {
-      promise.then(() => {
-        setStatus("使用中：CosyVoice2-Yue · F01 女聲");
-      }).catch((error) => {
-        const name = error?.name || "PlaybackError";
-        const code = audio?.error?.code || "none";
-        console.warn("CosyVoice2-Yue play() rejected", error);
-        setStatus(`CosyVoice2-Yue 播放失敗（${name}; audio error ${code}）。請按下方播放器重試。`);
-      }).finally(() => {
-        if (button) {
-          button.disabled = false;
-          button.textContent = BUTTON_TEXT;
-        }
-        activeButton = null;
-      });
-    }
-    return true;
-  }
-
   function addButton(article, manifest) {
     if (!(article instanceof Element) || article.tagName !== "ARTICLE" || !article.closest("main")) return;
     if (article.dataset.siteTtsReady === "true" || article.closest(".study-desk,[data-no-tts]")) return;
@@ -151,7 +181,6 @@
     button.className = "site-tts-button";
     button.textContent = BUTTON_TEXT;
     button.setAttribute("aria-label", "用 CosyVoice2-Yue F01 女聲朗讀這則新聞");
-    // Entry is already resolved here, so no async manifest fetch occurs after click.
     button.addEventListener("click", () => playEntry(entry, button));
     wrap.appendChild(button);
     const heading = $("h1,h2,h3", article);
@@ -172,29 +201,27 @@
 
   window.SiteTTS = {
     playLeadFromUserGesture() {
-      const manifest = manifestData;
-      const entry = manifest?.leadId ? manifest.articles?.[manifest.leadId] : null;
-      if (!entry) {
-        setStatus("CosyVoice2-Yue 音訊資料仍在載入，請再按一次。");
-        return false;
-      }
-      return playEntry(entry, null);
+      const audio = primeAudio(leadUrl());
+      return playPreparedAudio(audio, null);
     },
     isReady() {
-      return Boolean(manifestData?.leadId && manifestData?.articles?.[manifestData.leadId]);
+      return Boolean($("#site-tts-audio")?.src);
     }
   };
 
   async function boot() {
     ensureUi();
+    // Prime the real production WAV immediately. The user click later only calls play().
+    primeAudio(leadUrl());
     let manifest;
     try {
       manifest = await loadManifest();
     } catch (error) {
-      console.warn("CosyVoice2-Yue manifest unavailable", error);
-      setStatus(`CosyVoice2-Yue manifest 載入失敗：${error?.message || error}`);
+      console.warn("CosyVoice2-Yue manifest unavailable; lead playback remains available", error);
       return;
     }
+    const leadEntry = manifest?.leadId ? manifest.articles?.[manifest.leadId] : null;
+    if (leadEntry?.audio) primeAudio(entryUrl(leadEntry));
     scan(manifest);
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
