@@ -129,10 +129,17 @@ def main():
     if not chunks:
         raise RuntimeError("CosyVoice2-Yue returned zero production audio chunks")
 
-    speech = torch.cat(chunks, dim=1)
+    speech = torch.cat(chunks, dim=1).clamp(-1.0, 1.0)
     duration = speech.shape[1] / cosyvoice.sample_rate
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    torchaudio.save(str(OUTPUT), speech, cosyvoice.sample_rate, backend="soundfile")
+    torchaudio.save(
+        str(OUTPUT),
+        speech,
+        cosyvoice.sample_rate,
+        encoding="PCM_S",
+        bits_per_sample=16,
+        backend="soundfile",
+    )
     size = OUTPUT.stat().st_size
     if duration < 2.0 or size < 50000:
         raise RuntimeError(f"invalid production audio: duration={duration:.3f}s bytes={size}")
@@ -151,6 +158,7 @@ def main():
                 "articleId": lead_id,
                 "title": clean_text(article.get("title")),
                 "audio": OUTPUT.as_posix(),
+                "wavEncoding": "PCM16",
                 "durationSeconds": round(duration, 3),
                 "bytes": size,
             }
@@ -159,7 +167,7 @@ def main():
     MANIFEST.parent.mkdir(parents=True, exist_ok=True)
     MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    print(f"Generated duration={duration:.3f}s bytes={size} inference_seconds={time.time() - t1:.1f}", flush=True)
+    print(f"Generated duration={duration:.3f}s bytes={size} encoding=PCM16 inference_seconds={time.time() - t1:.1f}", flush=True)
     print(f"COSYVOICE_PRODUCTION_PASS={OUTPUT}", flush=True)
     print(f"COSYVOICE_MANIFEST={MANIFEST}", flush=True)
     return 0
