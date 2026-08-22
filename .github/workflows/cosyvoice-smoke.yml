@@ -8,6 +8,8 @@ on:
       - "scripts/test_cosyvoice_local_cpu.py"
       - "scripts/generate_cosyvoice_lead.py"
       - "scripts/generate_cosyvoice_all.py"
+      - "scripts/generate_cosyvoice_shard.py"
+      - "scripts/merge_cosyvoice_shards.py"
       - "scripts/check_cosyvoice_pages_contract.py"
       - "scripts/check_live_cosyvoice_pages.py"
       - "data/latest.json"
@@ -93,16 +95,22 @@ jobs:
           test -s artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
           ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
 
-      - name: Generate two real non-lead F01 news WAVs with all-news pipeline
+      - name: Generate real F01 news with two parallel-compatible shards
         env:
           HF_HUB_DISABLE_XET: "1"
           WSYUE_ROOT: /tmp/WenetSpeech-Yue
           COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
-          COSY_ARTICLE_MAX_TEXT_CHARS: "220"
-          COSY_MAX_NEW_ARTICLES: "2"
-        run: python scripts/generate_cosyvoice_all.py
+          COSY_ARTICLE_MAX_TEXT_CHARS: "180"
+          COSY_SHARD_COUNT: "2"
+          COSY_SHARD_EXPECTED_LIMIT: "3"
+        run: |
+          COSY_SHARD_INDEX=0 python scripts/generate_cosyvoice_shard.py
+          COSY_SHARD_INDEX=1 python scripts/generate_cosyvoice_shard.py
 
-      - name: Verify multi-article F01 manifest and WAVs
+      - name: Merge the two F01 shards
+        run: python scripts/merge_cosyvoice_shards.py
+
+      - name: Verify parallel multi-article F01 manifest and WAVs
         run: |
           test -s assets/audio/cosyvoice/latest-lead.wav
           python - <<'PY'
@@ -114,8 +122,9 @@ jobs:
           assert manifest['language'] == 'yue-HK'
           assert manifest['pronunciationPolicy'] == 'cantonese-only'
           assert manifest['coveragePolicy'] == 'all-current-news-f01-only'
+          assert manifest['generationMode'] == 'parallel-2-shards'
+          assert manifest['articleCount'] == manifest['collectedStoryCount'] == 3
           assert manifest['generatedArticleCount'] >= 2
-          assert len(manifest['articles']) >= 3
           for entry in manifest['articles'].values():
               path = pathlib.Path(entry['audio'])
               assert path.is_file() and path.stat().st_size > 50000
@@ -123,7 +132,7 @@ jobs:
               with wave.open(str(path), 'rb') as wav:
                   assert wav.getsampwidth() == 2
                   assert wav.getnframes() / float(wav.getframerate()) > 2
-          print(f"COSYVOICE_MULTI_ARTICLE_SMOKE_PASS entries={len(manifest['articles'])} generated={manifest['generatedArticleCount']}")
+          print(f"COSYVOICE_PARALLEL_SMOKE_PASS entries={len(manifest['articles'])} generated={manifest['generatedArticleCount']}")
           PY
 
       - name: Upload tested Cantonese audio
@@ -132,6 +141,7 @@ jobs:
           name: cosyvoice2-yue-tested-audio
           path: |
             artifacts/cosyvoice-smoke/cosyvoice2-yue-local-cpu.wav
+            artifacts/cosyvoice-shards/**
             assets/audio/cosyvoice/latest-lead.wav
             assets/audio/cosyvoice/articles/*.wav
             data/tts-manifest.json
