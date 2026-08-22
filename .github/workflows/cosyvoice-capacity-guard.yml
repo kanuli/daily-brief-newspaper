@@ -1,0 +1,109 @@
+name: Guard F01 Release Asset Capacity
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/cosyvoice-capacity-guard.yml"
+  workflow_run:
+    workflows:
+      - "Publish CosyVoice2-Yue F01 Per Article"
+      - "Prebuild CosyVoice2-Yue F01 Before Publish"
+    types: [completed]
+  schedule:
+    - cron: "37 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "cosyvoice-f01-release-capacity"
+  cancel-in-progress: true
+
+env:
+  F01_RELEASE_TAG: f01-voice-cache
+  HIGH_WATER: "850"
+  TARGET_COUNT: "700"
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout current production manifest
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Load current prepublish manifest if available
+        run: |
+          git fetch origin prepublish-news:refs/remotes/origin/prepublish-news || true
+          git show origin/prepublish-news:data/prepublish-tts-manifest.json > /tmp/prepublish-tts-manifest.json 2>/dev/null || echo '{}' > /tmp/prepublish-tts-manifest.json
+
+      - name: Prune only unused assets at high-water mark
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! RELEASE_ID=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/releases/tags/${F01_RELEASE_TAG}" \
+            --jq .id 2>/dev/null); then
+            echo "No rolling F01 release yet."
+            exit 0
+          fi
+
+          gh api --paginate \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/releases/${RELEASE_ID}/assets?per_page=100" \
+            > /tmp/f01-capacity-assets.json
+
+          python - <<'PY' > /tmp/capacity-delete.tsv
+          import json
+          from pathlib import Path
+          from urllib.parse import urlparse
+
+          high = int("${{ env.HIGH_WATER }}")
+          target = int("${{ env.TARGET_COUNT }}")
+          protected = set()
+          for p in (Path('data/tts-manifest.json'), Path('/tmp/prepublish-tts-manifest.json')):
+              try:
+                  data=json.loads(p.read_text(encoding='utf-8'))
+              except Exception:
+                  continue
+              for entry in (data.get('articles') or {}).values():
+                  audio=str(entry.get('audio') or '')
+                  if '/releases/download/f01-voice-cache/' in audio:
+                      protected.add(Path(urlparse(audio).path).name)
+
+          raw=Path('/tmp/f01-capacity-assets.json').read_text(encoding='utf-8').strip()
+          decoder=json.JSONDecoder(); pos=0; assets=[]
+          while pos < len(raw):
+              while pos < len(raw) and raw[pos].isspace(): pos += 1
+              if pos >= len(raw): break
+              value,pos=decoder.raw_decode(raw,pos)
+              if isinstance(value,list): assets.extend(value)
+
+          print(f'# total={len(assets)} protected={len(protected)} high={high} target={target}')
+          if len(assets) < high:
+              raise SystemExit(0)
+
+          unused=[a for a in assets if (a.get('name') or '') not in protected]
+          unused.sort(key=lambda a: a.get('created_at') or '')
+          need=max(0,len(assets)-target)
+          for asset in unused[:need]:
+              print(f"{asset['id']}\t{asset.get('name','')}\t{asset.get('size',0)}\t{asset.get('created_at','')}")
+          PY
+
+          head -n 1 /tmp/capacity-delete.tsv
+          tail -n +2 /tmp/capacity-delete.tsv | while IFS=$'\t' read -r ASSET_ID NAME SIZE CREATED; do
+            [ -n "$ASSET_ID" ] || continue
+            echo "Capacity guard deleting unused F01 asset: ${NAME}"
+            gh api -X DELETE \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${{ github.repository }}/releases/assets/${ASSET_ID}"
+          done
+          echo "F01_CAPACITY_GUARD_PASS"
