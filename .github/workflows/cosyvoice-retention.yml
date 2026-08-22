@@ -1,0 +1,139 @@
+name: Prune F01 Voice Cache After 48h
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/cosyvoice-retention.yml"
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "cosyvoice-f01-release-retention"
+  cancel-in-progress: true
+
+env:
+  F01_RELEASE_TAG: f01-voice-cache
+  RETENTION_HOURS: "48"
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout current production manifest
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Load current prepublish manifest if available
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin prepublish-news:refs/remotes/origin/prepublish-news || true
+          if git show origin/prepublish-news:data/prepublish-tts-manifest.json > /tmp/prepublish-tts-manifest.json 2>/dev/null; then
+            echo "Loaded prepublish manifest."
+          else
+            echo '{}' > /tmp/prepublish-tts-manifest.json
+          fi
+
+      - name: Delete unreferenced release assets older than 48 hours
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! RELEASE_ID=$(gh release view "$F01_RELEASE_TAG" --repo "${{ github.repository }}" --json databaseId --jq .databaseId 2>/dev/null); then
+            echo "No F01 release exists yet; nothing to prune."
+            exit 0
+          fi
+
+          gh api --paginate \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/releases/${RELEASE_ID}/assets?per_page=100" \
+            > /tmp/f01-assets-pages.json
+
+          python - <<'PY' > /tmp/delete-assets.tsv
+          import json
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+          from urllib.parse import urlparse
+
+          cutoff = datetime.now(timezone.utc) - timedelta(hours=int("${{ env.RETENTION_HOURS }}"))
+
+          protected = set()
+          for path in (Path('data/tts-manifest.json'), Path('/tmp/prepublish-tts-manifest.json')):
+              if not path.is_file():
+                  continue
+              try:
+                  data = json.loads(path.read_text(encoding='utf-8'))
+              except Exception:
+                  continue
+              for entry in (data.get('articles') or {}).values():
+                  audio = str(entry.get('audio') or '')
+                  if '/releases/download/f01-voice-cache/' not in audio:
+                      continue
+                  name = Path(urlparse(audio).path).name
+                  if name:
+                      protected.add(name)
+
+          raw = Path('/tmp/f01-assets-pages.json').read_text(encoding='utf-8').strip()
+          if not raw:
+              assets = []
+          else:
+              decoder = json.JSONDecoder()
+              pos = 0
+              assets = []
+              while pos < len(raw):
+                  while pos < len(raw) and raw[pos].isspace():
+                      pos += 1
+                  if pos >= len(raw):
+                      break
+                  value, pos = decoder.raw_decode(raw, pos)
+                  if isinstance(value, list):
+                      assets.extend(value)
+
+          delete = []
+          retained_old = []
+          total_bytes = 0
+          delete_bytes = 0
+          for asset in assets:
+              total_bytes += int(asset.get('size') or 0)
+              created_raw = asset.get('created_at')
+              if not created_raw:
+                  continue
+              created = datetime.fromisoformat(created_raw.replace('Z', '+00:00'))
+              name = asset.get('name') or ''
+              if created >= cutoff:
+                  continue
+              if name in protected:
+                  retained_old.append(name)
+                  continue
+              delete.append(asset)
+              delete_bytes += int(asset.get('size') or 0)
+
+          print(f"# assets={len(assets)} protected={len(protected)} old_protected={len(retained_old)} delete={len(delete)} total_bytes={total_bytes} delete_bytes={delete_bytes}")
+          for asset in delete:
+              print(f"{asset['id']}\t{asset.get('name','')}\t{asset.get('size',0)}\t{asset.get('created_at','')}")
+          PY
+
+          head -n 1 /tmp/delete-assets.tsv
+          tail -n +2 /tmp/delete-assets.tsv | while IFS=$'\t' read -r ASSET_ID NAME SIZE CREATED; do
+            [ -n "$ASSET_ID" ] || continue
+            echo "Deleting expired F01 asset: ${NAME} (${SIZE} bytes, created ${CREATED})"
+            gh api -X DELETE \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${{ github.repository }}/releases/assets/${ASSET_ID}"
+          done
+
+          echo "F01_RETENTION_PASS retention=${RETENTION_HOURS}h"
+
+      - name: Explain current-use safeguard
+        run: |
+          echo "Assets older than 48h are deleted when no longer referenced by the current production or prepublish manifest."
+          echo "An exact-hash asset still serving a currently published story is temporarily protected to avoid delete/regenerate loops; it is removed after the story leaves the active manifests."
