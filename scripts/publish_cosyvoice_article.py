@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import hashlib
 import json
+import os
 import shutil
 import sys
 import wave
@@ -11,6 +12,11 @@ import generate_cosyvoice_all as gen
 
 MANIFEST = Path("data/tts-manifest.json")
 LEAD_ALIAS = Path("assets/audio/cosyvoice/latest-lead.wav")
+PUBLIC_AUDIO_BASE = os.environ.get("COSY_PUBLIC_AUDIO_BASE", "").strip().rstrip("/")
+
+
+def is_remote_audio(value):
+    return str(value or "").startswith(("https://", "http://"))
 
 
 def wav_metadata(path):
@@ -26,9 +32,23 @@ def wav_metadata(path):
     return round(duration, 3), path.stat().st_size
 
 
+def remote_metadata(entry):
+    try:
+        duration = float(entry.get("durationSeconds") or 0)
+        size = int(entry.get("bytes") or 0)
+    except (TypeError, ValueError):
+        raise RuntimeError("remote F01 metadata invalid")
+    if duration <= 2 or size < 50000:
+        raise RuntimeError("remote F01 metadata below minimum")
+    return round(duration, 3), size
+
+
 def normalize_existing_entry(entry, article_id, title, digest):
-    path = Path(str(entry.get("audio") or ""))
-    duration, size = wav_metadata(path)
+    audio = str(entry.get("audio") or "")
+    if is_remote_audio(audio):
+        duration, size = remote_metadata(entry)
+    else:
+        duration, size = wav_metadata(audio)
     out = dict(entry)
     out.update({
         "articleId": article_id,
@@ -39,6 +59,18 @@ def normalize_existing_entry(entry, article_id, title, digest):
         "wavEncoding": "PCM16",
     })
     return out
+
+
+def reusable_previous(previous, story, digest):
+    title = gen.clean(story.get("title"))
+    old = gen.previous_entry_for_title(previous, title)
+    if old and old.get("contentSha256") == digest and is_remote_audio(old.get("audio")):
+        try:
+            remote_metadata(old)
+            return old
+        except Exception:
+            pass
+    return gen.reusable_entry(previous, story, digest)
 
 
 def main():
@@ -61,10 +93,17 @@ def main():
 
     generated_id, raw_generated = next(iter(raw_entries.items()))
     generated = dict(raw_generated)
-    artifact_path = Path(str(generated.pop("artifactAudio", "")))
-    if not artifact_path.is_file():
-        raise RuntimeError(f"generated artifact WAV missing: {artifact_path}")
-    artifact_duration, artifact_size = wav_metadata(artifact_path)
+    remote_input = bool(generated.pop("remoteAudio", False))
+    artifact_path = Path(str(generated.pop("artifactAudio", ""))) if not remote_input else None
+
+    if remote_input:
+        if not is_remote_audio(generated.get("audio")):
+            raise RuntimeError("remote prebuilt F01 entry has no public audio URL")
+        artifact_duration, artifact_size = remote_metadata(generated)
+    else:
+        if not artifact_path or not artifact_path.is_file():
+            raise RuntimeError(f"generated artifact WAV missing: {artifact_path}")
+        artifact_duration, artifact_size = wav_metadata(artifact_path)
 
     latest, latest_raw, stories, lead_id, lead_title, source_set_sha, loaded_paths = gen.collect_current_stories()
     current = {}
@@ -86,20 +125,28 @@ def main():
         )
         return 0
 
-    final_path = Path(str(generated.get("audio") or ""))
     expected_path = gen.target_path(wanted["story"], wanted["contentSha256"])
-    if final_path.as_posix() != expected_path.as_posix():
-        raise RuntimeError(f"generated target path mismatch: {final_path} != {expected_path}")
-    final_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(artifact_path, final_path)
-    final_duration, final_size = wav_metadata(final_path)
-    if final_size != artifact_size:
-        raise RuntimeError("copied F01 WAV byte size changed")
+    if remote_input:
+        public_audio = str(generated.get("audio"))
+        final_duration, final_size = artifact_duration, artifact_size
+    elif PUBLIC_AUDIO_BASE:
+        public_audio = f"{PUBLIC_AUDIO_BASE}/{expected_path.name}"
+        final_duration, final_size = artifact_duration, artifact_size
+    else:
+        final_path = Path(str(generated.get("audio") or ""))
+        if final_path.as_posix() != expected_path.as_posix():
+            raise RuntimeError(f"generated target path mismatch: {final_path} != {expected_path}")
+        final_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(artifact_path, final_path)
+        final_duration, final_size = wav_metadata(final_path)
+        if final_size != artifact_size:
+            raise RuntimeError("copied F01 WAV byte size changed")
+        public_audio = final_path.as_posix()
 
     generated.update({
         "articleId": wanted["articleId"],
         "title": wanted["title"],
-        "audio": final_path.as_posix(),
+        "audio": public_audio,
         "wavEncoding": "PCM16",
         "contentSha256": wanted["contentSha256"],
         "durationSeconds": final_duration,
@@ -119,7 +166,7 @@ def main():
             newly_added = True
             continue
 
-        old = gen.reusable_entry(previous, story, digest)
+        old = reusable_previous(previous, story, digest)
         if old:
             entries[article_id] = normalize_existing_entry(old, article_id, title, digest)
             continue
@@ -135,7 +182,7 @@ def main():
     lead_entry = entries.get(lead_id)
     if not lead_entry:
         lead_entry = next((entry for entry in entries.values() if gen.clean(entry.get("title")) == lead_title), None)
-    if lead_entry:
+    if lead_entry and not is_remote_audio(lead_entry.get("audio")):
         lead_path = Path(str(lead_entry.get("audio") or ""))
         LEAD_ALIAS.parent.mkdir(parents=True, exist_ok=True)
         if lead_path.is_file() and lead_path.resolve() != LEAD_ALIAS.resolve():
@@ -153,6 +200,8 @@ def main():
         "instructionPolicy": "short-no-leak",
         "coveragePolicy": "progressive-current-news-f01-only",
         "generationMode": "per-article-immediate-10-way",
+        "storageBackend": "github-release" if PUBLIC_AUDIO_BASE or any(is_remote_audio(e.get("audio")) for e in entries.values()) else "git-tree",
+        "retentionHours": 48,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "source": "multi-source-current-site",
         "sourceSha256": hashlib.sha256(latest_raw).hexdigest(),
@@ -176,7 +225,7 @@ def main():
     print(
         "COSYVOICE_IMMEDIATE_PUBLISH_PASS "
         f"article={wanted['articleId']} available={available}/{collected} pending={manifest['pendingArticleCount']} "
-        f"duration={artifact_duration:.3f}s bytes={artifact_size} source_set_sha256={source_set_sha}",
+        f"duration={artifact_duration:.3f}s bytes={artifact_size} storage={manifest['storageBackend']} source_set_sha256={source_set_sha}",
         flush=True,
     )
     return 0
