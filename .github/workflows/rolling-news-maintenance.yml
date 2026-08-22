@@ -1,0 +1,118 @@
+name: Rolling News Search Auto Maintenance
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/rolling-news-maintenance.yml"
+  workflow_run:
+    workflows: ["Rolling News Search 15m"]
+    types: [completed]
+  schedule:
+    - cron: "*/5 0-16,22-23 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: "rolling-news-search-auto-maintenance"
+  cancel-in-progress: true
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Enforce active HKT maintenance window
+        id: window
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "push" ]; then
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          HOUR=$(TZ=Asia/Hong_Kong date +%H)
+          MINUTE=$(TZ=Asia/Hong_Kong date +%M)
+          ALLOWED=false
+          if [ "$HOUR" -ge 6 ] && [ "$HOUR" -le 23 ]; then
+            ALLOWED=true
+          elif [ "$HOUR" = "00" ] && [ "$MINUTE" -le 10 ]; then
+            ALLOWED=true
+          fi
+          echo "HKT=${HOUR}:${MINUTE} allowed=${ALLOWED}"
+          echo "allowed=${ALLOWED}" >> "$GITHUB_OUTPUT"
+
+      - name: Inspect collector health
+        if: steps.window.outputs.allowed == 'true'
+        id: inspect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RUNS_JSON=$(gh run list --repo "${{ github.repository }}" --workflow rolling-news-search.yml --branch main --limit 12 --json status,conclusion,databaseId,createdAt,updatedAt,event)
+          ACTIVE_COUNT=$(python -c 'import json,sys; r=json.load(sys.stdin); print(sum(1 for x in r if x.get("status") != "completed"))' <<< "$RUNS_JSON")
+          echo "Active/queued rolling-search runs: ${ACTIVE_COUNT}"
+          if [ "$ACTIVE_COUNT" -gt 0 ]; then
+            echo "restart=false" >> "$GITHUB_OUTPUT"
+            echo "reason=replacement-active" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git init -q /tmp/staging-repo
+          cd /tmp/staging-repo
+          git remote add origin "https://github.com/${{ github.repository }}.git"
+          git fetch -q --depth=1 origin news-staging || true
+          AGE_SECONDS=999999
+          if git show FETCH_HEAD:data/search-staging.json > /tmp/search-staging.json 2>/dev/null; then
+            AGE_SECONDS=$(python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          data=json.load(open('/tmp/search-staging.json',encoding='utf-8'))
+          stamp=data.get('lastSearchAt') or data.get('lastSearchStartedAt')
+          if not stamp:
+              print(999999)
+          else:
+              then=datetime.fromisoformat(stamp.replace('Z','+00:00'))
+              print(max(0,int((datetime.now(timezone.utc)-then).total_seconds())))
+          PY
+          )
+          fi
+          echo "Staging age: ${AGE_SECONDS}s"
+
+          RESTART=false
+          REASON="healthy"
+          if [ "$EVENT_NAME" = "workflow_run" ] && [ "$EVENT_CONCLUSION" = "cancelled" ]; then
+            RESTART=true
+            REASON="cancelled-without-replacement"
+          elif [ "$EVENT_NAME" = "workflow_run" ] && { [ "$EVENT_CONCLUSION" = "failure" ] || [ "$EVENT_CONCLUSION" = "timed_out" ] || [ "$EVENT_CONCLUSION" = "action_required" ]; } && [ "$AGE_SECONDS" -ge 720 ]; then
+            RESTART=true
+            REASON="failed-and-stale"
+          elif [ "$AGE_SECONDS" -ge 1320 ]; then
+            RESTART=true
+            REASON="no-search-progress-22min"
+          fi
+
+          echo "restart=${RESTART}" >> "$GITHUB_OUTPUT"
+          echo "reason=${REASON}" >> "$GITHUB_OUTPUT"
+
+      - name: Restart rolling search automatically
+        if: steps.window.outputs.allowed == 'true' && steps.inspect.outputs.restart == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Rolling search auto-restart: ${{ steps.inspect.outputs.reason }}"
+          gh workflow run rolling-news-search.yml --repo "${{ github.repository }}" --ref main
+          echo "ROLLING_NEWS_AUTO_MAINTENANCE_RESTART_DISPATCHED"
+
+      - name: Healthy / replacement already active
+        if: steps.window.outputs.allowed == 'true' && steps.inspect.outputs.restart != 'true'
+        run: echo "Rolling news search healthy (${{ steps.inspect.outputs.reason }})."
