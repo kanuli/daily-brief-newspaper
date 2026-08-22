@@ -6,11 +6,14 @@
   const PENDING_TEXT = "⏳ F01 音訊準備中";
   const MANIFEST_URL = "data/tts-manifest.json";
   const LEAD_AUDIO_URL = "assets/audio/cosyvoice/latest-lead.wav";
+  const MANIFEST_REFRESH_MS = 15000;
   const PAGE_CACHE_KEY = Date.now();
 
   let activeButton = null;
   let manifestPromise = null;
   let manifestData = null;
+  let manifestKey = "";
+  let manifestRefreshTimer = null;
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -119,21 +122,38 @@
     }
   }
 
+  function validateManifest(manifest) {
+    if (manifest?.engine !== "ASLP-lab/Cosyvoice2-Yue") throw new Error("Unexpected TTS engine");
+    if (manifest?.voice !== "F01 female reference") throw new Error("Unexpected TTS voice");
+    if (manifest?.language !== "yue-HK") throw new Error("Unexpected TTS language");
+    return manifest;
+  }
+
+  function keyForManifest(manifest) {
+    return [
+      manifest?.generatedAt || "",
+      manifest?.availableArticleCount ?? manifest?.articleCount ?? Object.keys(manifest?.articles || {}).length,
+      manifest?.pendingArticleCount ?? "",
+      manifest?.sourceSetSha256 || ""
+    ].join("|");
+  }
+
+  async function fetchManifest() {
+    const response = await fetch(`${MANIFEST_URL}?v=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`manifest HTTP ${response.status}`);
+    return validateManifest(await response.json());
+  }
+
   function loadManifest() {
     if (!manifestPromise) {
-      manifestPromise = fetch(`${MANIFEST_URL}?v=${Date.now()}`, { cache: "no-store" })
-        .then(async (response) => {
-          if (!response.ok) throw new Error(`manifest HTTP ${response.status}`);
-          const manifest = await response.json();
-          if (manifest?.engine !== "ASLP-lab/Cosyvoice2-Yue") throw new Error("Unexpected TTS engine");
-          if (manifest?.voice !== "F01 female reference") throw new Error("Unexpected TTS voice");
-          if (manifest?.language !== "yue-HK") throw new Error("Unexpected TTS language");
+      manifestPromise = fetchManifest()
+        .then((manifest) => {
           manifestData = manifest;
+          manifestKey = keyForManifest(manifest);
           return manifest;
         })
         .catch((error) => {
           manifestPromise = null;
-          manifestData = null;
           console.warn("CosyVoice2-Yue F01 manifest unavailable", error);
           return null;
         });
@@ -152,6 +172,24 @@
     return Object.values(manifest.articles).find((entry) => clean(entry?.title) === title) || null;
   }
 
+  function configureButton(button, entry) {
+    if (!button) return;
+    button.onclick = null;
+    button.dataset.speaking = "false";
+    button.setAttribute("aria-label", "用 CosyVoice2-Yue F01 女聲朗讀這則新聞");
+
+    if (entry?.audio) {
+      button.textContent = BUTTON_TEXT;
+      button.disabled = false;
+      button.title = "CosyVoice2-Yue · F01 女聲已完成，可立即播放。";
+      button.onclick = () => playAudioUrl(entryUrl(entry), button);
+    } else {
+      button.textContent = PENDING_TEXT;
+      button.disabled = true;
+      button.title = "只使用 CosyVoice2-Yue F01；此新聞的 F01 音訊尚未完成。";
+    }
+  }
+
   function addButton(article, manifest = manifestData) {
     if (!(article instanceof Element) || article.tagName !== "ARTICLE" || !article.closest("main")) return;
     if (article.dataset.siteTtsReady === "true" || article.closest(".study-desk,[data-no-tts]")) return;
@@ -164,17 +202,7 @@
     const button = document.createElement("button");
     button.type = "button";
     button.className = "site-tts-button";
-    button.setAttribute("aria-label", "用 CosyVoice2-Yue F01 女聲朗讀這則新聞");
-
-    if (entry?.audio) {
-      button.textContent = BUTTON_TEXT;
-      button.disabled = false;
-      button.addEventListener("click", () => playAudioUrl(entryUrl(entry), button));
-    } else {
-      button.textContent = PENDING_TEXT;
-      button.disabled = true;
-      button.title = "只使用 CosyVoice2-Yue F01；此新聞的 F01 音訊尚未完成。";
-    }
+    configureButton(button, entry);
 
     wrap.appendChild(button);
     const heading = $("h1,h2,h3", article);
@@ -193,12 +221,40 @@
     $$("main article").forEach((article) => addButton(article, manifest));
   }
 
-  function rebuildAll(manifest) {
-    $$("main article[data-site-tts-ready='true']").forEach((article) => {
-      article.dataset.siteTtsReady = "false";
-      $(".site-tts-controls", article)?.remove();
+  function refreshButtons(manifest = manifestData) {
+    $$("main article").forEach((article) => {
+      if (article.closest(".study-desk,[data-no-tts]") || !articleTitle(article)) return;
+      const button = $(".site-tts-button", article);
+      if (!button) {
+        article.dataset.siteTtsReady = "false";
+        addButton(article, manifest);
+        return;
+      }
+      if (button === activeButton && button.dataset.speaking === "true") return;
+      configureButton(button, findEntry(manifest, article));
     });
-    scan(document, manifest);
+  }
+
+  async function refreshManifest() {
+    try {
+      const fresh = await fetchManifest();
+      const nextKey = keyForManifest(fresh);
+      const changed = nextKey !== manifestKey;
+      manifestData = fresh;
+      manifestKey = nextKey;
+      manifestPromise = Promise.resolve(fresh);
+      if (changed) refreshButtons(fresh);
+    } catch (error) {
+      console.warn("CosyVoice2-Yue F01 manifest refresh failed", error);
+    }
+  }
+
+  function startManifestRefresh() {
+    if (manifestRefreshTimer) window.clearInterval(manifestRefreshTimer);
+    manifestRefreshTimer = window.setInterval(refreshManifest, MANIFEST_REFRESH_MS);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") refreshManifest();
+    });
   }
 
   window.SiteTTS = {
@@ -209,10 +265,11 @@
 
   async function boot() {
     ensureUi();
-    // Show F01 controls immediately; articles without generated F01 stay pending, never fall back to another voice.
+    // Controls appear immediately. Pending buttons are automatically upgraded as soon as a new F01 entry lands in the production manifest.
     scan(document, null);
     const manifest = await loadManifest();
-    if (manifest) rebuildAll(manifest);
+    if (manifest) refreshButtons(manifest);
+    startManifestRefresh();
 
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
