@@ -79,6 +79,10 @@
     inject("assets/js/site-tts-v5.js?v=20260822-1716f01all", "data-site-tts");
   }
 
+  function loadVoiceProductionStatus() {
+    inject("assets/js/voice-production-status.js?v=20260823-0012", "data-voice-production-status");
+  }
+
   function ensureMainLeadAudio() {
     if (mainLeadAudio) return mainLeadAudio;
     const url = new URL(LEAD_AUDIO_PATH, document.baseURI);
@@ -133,7 +137,7 @@
   }
 
   function mountSystemPanel() {
-    injectNavStyle(); normalizeDeskNav(); removeVoiceLabLinks(); loadArticleEnhancers(); loadSiteTTS(); mountVoiceLauncher();
+    injectNavStyle(); normalizeDeskNav(); removeVoiceLabLinks(); loadArticleEnhancers(); loadSiteTTS(); loadVoiceProductionStatus(); mountVoiceLauncher();
     if (document.getElementById("system-status-button")) return;
     const button = document.createElement("button");
     button.id = "system-status-button"; button.className = "system-status-button"; button.type = "button";
