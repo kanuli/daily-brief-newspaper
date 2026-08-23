@@ -6,7 +6,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-import tts_hktrad
+import tts_hktrad_v2 as tts_hktrad
 
 FIELDS = ("title", "dek", "summary", "body", "context", "background", "why", "whyImportant", "watchNext", "nextStep")
 DESK_ORDER = ["world", "asia", "hong-kong", "japan", "finance", "stock-news", "ai-tech", "manga-anime", "manchester-united", "football"]
