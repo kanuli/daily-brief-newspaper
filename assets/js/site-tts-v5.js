@@ -7,11 +7,11 @@
   const MANIFEST_URL = "https://raw.githubusercontent.com/kanuli/daily-brief-newspaper/main/data/tts-manifest.json";
   const MANIFEST_REFRESH_MS = 15000;
   const PAGE_CACHE_KEY = Date.now();
-  const REQUIRED_POLICY = "f01-news-anchor-v7-short-prompt-bistream-hktrad";
+  const REQUIRED_POLICY = "f01-news-anchor-v8-approved-10s-bistream-hktrad";
   const REQUIRED_LANGUAGE_GATE = "residual-latin-zero";
   const REQUIRED_SEGMENT_POLICY = "single-inference-per-article";
-  const REQUIRED_CONDITIONING_POLICY = "short-reference-bistream";
-  const REQUIRED_REFERENCE_SECONDS = 5;
+  const REQUIRED_CONDITIONING_POLICY = "approved-reference-bistream";
+  const REQUIRED_REFERENCE_SECONDS = 10;
 
   let activeButton = null;
   let manifestPromise = null;
