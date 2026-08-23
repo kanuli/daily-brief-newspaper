@@ -5,6 +5,12 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/cosyvoice-maintenance.yml"
+      - "data/latest.json"
+      - "data/desk-latest.json"
+      - "data/live.json"
+      - "data/stocks-latest.json"
+      - "data/topic-more/**"
+      - "data/editorial-overrides/**"
   workflow_run:
     workflows: ["Publish CosyVoice2-Yue F01 Per Article"]
     types: [completed]
@@ -31,7 +37,7 @@ jobs:
           ref: main
           fetch-depth: 1
 
-      - name: Inspect F01 backlog and worker health
+      - name: Inspect CURRENT news inventory and worker health
         id: inspect
         env:
           GH_TOKEN: ${{ github.token }}
@@ -46,10 +52,59 @@ jobs:
           from datetime import datetime, timezone
           from pathlib import Path
 
-          manifest = json.loads(Path("data/tts-manifest.json").read_text(encoding="utf-8"))
-          pending = int(manifest.get("pendingArticleCount") or 0)
-          done = int(manifest.get("availableArticleCount") or manifest.get("articleCount") or 0)
-          total = int(manifest.get("collectedStoryCount") or done)
+          STORY_FIELDS = ("title", "dek", "summary", "body", "context", "background", "why", "whyImportant", "watchNext", "nextStep")
+
+          def clean(v):
+              return " ".join(str(v or "").split())
+
+          def looks_like_story(obj):
+              return isinstance(obj, dict) and clean(obj.get("title")) and any(clean(obj.get(k)) for k in STORY_FIELDS[1:])
+
+          def walk(node):
+              if isinstance(node, dict):
+                  if looks_like_story(node):
+                      yield node
+                  for value in node.values():
+                      yield from walk(value)
+              elif isinstance(node, list):
+                  for value in node:
+                      yield from walk(value)
+
+          def load(path):
+              try:
+                  return json.loads(path.read_text(encoding="utf-8"))
+              except Exception:
+                  return None
+
+          latest = load(Path("data/latest.json")) or {}
+          current_date = str(latest.get("date") or "")
+          paths = [Path("data/latest.json"), Path("data/desk-latest.json"), Path("data/live.json"), Path("data/stocks-latest.json")]
+          if current_date:
+              paths += [Path(f"data/topic-more/{current_date}.json"), Path(f"data/editorial-overrides/{current_date}.json")]
+
+          titles = set()
+          for path in paths:
+              data = load(path)
+              if data is None:
+                  continue
+              for story in walk(data):
+                  title = clean(story.get("title"))
+                  if title:
+                      titles.add(title)
+
+          manifest = load(Path("data/tts-manifest.json")) or {}
+          manifest_articles = manifest.get("articles") or {}
+          ready_titles = {
+              clean(entry.get("title"))
+              for entry in manifest_articles.values()
+              if isinstance(entry, dict) and clean(entry.get("title")) and str(entry.get("audio") or "")
+          }
+          current_done = len(titles & ready_titles)
+          current_total = len(titles)
+          current_pending = max(0, current_total - current_done)
+          manifest_done = int(manifest.get("availableArticleCount") or manifest.get("articleCount") or len(manifest_articles) or 0)
+          manifest_total = int(manifest.get("collectedStoryCount") or manifest_done)
+          manifest_date = str(manifest.get("date") or "")
           generated = str(manifest.get("generatedAt") or "")
           age = 10**9
           if generated:
@@ -58,18 +113,23 @@ jobs:
                   age = max(0, int((datetime.now(timezone.utc) - then).total_seconds()))
               except Exception:
                   pass
-          print(f"PENDING={pending}")
-          print(f"DONE={done}")
-          print(f"TOTAL={total}")
+
+          print(f"CURRENT_DATE={current_date}")
+          print(f"CURRENT_TOTAL={current_total}")
+          print(f"CURRENT_DONE={current_done}")
+          print(f"CURRENT_PENDING={current_pending}")
+          print(f"MANIFEST_DATE={manifest_date}")
+          print(f"MANIFEST_TOTAL={manifest_total}")
+          print(f"MANIFEST_DONE={manifest_done}")
           print(f"AGE_SECONDS={age}")
           PY
           source /tmp/voice-state.env
 
-          echo "Manifest: done=${DONE}/${TOTAL}, pending=${PENDING}, last-publish-age=${AGE_SECONDS}s"
+          echo "Current inventory: done=${CURRENT_DONE}/${CURRENT_TOTAL}, pending=${CURRENT_PENDING}; manifest=${MANIFEST_DONE}/${MANIFEST_TOTAL} date=${MANIFEST_DATE}; current_date=${CURRENT_DATE}; last-publish-age=${AGE_SECONDS}s"
 
-          if [ "${PENDING}" -le 0 ]; then
+          if [ "${CURRENT_TOTAL}" -gt 0 ] && [ "${CURRENT_PENDING}" -le 0 ] && [ "${CURRENT_DATE}" = "${MANIFEST_DATE}" ]; then
             echo "restart=false" >> "$GITHUB_OUTPUT"
-            echo "reason=coverage-complete" >> "$GITHUB_OUTPUT"
+            echo "reason=current-coverage-complete" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -83,16 +143,23 @@ jobs:
             exit 0
           fi
 
+          DRIFT=false
+          if [ "${CURRENT_TOTAL}" -ne "${MANIFEST_TOTAL}" ] || [ "${CURRENT_DATE}" != "${MANIFEST_DATE}" ]; then
+            DRIFT=true
+          fi
+
           RESTART=false
           REASON=""
 
-          # A successful run that still has backlog should continue immediately.
-          # A cancelled run with no replacement should also be restored immediately.
-          if [ "${EVENT_NAME}" = "workflow_run" ] && { [ "${EVENT_CONCLUSION}" = "success" ] || [ "${EVENT_CONCLUSION}" = "cancelled" ]; }; then
+          # Any completed worker run with a CURRENT backlog needs a replacement.
+          # This includes failure/timed_out, not only success/cancelled.
+          if [ "${EVENT_NAME}" = "workflow_run" ] && [ "${CURRENT_PENDING}" -gt 0 ]; then
             RESTART=true
-            REASON="completed-or-cancelled-with-backlog"
-          # Scheduled/self-test maintenance restores a stale backlog without creating a tight failure loop.
-          elif [ "${AGE_SECONDS}" -ge 420 ]; then
+            REASON="worker-ended-with-current-backlog-${EVENT_CONCLUSION:-unknown}"
+          elif [ "${DRIFT}" = "true" ] && [ "${CURRENT_PENDING}" -gt 0 ]; then
+            RESTART=true
+            REASON="current-news-inventory-drift"
+          elif [ "${CURRENT_PENDING}" -gt 0 ] && [ "${AGE_SECONDS}" -ge 300 ]; then
             RESTART=true
             REASON="no-active-worker-and-f01-stale"
           fi
