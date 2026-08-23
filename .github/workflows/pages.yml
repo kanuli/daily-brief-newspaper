@@ -29,6 +29,33 @@ jobs:
         with:
           ref: main
 
+      - name: Build shared Hong Kong Traditional Chinese localization map
+        run: python scripts/export_hktrad_localization.py
+
+      - name: Traditional Chinese gate — all visible news copy localizable
+        run: python scripts/audit_tts_language.py --strict
+
+      - name: Validate display localization JavaScript
+        run: |
+          node --check assets/js/hktrad-display.js
+          node --check assets/js/hktrad-display-sync.js
+
+      - name: Force newest display-localization client on every page
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          changed=0
+          for path in Path('.').rglob('*.html'):
+              text=path.read_text(encoding='utf-8')
+              new=re.sub(r'assets/js/system-panel\.js\?v=[^"\']+', 'assets/js/system-panel.js?v=20260823-1719-hktrad-display', text)
+              if new != text:
+                  path.write_text(new, encoding='utf-8')
+                  changed += 1
+          print('HKTRAD_DISPLAY_CACHE_BUST_OK pages', changed)
+          PY
+
       - name: Availability gate — JSON readable and Live non-empty
         shell: bash
         run: |
