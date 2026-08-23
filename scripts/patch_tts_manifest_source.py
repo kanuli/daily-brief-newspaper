@@ -4,7 +4,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW = "https://raw.githubusercontent.com/kanuli/daily-brief-newspaper/main/data/tts-manifest.json"
-VERSION = "20260823-1355rawmanifest"
+VERSION = "20260823-1405rawmanifest"
 
 replacements = {
     ROOT / "assets/js/site-tts-v5.js": [
@@ -41,3 +41,16 @@ for path in ROOT.glob("*.html"):
     if new != text:
         path.write_text(new, encoding="utf-8")
         print("cache-bust", path.name)
+
+# A promotion failure must never skip all 10 synthesis workers. Promotion is an
+# optimization; current-news generation is the recovery path and must still run.
+workflow = ROOT / ".github/workflows/cosyvoice-publish.yml"
+text = workflow.read_text(encoding="utf-8")
+old = "  worker:\n    needs: promote-prebuilt\n    runs-on: ubuntu-latest"
+new = "  worker:\n    needs: [ensure-release, promote-prebuilt]\n    if: ${{ always() && needs.ensure-release.result == 'success' }}\n    runs-on: ubuntu-latest"
+if old in text:
+    text = text.replace(old, new)
+elif new not in text:
+    raise SystemExit("cosyvoice worker dependency marker not found")
+workflow.write_text(text, encoding="utf-8")
+print("updated .github/workflows/cosyvoice-publish.yml")
