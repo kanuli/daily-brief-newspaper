@@ -15,6 +15,7 @@ on:
       - "scripts/generate_cosyvoice_shard.py"
       - "scripts/publish_cosyvoice_article.py"
       - "scripts/promote_cosyvoice_prepublish.py"
+      - "scripts/promote_cosyvoice_prepublish_fast.py"
       - ".github/workflows/cosyvoice-publish.yml"
   workflow_dispatch:
 
@@ -55,7 +56,7 @@ jobs:
   promote-prebuilt:
     needs: ensure-release
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 5
     steps:
       - name: Checkout current public news
         uses: actions/checkout@v4
@@ -63,45 +64,38 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Set up Python for exact-hash promotion
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
-      - name: Install lightweight hash-runtime dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install "torch==2.3.1" "torchaudio==2.3.1" --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install "huggingface_hub>=0.30,<2"
-
-      - name: Promote only exact-hash prebuilt F01 voices
+      - name: Promote exact-hash prebuilt F01 URLs without loading the TTS runtime
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git fetch origin prepublish-news; then
-            echo "No prepublish-news branch yet; normal F01 backfill will handle this edition."
-            exit 0
+            echo "No prepublish-news branch yet; rebuild production manifest against current inventory anyway."
+            rm -rf /tmp/prepublish-news
+            mkdir -p /tmp/prepublish-news/data
+          else
+            rm -rf /tmp/prepublish-news
+            git worktree add --detach /tmp/prepublish-news origin/prepublish-news
           fi
-          rm -rf /tmp/prepublish-news
-          git worktree add --detach /tmp/prepublish-news origin/prepublish-news
-          python scripts/promote_cosyvoice_prepublish.py /tmp/prepublish-news
+
+          python scripts/promote_cosyvoice_prepublish_fast.py /tmp/prepublish-news
           git add -- data/tts-manifest.json
           if git diff --cached --quiet; then
-            echo "No matching prebuilt F01 voices to promote."
+            echo "Production F01 manifest already matches current reusable/prebuilt coverage."
             exit 0
           fi
-          git commit -m "Promote verified prebuilt F01 voices"
+
+          git commit -m "Reconcile F01 manifest with current news inventory"
           for attempt in 1 2 3 4 5 6; do
             if git pull --rebase origin main && git push origin HEAD:main; then
-              echo "COSYVOICE_PREPUBLISH_PROMOTION_PUSH_PASS"
+              echo "COSYVOICE_FAST_PROMOTION_PUSH_PASS"
               exit 0
             fi
             sleep $((attempt * 2))
           done
-          echo "Prebuilt promotion could not push; do not block news or normal F01 backfill." >&2
-          exit 0
+          echo "Fast F01 manifest promotion could not push." >&2
+          exit 1
 
   worker:
     needs: promote-prebuilt
