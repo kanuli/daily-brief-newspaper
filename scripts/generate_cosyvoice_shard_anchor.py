@@ -13,7 +13,7 @@ import generate_cosyvoice_lead as voice_base
 import generate_cosyvoice_shard as legacy
 import tts_hktrad_v2 as hktrad
 
-POLICY = "f01-news-anchor-v6-single-inference-hktrad"
+POLICY = "f01-news-anchor-v7-short-prompt-bistream-hktrad"
 REFERENCE_POLICY = "user-approved-nvidia-anchor-v1"
 GOLDEN_REFERENCE_ASSET = "ai-nvidia-server-price-0800-79489f0afc38.wav"
 GOLDEN_REFERENCE_URL = (
@@ -21,12 +21,16 @@ GOLDEN_REFERENCE_URL = (
     "f01-voice-cache/" + GOLDEN_REFERENCE_ASSET
 )
 REFERENCE_START_SECONDS = 10.0
-REFERENCE_DURATION_SECONDS = 10.0
+# Native bistream interleaves reference speech tokens with the first incoming
+# text tokens.  Keep the already approved reference region, but shorten the
+# conditioning window so that its transient influence does not dominate the
+# first several seconds of each article.
+REFERENCE_DURATION_SECONDS = 5.0
 VOICE_RANDOM_SEED = 20260823
 # CosyVoice's normal Chinese frontend deliberately works around an ~80-token
-# ceiling.  To keep one model session per article without sending ~260 tokens
+# ceiling. To keep one model session per article without sending ~260 tokens
 # as one oversized tensor, stream conservative text chunks through CosyVoice2's
-# native inference_bistream path.  The chunks are input transport only: they do
+# native inference_bistream path. The chunks are input transport only: they do
 # NOT create new cross-lingual inference sessions and therefore do not reset the
 # voice/language anchor halfway through an article.
 STREAM_INPUT_CHARS = 48
@@ -39,7 +43,7 @@ _ORIGINAL_NORMALIZE = voice_base.normalize_for_tts
 
 def _localized_normalize(value):
     # First retain all established number/punctuation handling, then apply the
-    # expanded speech-only Traditional-Chinese table.  No policy/instruction
+    # expanded speech-only Traditional-Chinese table. No policy/instruction
     # sentence is ever appended to the spoken text.
     return hktrad.localize(_ORIGINAL_NORMALIZE(value))
 
@@ -98,6 +102,8 @@ def _policy_remote_reusable(previous, story, digest):
         return False
     if old.get("referencePolicy") != REFERENCE_POLICY:
         return False
+    if float(old.get("referenceDurationSeconds") or 0) != REFERENCE_DURATION_SECONDS:
+        return False
     audio = str(old.get("audio") or "")
     if not audio.startswith(("https://", "http://")):
         return False
@@ -153,7 +159,7 @@ def _anchor_script_segments(story):
             + ", ".join(residual)
         )
 
-    # One logical segment = one CosyVoice inference session.  The transport
+    # One logical segment = one CosyVoice inference session. The transport
     # chunks are created later and streamed into that same session.
     return [{"role": "news", "text": script, "pause": 0.40}]
 
@@ -173,7 +179,8 @@ def _stable_segment_synth(model, prompt, item, index):
     print(
         f"segment={index} role={item['role']} chars={len(text)} "
         f"mode={voice_base.VOICE_INFERENCE_MODE} input=single-session-bistream "
-        f"chunks={len(pieces)} speed={voice_base.VOICE_SPEED}",
+        f"chunks={len(pieces)} speed={voice_base.VOICE_SPEED} "
+        f"reference_seconds={REFERENCE_DURATION_SECONDS}",
         flush=True,
     )
 
@@ -188,9 +195,9 @@ def _stable_segment_synth(model, prompt, item, index):
     audio_chunks = []
     with torch.inference_mode():
         # Passing a Python generator activates CosyVoice2's native
-        # inference_bistream path.  text_frontend=False prevents a second
+        # inference_bistream path. text_frontend=False prevents a second
         # hidden split while still keeping all input chunks in ONE model.tts
-        # session/UUID.  No textual language/style instruction is supplied.
+        # session/UUID. No textual language/style instruction is supplied.
         for chunk_index, result in enumerate(
             model.inference_cross_lingual(
                 token_text_stream(),
@@ -276,6 +283,9 @@ def _policy_synth(model, prompt, story, path):
         "prosodyPolicy": POLICY,
         "referencePolicy": REFERENCE_POLICY,
         "referenceAsset": GOLDEN_REFERENCE_ASSET,
+        "referenceStartSeconds": REFERENCE_START_SECONDS,
+        "referenceDurationSeconds": REFERENCE_DURATION_SECONDS,
+        "initialConditioningPolicy": "short-reference-bistream",
         "randomSeed": VOICE_RANDOM_SEED,
         "inferenceMode": voice_base.VOICE_INFERENCE_MODE,
         "speed": voice_base.VOICE_SPEED,
