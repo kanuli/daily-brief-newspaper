@@ -37,7 +37,6 @@
       })
     ];
     nav.innerHTML = links.join("");
-
     nav.querySelector(".home-nav")?.addEventListener("click", (event) => {
       if (!homeCurrent) return;
       const daily = document.getElementById("daily-edition");
@@ -77,7 +76,7 @@
   }
 
   function loadVoiceProductionStatus() {
-    inject("assets/js/voice-production-status.js?v=20260823-0103maintenance", "data-voice-production-status");
+    inject("assets/js/voice-production-status.js?v=20260823-1225dynamic", "data-voice-production-status");
   }
 
   function playMainLeadFromClick(button) {
