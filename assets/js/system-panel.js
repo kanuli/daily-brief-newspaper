@@ -81,11 +81,11 @@
   }
 
   function loadVoiceProductionStatus() {
-    inject("assets/js/voice-production-status.js?v=20260823-1748-truepublish", "data-voice-production-status");
+    inject("assets/js/voice-production-status.js?v=20260823-2103-progress", "data-voice-production-status");
   }
 
   function loadNewsPipelineStatus() {
-    inject("assets/js/news-pipeline-status.js?v=20260823-2045-pipeline", "data-news-pipeline-status");
+    inject("assets/js/news-pipeline-status.js?v=20260823-2103-draft", "data-news-pipeline-status");
   }
 
   function playMainLeadFromClick(button) {
@@ -124,7 +124,7 @@
     button.innerHTML = '<span class="system-status-dot" aria-hidden="true"></span><span class="system-status-label">SYSTEM</span>';
     const panel = document.createElement("aside");
     panel.id = "system-status-panel"; panel.className = "system-status-panel"; panel.hidden = true;
-    panel.innerHTML = `<div class="system-panel-head"><div><strong>System Status</strong><span>Maintenance & Monitoring</span></div><button type="button" class="system-panel-close" aria-label="關閉">×</button></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Website</strong><small>Static safe mode · publication layers monitored independently</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>Daily / Live / Stocks</strong><small>News Pipeline below separates background discovery, main Live and public Pages</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>Cantonese Voice</strong><small>CosyVoice2-Yue · F01 female only · v7 short-reference single-session gate</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>GitHub Pages / Discord</strong><small>Pages deployment has automatic main/public convergence repair</small></div></div><div class="system-panel-links"><a href="https://github.com/kanuli/daily-brief-newspaper/actions" target="_blank" rel="noopener noreferrer">GitHub Actions ↗</a><a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">Repository ↗</a></div>`;
+    panel.innerHTML = `<div class="system-panel-head"><div><strong>System Status</strong><span>Maintenance & Monitoring</span></div><button type="button" class="system-panel-close" aria-label="關閉">×</button></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Website</strong><small>Static safe mode · publication layers monitored independently</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>Daily / Live / Stocks</strong><small>News Pipeline below separates background discovery, verified draft, main Live and public Pages</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>Cantonese Voice</strong><small>CosyVoice2-Yue · F01 female only · v7 short-reference single-session gate</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>GitHub Pages / Discord</strong><small>Pages deployment has automatic main/public convergence repair</small></div></div><div class="system-panel-links"><a href="https://github.com/kanuli/daily-brief-newspaper/actions" target="_blank" rel="noopener noreferrer">GitHub Actions ↗</a><a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">Repository ↗</a></div>`;
     function setOpen(open) { panel.hidden = !open; button.setAttribute("aria-expanded", String(open)); }
     button.addEventListener("click", () => setOpen(panel.hidden));
     panel.querySelector(".system-panel-close")?.addEventListener("click", () => setOpen(false));
