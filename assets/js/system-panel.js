@@ -60,6 +60,10 @@
     document.head.appendChild(script);
   }
 
+  function loadDisplayLocalization() {
+    inject("assets/js/hktrad-display.js?v=20260823-1719", "data-hktrad-display");
+  }
+
   function loadArticleEnhancers() {
     if (document.body.dataset.page === "topic") {
       inject("assets/js/topic-longform.js?v=20260821-2020", "data-topic-longform");
@@ -107,7 +111,7 @@
   }
 
   function mountSystemPanel() {
-    injectNavStyle(); normalizeDeskNav(); removeVoiceLabLinks(); loadArticleEnhancers(); loadSiteTTS(); loadVoiceProductionStatus(); mountVoiceLauncher();
+    injectNavStyle(); normalizeDeskNav(); removeVoiceLabLinks(); loadDisplayLocalization(); loadArticleEnhancers(); loadSiteTTS(); loadVoiceProductionStatus(); mountVoiceLauncher();
     if (document.getElementById("system-status-button")) return;
     const button = document.createElement("button");
     button.id = "system-status-button"; button.className = "system-status-button"; button.type = "button";
