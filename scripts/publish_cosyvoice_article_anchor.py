@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
-"""Immediate production manifest publisher for the stable-tempo F01 news-anchor policy."""
+"""Immediate production manifest publisher for the user-approved golden F01 policy."""
 import json
 from pathlib import Path
 
 import generate_cosyvoice_lead as voice_base
 import publish_cosyvoice_article as legacy
 
-POLICY = "f01-news-anchor-v3-stable-tempo"
+POLICY = "f01-news-anchor-v4-golden-nvidia"
+REFERENCE_POLICY = "user-approved-nvidia-anchor-v1"
+REFERENCE_ASSET = "ai-nvidia-server-price-0800-79489f0afc38.wav"
 
 
 def _policy_reusable_previous(previous, story, digest):
     title = legacy.gen.clean(story.get("title"))
     old = legacy.gen.previous_entry_for_title(previous, title)
     if not old or old.get("contentSha256") != digest or old.get("prosodyPolicy") != POLICY:
+        return None
+    if old.get("referencePolicy") != REFERENCE_POLICY:
         return None
     audio = str(old.get("audio") or "")
     if audio.startswith(("https://", "http://")):
@@ -31,13 +35,17 @@ def _stamp_manifest():
     data = json.loads(path.read_text(encoding="utf-8"))
     data.update({
         "instructionPolicy": "none-reference-only",
+        "referencePolicy": REFERENCE_POLICY,
+        "referenceAsset": REFERENCE_ASSET,
         "prosodyPolicy": POLICY,
         "inferenceMode": voice_base.VOICE_INFERENCE_MODE,
         "speed": voice_base.VOICE_SPEED,
     })
     articles = {
         article_id: entry for article_id, entry in (data.get("articles") or {}).items()
-        if isinstance(entry, dict) and entry.get("prosodyPolicy") == POLICY
+        if isinstance(entry, dict)
+        and entry.get("prosodyPolicy") == POLICY
+        and entry.get("referencePolicy") == REFERENCE_POLICY
     }
     data["articles"] = articles
     available = len(articles)
