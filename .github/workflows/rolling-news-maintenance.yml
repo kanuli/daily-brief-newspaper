@@ -18,14 +18,14 @@ permissions:
 
 concurrency:
   group: "rolling-news-search-auto-maintenance"
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   watchdog:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Inspect collector health
+      - name: Inspect collector progress and run health
         id: inspect
         env:
           GH_TOKEN: ${{ github.token }}
@@ -35,51 +35,100 @@ jobs:
         run: |
           set -euo pipefail
 
-          RUNS_JSON=$(gh run list --repo "${{ github.repository }}" --workflow rolling-news-search.yml --branch main --limit 12 --json status,conclusion,databaseId,createdAt,updatedAt,event)
-          ACTIVE_COUNT=$(python -c 'import json,sys; r=json.load(sys.stdin); print(sum(1 for x in r if x.get("status") != "completed"))' <<< "$RUNS_JSON")
-          echo "Active/queued rolling-search runs: ${ACTIVE_COUNT}"
-          if [ "$ACTIVE_COUNT" -gt 0 ]; then
-            echo "restart=false" >> "$GITHUB_OUTPUT"
-            echo "reason=replacement-active" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           git init -q /tmp/staging-repo
           cd /tmp/staging-repo
           git remote add origin "https://github.com/${{ github.repository }}.git"
           git fetch -q --depth=1 origin news-staging || true
           AGE_SECONDS=999999
+          LAST_SEARCH_AT=""
           if git show FETCH_HEAD:data/search-staging.json > /tmp/search-staging.json 2>/dev/null; then
-            AGE_SECONDS=$(python - <<'PY'
+            read -r AGE_SECONDS LAST_SEARCH_AT < <(python - <<'PY'
           import json
           from datetime import datetime, timezone
           data=json.load(open('/tmp/search-staging.json',encoding='utf-8'))
-          stamp=data.get('lastSearchAt') or data.get('lastSearchStartedAt')
-          if not stamp:
-              print(999999)
-          else:
-              then=datetime.fromisoformat(stamp.replace('Z','+00:00'))
-              print(max(0,int((datetime.now(timezone.utc)-then).total_seconds())))
+          stamp=data.get('lastSearchAt') or data.get('lastSearchStartedAt') or ''
+          age=999999
+          if stamp:
+              try:
+                  then=datetime.fromisoformat(stamp.replace('Z','+00:00'))
+                  age=max(0,int((datetime.now(timezone.utc)-then).total_seconds()))
+              except Exception:
+                  pass
+          print(age, stamp)
           PY
-          )
+            )
           fi
-          echo "Staging age: ${AGE_SECONDS}s"
+          echo "Rolling staging: lastSearchAt=${LAST_SEARCH_AT:-missing}; age=${AGE_SECONDS}s"
 
-          RESTART=false
-          REASON="healthy"
+          RUNS_JSON=$(gh run list --repo "${{ github.repository }}" --workflow rolling-news-search.yml --branch main --limit 12 --json status,conclusion,databaseId,createdAt,updatedAt,event)
+          python - <<'PY' <<< "$RUNS_JSON" > /tmp/rolling-active.env
+          import json, sys
+          from datetime import datetime, timezone
+          runs=json.load(sys.stdin)
+          now=datetime.now(timezone.utc)
+          active=[r for r in runs if r.get('status') != 'completed']
+          ages=[]
+          for r in active:
+              try:
+                  t=datetime.fromisoformat(str(r.get('createdAt') or '').replace('Z','+00:00'))
+                  ages.append(max(0,int((now-t).total_seconds())))
+              except Exception:
+                  pass
+          print(f"ACTIVE_COUNT={len(active)}")
+          print(f"ACTIVE_OLDEST_AGE_SECONDS={max(ages) if ages else 0}")
+          print("ACTIVE_IDS=" + ','.join(str(r.get('databaseId')) for r in active if r.get('databaseId')))
+          PY
+          source /tmp/rolling-active.env
+          echo "Rolling runs: active/queued=${ACTIVE_COUNT}; oldest=${ACTIVE_OLDEST_AGE_SECONDS}s; ids=${ACTIVE_IDS:-none}"
+
+          # A 15-minute collector should normally advance staging within 20 min.
+          STALE_SECONDS=1200
+          ACTIVE_GRACE_SECONDS=900
+          echo "restart=false" >> "$GITHUB_OUTPUT"
+          echo "cancel_ids=" >> "$GITHUB_OUTPUT"
+
+          if [ "$AGE_SECONDS" -lt "$STALE_SECONDS" ]; then
+            echo "reason=staging-progress-current" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$ACTIVE_COUNT" -gt 0 ]; then
+            if [ "$ACTIVE_OLDEST_AGE_SECONDS" -lt "$ACTIVE_GRACE_SECONDS" ]; then
+              echo "reason=collector-active-within-grace" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "restart=true" >> "$GITHUB_OUTPUT"
+            echo "cancel_ids=${ACTIVE_IDS}" >> "$GITHUB_OUTPUT"
+            echo "reason=collector-active-but-staging-stale" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if [ "$EVENT_NAME" = "workflow_run" ] && [ "$EVENT_CONCLUSION" = "cancelled" ]; then
-            RESTART=true
-            REASON="cancelled-without-replacement"
-          elif [ "$EVENT_NAME" = "workflow_run" ] && { [ "$EVENT_CONCLUSION" = "failure" ] || [ "$EVENT_CONCLUSION" = "timed_out" ] || [ "$EVENT_CONCLUSION" = "action_required" ]; } && [ "$AGE_SECONDS" -ge 720 ]; then
-            RESTART=true
-            REASON="failed-and-stale"
-          elif [ "$AGE_SECONDS" -ge 1320 ]; then
-            RESTART=true
-            REASON="no-search-progress-22min"
+            echo "restart=true" >> "$GITHUB_OUTPUT"
+            echo "reason=cancelled-without-fresh-staging" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT_NAME" = "workflow_run" ] && { [ "$EVENT_CONCLUSION" = "failure" ] || [ "$EVENT_CONCLUSION" = "timed_out" ] || [ "$EVENT_CONCLUSION" = "action_required" ]; }; then
+            echo "restart=true" >> "$GITHUB_OUTPUT"
+            echo "reason=failed-and-staging-stale" >> "$GITHUB_OUTPUT"
+          else
+            echo "restart=true" >> "$GITHUB_OUTPUT"
+            echo "reason=no-search-progress-20min" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "restart=${RESTART}" >> "$GITHUB_OUTPUT"
-          echo "reason=${REASON}" >> "$GITHUB_OUTPUT"
+      - name: Cancel stale rolling-search run
+        if: steps.inspect.outputs.cancel_ids != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IDS: ${{ steps.inspect.outputs.cancel_ids }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          IFS=',' read -ra RUN_IDS <<< "$IDS"
+          for run_id in "${RUN_IDS[@]}"; do
+            [ -n "$run_id" ] || continue
+            echo "Cancelling stale rolling-search run ${run_id}"
+            gh run cancel "$run_id" --repo "${{ github.repository }}" || true
+          done
+          sleep 3
 
       - name: Restart rolling search automatically
         if: steps.inspect.outputs.restart == 'true'
@@ -90,8 +139,8 @@ jobs:
           set -euo pipefail
           echo "Rolling search auto-restart: ${{ steps.inspect.outputs.reason }}"
           gh workflow run rolling-news-search.yml --repo "${{ github.repository }}" --ref main
-          echo "ROLLING_NEWS_AUTO_MAINTENANCE_RESTART_DISPATCHED mode=24x7"
+          echo "ROLLING_NEWS_AUTO_MAINTENANCE_RESTART_DISPATCHED mode=24x7 reason=${{ steps.inspect.outputs.reason }}"
 
-      - name: Healthy / replacement already active
+      - name: Healthy / no action required
         if: steps.inspect.outputs.restart != 'true'
         run: echo "Rolling news search healthy (${{ steps.inspect.outputs.reason }})."
