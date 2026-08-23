@@ -1,0 +1,146 @@
+name: Live Publication Auto Maintenance
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/live-publication-maintenance.yml"
+      - "scripts/promote_verified_live_draft.py"
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "live-publication-auto-maintenance"
+  cancel-in-progress: false
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Read verified prepublish draft
+        id: inspect
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch -q origin prepublish-news:refs/remotes/origin/prepublish-news || true
+          if ! git show origin/prepublish-news:data/prepublish.json > /tmp/prepublish.json 2>/dev/null; then
+            echo "promote=false" >> "$GITHUB_OUTPUT"
+            echo "reason=no-prepublish-draft" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          python - <<'PY' > /tmp/live-failover.env
+          import json
+          from datetime import datetime, timedelta, timezone
+
+          HKT=timezone(timedelta(hours=8))
+          now=datetime.now(timezone.utc)
+          draft=json.load(open('/tmp/prepublish.json',encoding='utf-8'))
+          live=json.load(open('data/live.json',encoding='utf-8'))
+
+          def parse(value):
+              return datetime.fromisoformat(str(value).replace('Z','+00:00'))
+
+          promote=False
+          reason='healthy'
+          target=None
+          try:
+              target=parse(draft.get('targetPublication') or '')
+          except Exception:
+              reason='invalid-draft-target'
+          else:
+              local=target.astimezone(HKT)
+              allowed=(local.hour in (0,6,7) or 9 <= local.hour <= 23)
+              if draft.get('status') != 'VERIFIED_DRAFT':
+                  reason='draft-not-verified'
+              elif draft.get('publicationType') != 'LIVE':
+                  reason='draft-not-live'
+              elif not allowed:
+                  reason='outside-live-publication-window'
+              elif not isinstance(draft.get('articles'),list) or not draft['articles']:
+                  reason='verified-draft-empty'
+              else:
+                  try:
+                      current=parse(live.get('lastUpdated') or '')
+                  except Exception:
+                      current=datetime.min.replace(tzinfo=timezone.utc)
+                  age=now-target.astimezone(timezone.utc)
+                  if current.astimezone(timezone.utc) >= target.astimezone(timezone.utc):
+                      reason='main-live-current'
+                  elif age < timedelta(minutes=8):
+                      reason='normal-publisher-grace'
+                  elif age > timedelta(minutes=90):
+                      reason='verified-draft-too-old'
+                  else:
+                      promote=True
+                      reason='main-live-behind-verified-draft'
+
+          print('PROMOTE=' + ('true' if promote else 'false'))
+          print('REASON=' + reason)
+          print('DRAFT_ID=' + str(draft.get('draftId') or ''))
+          print('TARGET=' + (target.isoformat() if target else ''))
+          print('CURRENT=' + str(live.get('lastUpdated') or ''))
+          PY
+          source /tmp/live-failover.env
+          echo "Live failover check: promote=${PROMOTE}; reason=${REASON}; draft=${DRAFT_ID:-none}; target=${TARGET:-none}; current=${CURRENT:-none}"
+          echo "promote=${PROMOTE}" >> "$GITHUB_OUTPUT"
+          echo "reason=${REASON}" >> "$GITHUB_OUTPUT"
+          echo "draft_id=${DRAFT_ID}" >> "$GITHUB_OUTPUT"
+          echo "target=${TARGET}" >> "$GITHUB_OUTPUT"
+
+      - name: Promote verified draft when normal publisher missed the hour
+        if: steps.inspect.outputs.promote == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+
+            python scripts/promote_verified_live_draft.py /tmp/prepublish.json
+            python scripts/merge_live_into_desk.py
+            python scripts/validate_publication_current.py
+            python scripts/audit_tts_language.py
+
+            git add -- data/live.json data/desk-latest.json
+            if git diff --cached --quiet; then
+              echo "LIVE_FAILOVER_NOOP normal publisher already caught up"
+              exit 0
+            fi
+
+            TARGET_LABEL=$(python - <<'PY'
+          import json
+          from datetime import datetime
+          d=json.load(open('/tmp/prepublish.json',encoding='utf-8'))
+          t=datetime.fromisoformat(d['targetPublication'].replace('Z','+00:00'))
+          print('24:00' if t.hour == 0 else f'{t.hour:02d}:00')
+          PY
+            )
+            git commit -m "Failover publish verified ${TARGET_LABEL} HKT Live update"
+            if git push origin HEAD:main; then
+              echo "LIVE_PUBLICATION_AUTO_FAILOVER_PASS draft=${{ steps.inspect.outputs.draft_id }} target=${{ steps.inspect.outputs.target }}"
+              exit 0
+            fi
+            sleep $((attempt * 2))
+          done
+
+          echo "Verified Live failover could not push after retries" >&2
+          exit 1
+
+      - name: Live publication healthy
+        if: steps.inspect.outputs.promote != 'true'
+        run: echo "Live publication maintenance healthy (${{ steps.inspect.outputs.reason }})."
