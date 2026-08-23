@@ -2,24 +2,25 @@
 """Traditional-Chinese localization for Cantonese TTS.
 
 Display copy may keep official English/romanized names, but the speech script
-should use established Hong Kong Traditional-Chinese names wherever possible.
+uses established Hong Kong Traditional-Chinese names wherever possible.
 Taiwan Traditional-Chinese names are used only when Hong Kong has no stable
-local form. The final speech string is audited for residual Latin words so we
-can expand this table instead of asking CosyVoice to guess pronunciation.
+local form. Residual Latin text is audited by desk so CosyVoice is not asked to
+guess a different language/accent mid-sentence.
 """
 from __future__ import annotations
 
 import re
 
-# Longest/specific phrases first. These are speech-only substitutions.
-# HK usage examples include RTHK/Now/on.cc naming such as 卡尼、美墨加貿易協定、
-# FC東京、千葉市原、川崎前鋒、柏雷素爾、長崎成功丸、曼聯、侯城；
-# Nvidia is rendered 輝達 following Traditional-Chinese Hong Kong usage.
 REPLACEMENTS = [
-    # World / North America / institutions
+    # World / Asia — Hong Kong forms first
     ("Long Island Expressway", "長島高速公路"),
+    ("G20 Common Framework", "二十國集團共同框架"),
+    ("New Money Warrant", "新資金認股權證"),
+    ("Common Framework", "共同框架"),
     ("Associated Press", "美聯社"),
+    ("Kryvyi Rih", "克里維里赫"),
     ("Mark Carney", "卡尼"),
+    ("Ocean Winner", "海洋勝利號"),
     ("Long Island", "長島"),
     ("Atlantic Beach", "大西洋海灘"),
     ("Sandy Hook", "桑迪胡克"),
@@ -28,6 +29,7 @@ REPLACEMENTS = [
     ("Delaware", "特拉華州"),
     ("Queens", "皇后區"),
     ("Dover", "多佛"),
+    ("Eurobond", "國際債券"),
     ("USMCA", "美墨加貿易協定"),
     ("NASA", "美國太空總署"),
     ("Reuters", "路透社"),
@@ -67,7 +69,7 @@ REPLACEMENTS = [
     ("Microsoft", "微軟"),
     ("Apple", "蘋果公司"),
     ("Amazon", "亞馬遜"),
-    ("Meta", "Meta公司"),
+    ("Meta", "臉書母公司"),
     ("OpenAI", "開放人工智能公司"),
     ("ChatGPT", "人工智能聊天機械人"),
     ("Google", "谷歌"),
@@ -116,7 +118,7 @@ REPLACEMENTS = [
     ("Nottingham Forest", "諾定咸森林"),
     ("Leeds United", "列斯聯"),
     ("Coventry City", "高雲地利"),
-    ("AC Milan", "AC米蘭"),
+    ("AC Milan", "米蘭足球會"),
     ("Barcelona", "巴塞隆拿"),
     ("Real Madrid", "皇家馬德里"),
     ("Bayern Munich", "拜仁慕尼黑"),
@@ -132,7 +134,7 @@ REPLACEMENTS = [
     ("FIFA", "國際足協"),
     ("FT", "完場"),
 
-    # Common editorial/source words that should not switch the TTS language.
+    # Common editorial/source words
     ("Official", "官方"),
     ("official", "官方"),
     ("Breaking News", "突發新聞"),
@@ -140,9 +142,6 @@ REPLACEMENTS = [
     ("Update", "更新"),
 ]
 
-# Remaining short acronyms may be converted semantically rather than handed to
-# the model. Keep this intentionally small; new meaningful names should be
-# added to REPLACEMENTS after the audit identifies them.
 SHORT_ACRONYMS = {
     "US": "美國",
     "USA": "美國",
@@ -158,12 +157,13 @@ SHORT_ACRONYMS = {
     "PV": "宣傳片",
 }
 
-LATIN_TOKEN_RE = re.compile(r"(?<![\w])([A-Za-z][A-Za-z0-9.+&'’/-]*)(?![\w])")
+# Important: only ASCII boundaries. Using \w here incorrectly treats adjacent
+# Chinese characters as word characters and hides embedded English such as
+# 「美元Eurobond」 or 「FC Tokyo在主場」 from the audit.
+LATIN_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])([A-Za-z][A-Za-z0-9.+&'’/-]*)(?![A-Za-z0-9])")
 
 
 def _phrase_replace(text: str, source: str, target: str) -> str:
-    # ASCII phrases get case-insensitive boundaries; mixed Chinese phrases use
-    # direct replacement to avoid regex word-boundary surprises.
     if source.isascii() and any(ch.isalpha() for ch in source):
         pattern = re.compile(r"(?<![A-Za-z0-9])" + re.escape(source) + r"(?![A-Za-z0-9])", re.IGNORECASE)
         return pattern.sub(target, text)
