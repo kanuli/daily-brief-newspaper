@@ -6,9 +6,12 @@ from pathlib import Path
 import generate_cosyvoice_lead as voice_base
 import publish_cosyvoice_article as legacy
 
-POLICY = "f01-news-anchor-v6-single-inference-hktrad"
+POLICY = "f01-news-anchor-v7-short-prompt-bistream-hktrad"
 REFERENCE_POLICY = "user-approved-nvidia-anchor-v1"
 REFERENCE_ASSET = "ai-nvidia-server-price-0800-79489f0afc38.wav"
+REFERENCE_START_SECONDS = 10.0
+REFERENCE_DURATION_SECONDS = 5.0
+INITIAL_CONDITIONING_POLICY = "short-reference-bistream"
 LANGUAGE_GATE = "residual-latin-zero"
 SEGMENT_POLICY = "single-inference-per-article"
 
@@ -18,9 +21,15 @@ def _valid_policy_entry(entry, digest=None):
         return False
     if digest is not None and entry.get("contentSha256") != digest:
         return False
+    try:
+        reference_duration = float(entry.get("referenceDurationSeconds") or 0)
+    except (TypeError, ValueError):
+        return False
     return (
         entry.get("prosodyPolicy") == POLICY
         and entry.get("referencePolicy") == REFERENCE_POLICY
+        and entry.get("initialConditioningPolicy") == INITIAL_CONDITIONING_POLICY
+        and reference_duration == REFERENCE_DURATION_SECONDS
         and entry.get("languageGate") == LANGUAGE_GATE
         and entry.get("segmentPolicy") == SEGMENT_POLICY
         and int(entry.get("segmentCount") or 0) == 1
@@ -51,6 +60,9 @@ def _stamp_manifest():
         "instructionPolicy": "none-reference-only",
         "referencePolicy": REFERENCE_POLICY,
         "referenceAsset": REFERENCE_ASSET,
+        "referenceStartSeconds": REFERENCE_START_SECONDS,
+        "referenceDurationSeconds": REFERENCE_DURATION_SECONDS,
+        "initialConditioningPolicy": INITIAL_CONDITIONING_POLICY,
         "prosodyPolicy": POLICY,
         "inferenceMode": voice_base.VOICE_INFERENCE_MODE,
         "speed": voice_base.VOICE_SPEED,
