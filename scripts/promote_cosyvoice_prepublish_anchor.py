@@ -1,22 +1,34 @@
 #!/usr/bin/env python3
-"""Promote exact-current F01 audio without importing the heavy TTS runtime."""
+"""Promote only exact-current v6 F01 audio without loading the TTS runtime."""
 import json
 from pathlib import Path
 
 import promote_cosyvoice_prepublish_fast as legacy
 
-POLICY = "f01-news-anchor-v5-golden-hktrad"
+POLICY = "f01-news-anchor-v6-single-inference-hktrad"
 INFERENCE_MODE = "cross-lingual-reference-only"
 VOICE_SPEED = 1.0
+LANGUAGE_GATE = "residual-latin-zero"
+SEGMENT_POLICY = "single-inference-per-article"
 _ORIGINAL_INDEX = legacy.index_entries
+
+
+def _valid_entry(entry):
+    return (
+        isinstance(entry, dict)
+        and entry.get("prosodyPolicy") == POLICY
+        and entry.get("languageGate") == LANGUAGE_GATE
+        and entry.get("segmentPolicy") == SEGMENT_POLICY
+        and int(entry.get("segmentCount") or 0) == 1
+    )
 
 
 def _policy_index_entries(manifest):
     if not isinstance(manifest, dict) or manifest.get("prosodyPolicy") != POLICY:
         return {}, {}
     by_id, by_title = _ORIGINAL_INDEX(manifest)
-    by_id = {k: v for k, v in by_id.items() if isinstance(v, dict) and v.get("prosodyPolicy") == POLICY}
-    by_title = {k: v for k, v in by_title.items() if isinstance(v, dict) and v.get("prosodyPolicy") == POLICY}
+    by_id = {k: v for k, v in by_id.items() if _valid_entry(v)}
+    by_title = {k: v for k, v in by_title.items() if _valid_entry(v)}
     return by_id, by_title
 
 
@@ -30,10 +42,12 @@ def _stamp_manifest():
         "prosodyPolicy": POLICY,
         "inferenceMode": INFERENCE_MODE,
         "speed": VOICE_SPEED,
+        "languageGate": LANGUAGE_GATE,
+        "segmentPolicy": SEGMENT_POLICY,
     })
     articles = {
         article_id: entry for article_id, entry in (data.get("articles") or {}).items()
-        if isinstance(entry, dict) and entry.get("prosodyPolicy") == POLICY
+        if _valid_entry(entry)
     }
     data["articles"] = articles
     available = len(articles)
