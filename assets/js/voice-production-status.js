@@ -49,6 +49,16 @@
     }).format(date) + " HKT";
   }
 
+  function trueLastVoiceIso(manifest) {
+    const direct = clean(manifest?.lastVoicePublishedAt);
+    if (direct) return direct;
+    const times = Object.values(manifest?.articles || {})
+      .map((entry) => clean(entry?.publishedAt))
+      .filter(Boolean)
+      .sort();
+    return times.length ? times[times.length - 1] : "";
+  }
+
   function looksLikeStory(obj) {
     return !!(obj && typeof obj === "object" && !Array.isArray(obj) && clean(obj.title) && STORY_FIELDS.some((key) => clean(obj[key])));
   }
@@ -136,10 +146,14 @@
 
     const snap = manifestSnapshot(latestManifest);
     const wf = workflowState();
-    const lastPublish = Date.parse(latestManifest.generatedAt || "");
+    const lastVoiceIso = trueLastVoiceIso(latestManifest);
+    // Transitional manifests created before true publish timestamps existed may
+    // still have audio but no lastVoicePublishedAt. Do not display generatedAt
+    // as a fake "Last voice" time. It may be a reconcile-only timestamp.
+    const lastPublish = Date.parse(lastVoiceIso || "");
     const ageMs = Number.isFinite(lastPublish) ? Math.max(0, Date.now() - lastPublish) : Infinity;
-    const recentlyPublishing = ageMs <= RECENT_PUBLISH_MS;
-    const hardStale = ageMs >= HARD_FAILURE_MS;
+    const recentlyPublishing = Number.isFinite(lastPublish) && ageMs <= RECENT_PUBLISH_MS;
+    const hardStale = Number.isFinite(lastPublish) ? ageMs >= HARD_FAILURE_MS : false;
     const manifestDate = clean(latestManifest.date);
     const inventoryDrift = !!(latestInventory?.date && manifestDate && latestInventory.date !== manifestDate);
 
@@ -152,7 +166,7 @@
     if (snap.pending > 0 && wf.state === "cancelled") {
       creating = 0;
       state = hardStale ? "failed" : "maintenance";
-      stateLabel = hardStale ? "Worker cancelled · current F01 backlog is stale" : "Previous run replaced · auto maintenance checking replacement";
+      stateLabel = hardStale ? "Worker cancelled · current F01 backlog is stale" : "Previous pending run replaced · active/maintenance pool continues";
     }
     if (snap.pending > 0 && wf.state === "idle") {
       state = "maintenance";
@@ -160,7 +174,9 @@
     }
     if (snap.pending > 0 && wf.state === "failed") {
       state = hardStale ? "failed" : "maintenance";
-      stateLabel = hardStale ? `${wf.label} · current backlog has no recent F01 progress` : `${wf.label} · auto maintenance retrying`;
+      stateLabel = recentlyPublishing
+        ? "Partial worker failure · recent F01 progress · auto maintenance continuing"
+        : (hardStale ? `${wf.label} · current backlog has no recent F01 progress` : `${wf.label} · auto maintenance retrying`);
     }
     if (snap.pending > 0 && wf.state === "unknown" && recentlyPublishing) {
       state = "active";
@@ -190,7 +206,8 @@
       : `Creating ${creating}/${snap.pending} pending`;
     const maintenance = snap.pending > 0 ? " · Auto maintenance: ON" : "";
     const countSource = snap.source === "current-inventory" ? "current news inventory" : "manifest fallback";
-    row.querySelector(".voice-progress-detail").textContent = `${stateLabel}${maintenance} · ${countSource} · Last voice ${formatHKT(latestManifest.generatedAt)} · F01 only`;
+    const lastVoiceLabel = lastVoiceIso ? formatHKT(lastVoiceIso) : "not recorded yet";
+    row.querySelector(".voice-progress-detail").textContent = `${stateLabel}${maintenance} · ${countSource} · Last voice ${lastVoiceLabel} · F01 only`;
 
     const systemLabel = document.querySelector("#system-status-button .system-status-label");
     if (systemLabel) systemLabel.textContent = "SYSTEM";
@@ -257,18 +274,14 @@
         <small class="voice-progress-stats"><span class="voice-done">Done —/—</span><span class="voice-creating">Creating —/—</span></small>
         <small class="voice-progress-detail">Loading current news inventory…</small>
       </div>`;
-
-    const cantoneseRow = Array.from(panel.querySelectorAll(".system-panel-row")).find((item) => item.textContent.includes("Cantonese Voice"));
-    if (cantoneseRow) cantoneseRow.insertAdjacentElement("afterend", row);
-    else panel.querySelector(".system-panel-links")?.insertAdjacentElement("beforebegin", row);
-
-    const button = document.getElementById("system-status-button");
-    const syncOpenState = () => panel.hidden ? stopLiveRefresh() : startLiveRefresh();
-    button?.addEventListener("click", () => window.setTimeout(syncOpenState, 0));
-    panel.querySelector(".system-panel-close")?.addEventListener("click", () => window.setTimeout(syncOpenState, 0));
-    const observer = new MutationObserver(syncOpenState);
-    observer.observe(panel, { attributes: true, attributeFilter: ["hidden"] });
-    loadManifest(); loadInventory();
+    const systemRows = Array.from(panel.querySelectorAll(".system-panel-row"));
+    const voiceRow = systemRows.find((item) => item.querySelector("strong")?.textContent?.includes("Cantonese Voice"));
+    if (voiceRow) voiceRow.insertAdjacentElement("afterend", row);
+    else panel.appendChild(row);
+    startLiveRefresh();
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) stopLiveRefresh(); else startLiveRefresh();
+    });
     return true;
   }
 
