@@ -7,6 +7,9 @@
   const MANIFEST_URL = "https://raw.githubusercontent.com/kanuli/daily-brief-newspaper/main/data/tts-manifest.json";
   const MANIFEST_REFRESH_MS = 15000;
   const PAGE_CACHE_KEY = Date.now();
+  const REQUIRED_POLICY = "f01-news-anchor-v6-single-inference-hktrad";
+  const REQUIRED_LANGUAGE_GATE = "residual-latin-zero";
+  const REQUIRED_SEGMENT_POLICY = "single-inference-per-article";
 
   let activeButton = null;
   let manifestPromise = null;
@@ -73,8 +76,18 @@
     setStatus("朗讀已停止。", false);
   }
 
+  function validEntry(entry) {
+    return !!(
+      entry?.audio &&
+      entry?.prosodyPolicy === REQUIRED_POLICY &&
+      entry?.languageGate === REQUIRED_LANGUAGE_GATE &&
+      entry?.segmentPolicy === REQUIRED_SEGMENT_POLICY &&
+      Number(entry?.segmentCount) === 1
+    );
+  }
+
   function entryUrl(entry) {
-    if (!entry?.audio) return null;
+    if (!validEntry(entry)) return null;
     const url = new URL(entry.audio, document.baseURI);
     url.searchParams.set("v", String(entry.bytes || entry.contentSha256 || manifestData?.generatedAt || PAGE_CACHE_KEY));
     return url.href;
@@ -82,10 +95,10 @@
 
   function leadEntry(manifest = manifestData) {
     if (!manifest?.articles) return null;
-    if (manifest.leadId && manifest.articles[manifest.leadId]) return manifest.articles[manifest.leadId];
+    if (manifest.leadId && validEntry(manifest.articles[manifest.leadId])) return manifest.articles[manifest.leadId];
     const leadTitle = clean(manifest.leadTitle);
     if (!leadTitle) return null;
-    return Object.values(manifest.articles).find((entry) => clean(entry?.title) === leadTitle) || null;
+    return Object.values(manifest.articles).find((entry) => validEntry(entry) && clean(entry?.title) === leadTitle) || null;
   }
 
   function playAudioUrl(url, button = null) {
@@ -127,6 +140,9 @@
     if (manifest?.engine !== "ASLP-lab/Cosyvoice2-Yue") throw new Error("Unexpected TTS engine");
     if (manifest?.voice !== "F01 female reference") throw new Error("Unexpected TTS voice");
     if (manifest?.language !== "yue-HK") throw new Error("Unexpected TTS language");
+    if (manifest?.prosodyPolicy !== REQUIRED_POLICY) throw new Error("Outdated TTS policy");
+    if (manifest?.languageGate !== REQUIRED_LANGUAGE_GATE) throw new Error("TTS language gate missing");
+    if (manifest?.segmentPolicy !== REQUIRED_SEGMENT_POLICY) throw new Error("TTS segment policy missing");
     return manifest;
   }
 
@@ -135,7 +151,8 @@
       manifest?.generatedAt || "",
       manifest?.availableArticleCount ?? manifest?.articleCount ?? Object.keys(manifest?.articles || {}).length,
       manifest?.pendingArticleCount ?? "",
-      manifest?.sourceSetSha256 || ""
+      manifest?.sourceSetSha256 || "",
+      manifest?.prosodyPolicy || ""
     ].join("|");
   }
 
@@ -170,7 +187,7 @@
     if (!manifest?.articles) return null;
     const title = articleTitle(article);
     if (!title) return null;
-    return Object.values(manifest.articles).find((entry) => clean(entry?.title) === title) || null;
+    return Object.values(manifest.articles).find((entry) => validEntry(entry) && clean(entry?.title) === title) || null;
   }
 
   function configureButton(button, entry) {
@@ -179,7 +196,7 @@
     button.dataset.speaking = "false";
     button.setAttribute("aria-label", "用 CosyVoice2-Yue F01 女聲朗讀這則新聞");
 
-    if (entry?.audio) {
+    if (validEntry(entry)) {
       button.textContent = BUTTON_TEXT;
       button.disabled = false;
       button.title = "CosyVoice2-Yue · F01 女聲已完成，可立即播放。";
@@ -187,7 +204,7 @@
     } else {
       button.textContent = PENDING_TEXT;
       button.disabled = true;
-      button.title = "只使用 CosyVoice2-Yue F01；此新聞的 F01 音訊尚未完成。";
+      button.title = "只使用已通過粵語安全檢查的 CosyVoice2-Yue F01 音訊；此新聞仍在準備。";
     }
   }
 
@@ -261,7 +278,7 @@
   window.SiteTTS = {
     playLeadFromUserGesture() {
       const entry = leadEntry();
-      return entry?.audio ? playAudioUrl(entryUrl(entry), null) : false;
+      return validEntry(entry) ? playAudioUrl(entryUrl(entry), null) : false;
     },
     stop: stopAll,
     isReady() { return true; }
@@ -269,7 +286,6 @@
 
   async function boot() {
     ensureUi();
-    // Controls appear immediately. Pending buttons are automatically upgraded as soon as a new F01 entry lands in the production manifest.
     scan(document, null);
     const manifest = await loadManifest();
     if (manifest) refreshButtons(manifest);
