@@ -5,7 +5,7 @@ from pathlib import Path
 
 import promote_cosyvoice_prepublish_fast as legacy
 
-POLICY = "f01-news-anchor-v3-stable-tempo"
+POLICY = "f01-news-anchor-v5-golden-hktrad"
 INFERENCE_MODE = "cross-lingual-reference-only"
 VOICE_SPEED = 1.0
 _ORIGINAL_INDEX = legacy.index_entries

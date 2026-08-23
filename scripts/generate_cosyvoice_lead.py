@@ -14,6 +14,8 @@ import torch
 import torchaudio
 from huggingface_hub import snapshot_download
 
+import tts_hktrad
+
 # Production speech policy: reference-audio-only Cantonese synthesis.
 # Do NOT send a textual style/language instruction to CosyVoice2. Instruct2 can
 # occasionally leak the control prompt into speech (e.g. speaking "用地道粵語…").
@@ -126,7 +128,7 @@ def normalize_numbers_for_cantonese(text):
 
 
 def normalize_for_tts(value):
-    text = clean_text(value)
+    text = tts_hktrad.localize(clean_text(value))
     text = re.sub(r"[「『“\"]?double[\-‐‑–— ]?tap[」』”\"]?", "二次打擊", text, flags=re.IGNORECASE)
     text = re.sub(r"\bReuters\b", "路透社", text, flags=re.IGNORECASE)
     text = re.sub(r"\bAssociated Press\b", "美聯社", text, flags=re.IGNORECASE)

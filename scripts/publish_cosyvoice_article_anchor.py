@@ -6,7 +6,7 @@ from pathlib import Path
 import generate_cosyvoice_lead as voice_base
 import publish_cosyvoice_article as legacy
 
-POLICY = "f01-news-anchor-v4-golden-nvidia"
+POLICY = "f01-news-anchor-v5-golden-hktrad"
 REFERENCE_POLICY = "user-approved-nvidia-anchor-v1"
 REFERENCE_ASSET = "ai-nvidia-server-price-0800-79489f0afc38.wav"
 
