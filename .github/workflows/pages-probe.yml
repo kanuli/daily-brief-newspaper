@@ -1,0 +1,87 @@
+name: Verify Public Pages Live Snapshot
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/pages-probe.yml"
+  workflow_run:
+    workflows: ["Deploy Daily Brief to GitHub Pages"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "public-pages-live-probe"
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Compare public Pages Live snapshot with main
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, time, urllib.request
+          from datetime import datetime, timezone
+          repo=os.environ.get('GITHUB_REPOSITORY','kanuli/daily-brief-newspaper')
+          owner,name=repo.split('/',1)
+          url=f'https://{owner}.github.io/{name}/data/live.json?v={int(time.time())}'
+          local=json.load(open('data/live.json',encoding='utf-8'))
+          expected=local.get('lastUpdated')
+          remote=None
+          error=None
+          for attempt in range(12):
+              try:
+                  req=urllib.request.Request(url,headers={'Cache-Control':'no-cache','User-Agent':'daily-brief-pages-probe'})
+                  with urllib.request.urlopen(req,timeout=15) as response:
+                      remote=json.loads(response.read().decode('utf-8'))
+                  if remote.get('lastUpdated')==expected and (remote.get('items') or []):
+                      break
+              except Exception as exc:
+                  error=str(exc)
+              time.sleep(5)
+          payload={
+              'checkedAt': datetime.now(timezone.utc).isoformat(),
+              'publicUrl': url.split('?')[0],
+              'mainLastUpdated': expected,
+              'publicLastUpdated': remote.get('lastUpdated') if isinstance(remote,dict) else None,
+              'mainWindowLabel': local.get('windowLabel'),
+              'publicWindowLabel': remote.get('windowLabel') if isinstance(remote,dict) else None,
+              'publicItemCount': len(remote.get('items') or []) if isinstance(remote,dict) else 0,
+              'match': bool(isinstance(remote,dict) and remote.get('lastUpdated')==expected and (remote.get('items') or [])),
+              'error': error,
+          }
+          open('/tmp/pages-live-status.json','w',encoding='utf-8').write(json.dumps(payload,ensure_ascii=False,indent=2)+'\n')
+          print(json.dumps(payload,ensure_ascii=False))
+          PY
+
+      - name: Publish probe result to pages-status branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/pages-status
+          mkdir -p /tmp/pages-status/data
+          cp /tmp/pages-live-status.json /tmp/pages-status/data/pages-live-status.json
+          cd /tmp/pages-status
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q -b pages-status
+          git add data/pages-live-status.json
+          git commit -q -m "Update public Pages Live probe"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push -q --force origin pages-status
