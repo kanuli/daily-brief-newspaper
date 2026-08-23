@@ -62,6 +62,7 @@
 
   function loadDisplayLocalization() {
     inject("assets/js/hktrad-display.js?v=20260823-1719", "data-hktrad-display");
+    inject("assets/js/hktrad-display-sync.js?v=20260823-1719", "data-hktrad-display-sync");
   }
 
   function loadArticleEnhancers() {
