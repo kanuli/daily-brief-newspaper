@@ -62,7 +62,7 @@
 
   function loadDisplayLocalization() {
     inject("assets/js/hktrad-display.js?v=20260823-1719", "data-hktrad-display");
-    inject("assets/js/hktrad-display-sync.js?v=20260823-1719", "data-hktrad-display-sync");
+    inject("assets/js/hktrad-display-sync.js?v=20260823-1748-units", "data-hktrad-display-sync");
   }
 
   function loadArticleEnhancers() {
@@ -81,7 +81,7 @@
   }
 
   function loadVoiceProductionStatus() {
-    inject("assets/js/voice-production-status.js?v=20260823-1355rawmanifest", "data-voice-production-status");
+    inject("assets/js/voice-production-status.js?v=20260823-1748-truepublish", "data-voice-production-status");
   }
 
   function playMainLeadFromClick(button) {
