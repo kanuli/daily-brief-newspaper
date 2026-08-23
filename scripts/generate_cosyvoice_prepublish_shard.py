@@ -5,6 +5,10 @@ import os
 from pathlib import Path
 
 import generate_cosyvoice_all as gen
+# Importing the production anchor patches the shared generate_cosyvoice_all
+# module to the current F01 policy: speech-only HK-Traditional localization,
+# residual-Latin blocking, one inference per article, and the approved reference.
+import generate_cosyvoice_shard_anchor as anchor
 
 DRAFT = Path(os.environ.get("COSY_PREPUBLISH_JSON", "data/prepublish.json"))
 MANIFEST = Path(os.environ.get("COSY_PREPUBLISH_MANIFEST", "data/prepublish-tts-manifest.json"))
@@ -62,6 +66,10 @@ def reusable(previous, story, digest):
         old = next((e for e in (previous.get("articles") or {}).values() if gen.clean(e.get("title")) == title), None)
     if not old or old.get("contentSha256") != digest:
         return False
+    if old.get("prosodyPolicy") != anchor.POLICY or old.get("referencePolicy") != anchor.REFERENCE_POLICY:
+        return False
+    if old.get("languageGate") != "residual-latin-zero" or old.get("segmentPolicy") != "single-inference-per-article":
+        return False
     audio = str(old.get("audio") or "")
     if audio.startswith(("https://", "http://")):
         try:
@@ -90,13 +98,7 @@ def main():
         final_path = gen.target_path(story, digest)
         if reusable(previous, story, digest):
             continue
-        if final_path.is_file() and final_path.stat().st_size >= 50000:
-            try:
-                duration, _ = gen.wav_metadata(final_path)
-                if duration > 2:
-                    continue
-            except Exception:
-                pass
+        # Do not trust an unmanifested local WAV: policy provenance is unknown.
         missing.append((story, digest, final_path))
 
     selected = missing[:1]
@@ -119,10 +121,11 @@ def main():
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     payload = {
-        "version": 1,
+        "version": 2,
         "engine": "ASLP-lab/Cosyvoice2-Yue",
         "voice": "F01 female reference",
         "language": "yue-HK",
+        "prosodyPolicy": anchor.POLICY,
         "draftId": draft.get("draftId"),
         "targetPublication": draft.get("targetPublication"),
         "shardIndex": SHARD_INDEX,
@@ -132,8 +135,8 @@ def main():
     out = OUT_DIR / f"shard-{SHARD_INDEX}.json"
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(
-        f"COSYVOICE_PREPUBLISH_PLAN slot={SHARD_INDEX}/{SHARD_COUNT} assigned={len(assigned)} "
-        f"missing={len(missing)} generated={len(entries)} draft={draft.get('draftId')}",
+        f"COSYVOICE_PREPUBLISH_PLAN policy={anchor.POLICY} slot={SHARD_INDEX}/{SHARD_COUNT} "
+        f"assigned={len(assigned)} missing={len(missing)} generated={len(entries)} draft={draft.get('draftId')}",
         flush=True,
     )
     return 0
