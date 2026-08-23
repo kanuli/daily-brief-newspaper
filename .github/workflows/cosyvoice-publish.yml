@@ -52,14 +52,15 @@ jobs:
               --repo "${{ github.repository }}" \
               --target main \
               --title "Rolling F01 Voice Cache" \
-              --notes "Transient CosyVoice2-Yue F01 audio. Assets are automatically pruned after approximately 48 hours." \
-              --prerelease || gh release view "$F01_RELEASE_TAG" --repo "${{ github.repository }}" >/dev/null
+              --notes "Transient CosyVoice2-Yue F01 audio; automatically pruned after approximately 48 hours." \
+              --prerelease
           fi
 
   promote-prebuilt:
     needs: ensure-release
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    continue-on-error: true
     steps:
       - name: Checkout current public news
         uses: actions/checkout@v4
@@ -67,41 +68,42 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Promote only exact-hash current-policy prebuilt F01 URLs
+      - name: Promote exact-hash current-policy prebuilt F01 URLs
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if ! git fetch origin prepublish-news; then
-            echo "No prepublish-news branch yet; rebuild production manifest against current inventory anyway."
-            rm -rf /tmp/prepublish-news
-            mkdir -p /tmp/prepublish-news/data
-          else
+          if git fetch origin prepublish-news; then
             rm -rf /tmp/prepublish-news
             git worktree add --detach /tmp/prepublish-news origin/prepublish-news
+          else
+            rm -rf /tmp/prepublish-news
+            mkdir -p /tmp/prepublish-news/data
           fi
 
           python scripts/promote_cosyvoice_prepublish_anchor.py /tmp/prepublish-news
           git add -- data/tts-manifest.json
           if git diff --cached --quiet; then
-            echo "Production F01 manifest already matches current natural-newsreader coverage."
+            echo "No prebuilt F01 promotion change required."
             exit 0
           fi
-
           git commit -m "Reconcile natural-newsreader F01 manifest"
           for attempt in 1 2 3 4 5 6; do
-            if git pull --rebase origin main && git push origin HEAD:main; then
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then
               echo "COSYVOICE_ANCHOR_PROMOTION_PUSH_PASS"
               exit 0
             fi
+            git rebase --abort >/dev/null 2>&1 || true
             sleep $((attempt * 2))
           done
-          echo "F01 natural-newsreader manifest promotion could not push." >&2
+          echo "Prebuilt promotion failed; workers will still run." >&2
           exit 1
 
   worker:
-    needs: promote-prebuilt
+    needs: [ensure-release, promote-prebuilt]
+    if: ${{ always() && needs.ensure-release.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 55
     strategy:
@@ -110,10 +112,10 @@ jobs:
       matrix:
         slot: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     steps:
-      - name: Checkout triggering news snapshot
+      - name: Checkout latest main
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: main
           fetch-depth: 0
 
       - name: Set up Python 3.10
@@ -129,8 +131,7 @@ jobs:
       - name: Install proven CPU CosyVoice2-Yue runtime
         run: |
           python -m pip install --upgrade pip wheel
-          python -m pip install "setuptools==69.5.1"
-          python -m pip install "numpy==1.26.4"
+          python -m pip install "setuptools==69.5.1" "numpy==1.26.4"
           python -m pip install "torch==2.3.1" "torchaudio==2.3.1" --index-url https://download.pytorch.org/whl/cpu
           python -m pip install "pynini==2.1.6.post1"
           python -m pip install --no-build-isolation "openai-whisper==20231117"
@@ -156,7 +157,7 @@ jobs:
           git clone --depth 1 --recursive https://github.com/ASLP-lab/WenetSpeech-Yue.git /tmp/WenetSpeech-Yue
           test -f /tmp/WenetSpeech-Yue/CosyVoice2-Yue/cosyvoice/cli/cosyvoice.py
 
-      - name: Keep this lane generating and publishing one natural news voice at a time
+      - name: Generate and publish one F01 voice at a time
         env:
           SLOT: ${{ matrix.slot }}
           GH_TOKEN: ${{ github.token }}
@@ -164,19 +165,20 @@ jobs:
           WSYUE_ROOT: /tmp/WenetSpeech-Yue
           COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
           COSY_ARTICLE_MAX_TEXT_CHARS: "260"
-          COSY_MAX_SEGMENT_CHARS: "120"
+          COSY_MAX_SEGMENT_CHARS: "72"
           COSY_VOICE_SPEED: "1.0"
           COSY_SHARD_COUNT: "10"
           COSY_SHARD_ONE_ARTICLE: "1"
           COSY_SHARD_STABLE_SLOT: "1"
           COSY_PUBLIC_AUDIO_BASE: ${{ env.F01_PUBLIC_BASE }}
+        shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           for cycle in $(seq 1 12); do
-            echo "=== F01 natural-newsreader worker slot ${SLOT} cycle ${cycle}/12 ==="
+            echo "=== F01 stable-newsreader slot ${SLOT} cycle ${cycle}/12 ==="
             git fetch origin main
             git reset --hard origin/main
             rm -rf artifacts/cosyvoice-shards
@@ -187,56 +189,46 @@ jobs:
 
             if python - "$SHARD" <<'PY'
           import json, sys
-          data = json.load(open(sys.argv[1], encoding='utf-8'))
+          data=json.load(open(sys.argv[1],encoding='utf-8'))
           sys.exit(0 if len(data.get('entries') or {}) == 0 else 1)
           PY
             then
-              echo "Worker slot ${SLOT} has no more current-policy F01 work."
+              echo "Worker slot ${SLOT} has no more current F01 work."
               exit 0
             fi
 
-            cp "$SHARD" /tmp/cosyvoice-one-article-${SLOT}.json
+            cp "$SHARD" "/tmp/cosyvoice-one-article-${SLOT}.json"
             ARTIFACT=$(python - "/tmp/cosyvoice-one-article-${SLOT}.json" <<'PY'
           import json, sys
           data=json.load(open(sys.argv[1],encoding='utf-8'))
-          entry=next(iter((data.get('entries') or {}).values()))
-          print(entry['artifactAudio'])
+          print(next(iter((data.get('entries') or {}).values()))['artifactAudio'])
           PY
             )
             test -f "$ARTIFACT"
             gh release upload "$F01_RELEASE_TAG" "$ARTIFACT" --clobber --repo "${{ github.repository }}"
-            echo "F01 natural-newsreader release asset uploaded: $(basename "$ARTIFACT")"
 
             published=false
             for attempt in 1 2 3 4 5 6 7 8; do
-              echo "Immediate manifest publish attempt ${attempt}/8 for slot ${SLOT}, cycle ${cycle}"
               git fetch origin main
               git reset --hard origin/main
-
               python scripts/publish_cosyvoice_article_anchor.py "/tmp/cosyvoice-one-article-${SLOT}.json"
               git add -- data/tts-manifest.json
-
               if git diff --cached --quiet; then
-                echo "Generated article is stale or already published; release cleanup will remove any orphan asset later."
                 published=true
                 break
               fi
-
               git commit -m "Publish natural F01 voice slot ${SLOT} cycle ${cycle}"
               if git push origin HEAD:main; then
-                echo "COSYVOICE_ANCHOR_ONE_ARTICLE_PUSH_PASS slot=${SLOT} cycle=${cycle} storage=github-release"
+                echo "COSYVOICE_ANCHOR_ONE_ARTICLE_PUSH_PASS slot=${SLOT} cycle=${cycle}"
                 published=true
                 break
               fi
-
-              echo "Main advanced while this voice manifest was publishing; retry against newest cumulative manifest."
               sleep $((attempt * 2))
             done
-
             if [ "$published" != "true" ]; then
-              echo "Could not publish natural F01 manifest after conflict retries." >&2
+              echo "Could not publish F01 manifest after retries." >&2
               exit 1
             fi
           done
 
-          echo "Worker slot ${SLOT} reached its safety cycle limit; auto maintenance will continue any remaining backlog."
+          echo "Worker slot ${SLOT} reached safety cycle limit; maintenance can continue remaining backlog."
