@@ -85,10 +85,15 @@ def _stamp_manifest():
         default=None,
     )
     if newest:
+        data["generatedAt"] = newest[0]
         data["lastVoicePublishedAt"] = newest[0]
         data["lastPublishedArticleId"] = newest[1]
         data["lastPublishedTitle"] = newest[2].get("title") or ""
     else:
+        # Reconcile-only worker cycles must not impersonate a voice publish.
+        # Keeping generatedAt blank makes the manifest stable until the first
+        # valid current-policy WAV is actually accepted.
+        data["generatedAt"] = ""
         data["lastVoicePublishedAt"] = ""
         data["lastPublishedArticleId"] = ""
         data["lastPublishedTitle"] = ""
