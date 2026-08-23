@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Single source of truth for the production F01 voice policy."""
 
-POLICY = "f01-news-anchor-v9-semantic-pauses-approved-10s-hktrad"
+POLICY = "f01-news-anchor-v10-cache-isolated-semantic-pauses-approved-10s-hktrad"
+ASSET_NAMESPACE = "v10"
 REFERENCE_POLICY = "user-approved-nvidia-anchor-v1"
 REFERENCE_ASSET = "ai-nvidia-server-price-0800-79489f0afc38.wav"
 REFERENCE_START_SECONDS = 10.0
