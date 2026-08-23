@@ -1,0 +1,59 @@
+name: Apply Golden F01 News Anchor Reference
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "scripts/apply_golden_f01_reference.py"
+      - ".github/workflows/apply-golden-f01-reference.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "apply-golden-f01-reference"
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply golden-reference migration
+        run: python scripts/apply_golden_f01_reference.py
+
+      - name: Commit policy migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            scripts/generate_cosyvoice_lead.py \
+            scripts/generate_cosyvoice_all.py \
+            scripts/generate_cosyvoice_shard_anchor.py \
+            scripts/publish_cosyvoice_article_anchor.py \
+            scripts/publish_cosyvoice_prepublish_anchor.py \
+            scripts/promote_cosyvoice_prepublish_anchor.py \
+            .github/workflows/cosyvoice-retention.yml \
+            .github/workflows/cosyvoice-capacity-guard.yml
+          if git diff --cached --quiet; then
+            echo "Golden F01 migration already applied."
+            exit 0
+          fi
+          git commit -m "Use user-approved Nvidia voice as golden F01 anchor"
+          for attempt in 1 2 3 4 5 6; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo "GOLDEN_F01_REFERENCE_MIGRATION_PASS"
+              exit 0
+            fi
+            sleep $((attempt * 2))
+          done
+          exit 1
