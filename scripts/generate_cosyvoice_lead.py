@@ -14,9 +14,12 @@ import torch
 import torchaudio
 from huggingface_hub import snapshot_download
 
-# Keep the dialect instruction short. A long assistant-style prompt can leak
-# into generated speech with CosyVoice2 instruct inference.
-INSTRUCT = "用地道香港粤语说这句话"
+# Production speech policy: reference-audio-only Cantonese synthesis.
+# Do NOT send a textual style/language instruction to CosyVoice2. Instruct2 can
+# occasionally leak the control prompt into speech (e.g. speaking "用地道粵語…").
+VOICE_POLICY_VERSION = "f01-news-anchor-v2-cross-lingual"
+VOICE_INFERENCE_MODE = "cross-lingual-reference-only"
+VOICE_SPEED = float(os.environ.get("COSY_VOICE_SPEED", "1.0"))
 F01_URL = "https://raw.githubusercontent.com/ASLP-lab/WenetSpeech-Yue/demo_page/raw/TTS_samples/F01_%E4%B8%AD%E7%AB%8B_20054.wav"
 REPO_ROOT = Path(os.environ.get("WSYUE_ROOT", "/tmp/WenetSpeech-Yue"))
 CODE_ROOT = REPO_ROOT / "CosyVoice2-Yue"
@@ -25,12 +28,14 @@ LATEST = Path(os.environ.get("COSY_LATEST_JSON", "data/latest.json"))
 OUTPUT = Path(os.environ.get("COSY_OUTPUT_WAV", "assets/audio/cosyvoice/latest-lead.wav"))
 MANIFEST = Path(os.environ.get("COSY_MANIFEST_JSON", "data/tts-manifest.json"))
 MAX_TEXT_CHARS = int(os.environ.get("COSY_MAX_TEXT_CHARS", "520"))
-MAX_SEGMENT_CHARS = int(os.environ.get("COSY_MAX_SEGMENT_CHARS", "64"))
+# Longer coherent sentence groups reduce per-segment prosody resets. We still
+# retain explicit sentence-aware splitting for CPU/runtime safety.
+MAX_SEGMENT_CHARS = int(os.environ.get("COSY_MAX_SEGMENT_CHARS", "120"))
 
-TITLE_PAUSE_SECONDS = 0.80
-DEK_PAUSE_SECONDS = 0.65
-BODY_PAUSE_SECONDS = 0.26
-INTERNAL_SPLIT_PAUSE_SECONDS = 0.18
+TITLE_PAUSE_SECONDS = 0.72
+DEK_PAUSE_SECONDS = 0.52
+BODY_PAUSE_SECONDS = 0.32
+INTERNAL_SPLIT_PAUSE_SECONDS = 0.16
 _DIGITS = "零一二三四五六七八九"
 
 
@@ -144,9 +149,9 @@ def split_long_piece(piece, max_chars):
     while len(piece) > max_chars:
         window = piece[: max_chars + 1]
         cut = max_chars
-        for marker in ("，", ",", "、", "：", ":", " "):
+        for marker in ("。", "！", "？", "；", "，", ",", "、", "：", ":", " "):
             idx = window.rfind(marker)
-            if idx >= max(12, max_chars // 2):
+            if idx >= max(20, max_chars // 2):
                 cut = idx + 1
                 break
         head = clean_text(piece[:cut])
@@ -162,6 +167,8 @@ def split_for_tts(value, max_chars=MAX_SEGMENT_CHARS):
     text = normalize_for_tts(value)
     if not text:
         return []
+    # Prefer full sentences; only split a sentence further when it exceeds the
+    # coherent-segment ceiling. This keeps newsreader cadence much steadier.
     strong = [clean_text(p) for p in re.split(r"(?<=[。！？!?；;])", text) if clean_text(p)]
     atoms = []
     for piece in strong:
@@ -225,10 +232,24 @@ def load_lead():
 
 def synthesize_segment(cosyvoice, prompt_speech_16k, item, index):
     text = item["text"]
-    print(f"segment={index} role={item['role']} chars={len(text)} text={text}", flush=True)
+    print(
+        f"segment={index} role={item['role']} chars={len(text)} mode={VOICE_INFERENCE_MODE} speed={VOICE_SPEED} text={text}",
+        flush=True,
+    )
     chunks = []
     with torch.inference_mode():
-        for chunk_idx, result in enumerate(cosyvoice.inference_instruct2(text, INSTRUCT, prompt_speech_16k, stream=False)):
+        # Reference-only path: no textual instruction can leak into the audio.
+        # text_frontend=False also prevents CosyVoice from silently subdividing
+        # our already sentence-aware segment and resetting prosody again.
+        for chunk_idx, result in enumerate(
+            cosyvoice.inference_cross_lingual(
+                text,
+                prompt_speech_16k,
+                stream=False,
+                speed=VOICE_SPEED,
+                text_frontend=False,
+            )
+        ):
             speech = result["tts_speech"].detach().cpu()
             if speech.numel() == 0:
                 continue
@@ -249,7 +270,7 @@ def main():
     print(f"title={article.get('title')}", flush=True)
     print(f"tts_segments={len(segments)} tts_chars={speech_chars}", flush=True)
     print(f"source_sha256={source_sha256}", flush=True)
-    print("pronunciation_policy=yue-HK-cantonese-only; instruct=short-no-leak", flush=True)
+    print(f"voice_policy={VOICE_POLICY_VERSION}; inference={VOICE_INFERENCE_MODE}; speed={VOICE_SPEED}", flush=True)
     ensure_model()
     sys.path.insert(0, str(CODE_ROOT))
     sys.path.insert(0, str(CODE_ROOT / "third_party" / "Matcha-TTS"))
@@ -278,13 +299,10 @@ def main():
         raise RuntimeError("CosyVoice2-Yue returned zero production audio")
     speech = torch.cat(audio_parts, dim=1).clamp(-1.0, 1.0)
     duration = speech.shape[1] / cosyvoice.sample_rate
-    # Guard against accidental spoken-instruction leakage. The bad long-prompt
-    # build was ~200 s for this article; normal news speech should stay well
-    # below this conservative text-length envelope.
     max_reasonable_duration = max(60.0, speech_chars * 0.45)
     if duration > max_reasonable_duration:
         raise RuntimeError(
-            f"production audio suspiciously long; possible prompt leakage: duration={duration:.3f}s "
+            f"production audio suspiciously long: duration={duration:.3f}s "
             f"limit={max_reasonable_duration:.3f}s chars={speech_chars}"
         )
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
@@ -293,12 +311,15 @@ def main():
     if duration < 2.0 or size < 50000:
         raise RuntimeError(f"invalid production audio: duration={duration:.3f}s bytes={size}")
     manifest = {
-        "version": 1,
+        "version": 2,
         "engine": "ASLP-lab/Cosyvoice2-Yue",
         "voice": "F01 female reference",
         "language": "yue-HK",
         "pronunciationPolicy": "cantonese-only",
-        "instructionPolicy": "short-no-leak",
+        "instructionPolicy": "none-reference-only",
+        "prosodyPolicy": VOICE_POLICY_VERSION,
+        "inferenceMode": VOICE_INFERENCE_MODE,
+        "speed": VOICE_SPEED,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "source": "data/latest.json",
         "sourceSha256": source_sha256,
@@ -314,6 +335,7 @@ def main():
                 "speechTextChars": speech_chars,
                 "durationSeconds": round(duration, 3),
                 "bytes": size,
+                "prosodyPolicy": VOICE_POLICY_VERSION,
             }
         },
     }
