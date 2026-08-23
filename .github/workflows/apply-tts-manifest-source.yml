@@ -26,7 +26,7 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Apply raw-manifest frontend migration
+      - name: Apply raw-manifest frontend and worker-recovery migration
         run: python scripts/patch_tts_manifest_source.py
 
       - name: Commit migration
@@ -35,15 +35,15 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- assets/js/site-tts-v5.js assets/js/voice-production-status.js assets/js/system-panel.js ./*.html
+          git add -- assets/js/site-tts-v5.js assets/js/voice-production-status.js assets/js/system-panel.js ./*.html .github/workflows/cosyvoice-publish.yml
           if git diff --cached --quiet; then
-            echo "TTS raw-manifest frontend already applied."
+            echo "TTS frontend/recovery migration already applied."
             exit 0
           fi
-          git commit -m "Read F01 manifest directly from main"
+          git commit -m "Decouple F01 playback and keep workers recoverable"
           for attempt in 1 2 3 4 5 6; do
             if git pull --rebase origin main && git push origin HEAD:main; then
-              echo "TTS_RAW_MANIFEST_FRONTEND_APPLIED"
+              echo "TTS_FRONTEND_RECOVERY_APPLIED"
               exit 0
             fi
             sleep $((attempt * 2))
