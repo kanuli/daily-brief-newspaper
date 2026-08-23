@@ -2,9 +2,10 @@
 """Speech-only Traditional-Chinese localization used by production Cantonese TTS."""
 import re
 import tts_hktrad as base
+import hktrad_units as units
 
-# Specific/long phrases first.  Display copy is untouched; only speech text uses
-# these replacements.  Hong Kong newsroom / sports usage is preferred, with a
+# Specific/long phrases first. Display copy is localized separately from this
+# shared table. Hong Kong newsroom / sports usage is preferred, with a
 # Traditional-Chinese phonetic form when a stable local form is unavailable.
 OVERRIDES = [
     # World / Asia
@@ -235,7 +236,7 @@ def localize(text):
     out = base.localize(text)
     for source, target in sorted(OVERRIDES, key=lambda item: len(item[0]), reverse=True):
         out = _replace(out, source, target)
-    return out
+    return units.localize_units(out)
 
 
 def residual_latin_tokens(text):
