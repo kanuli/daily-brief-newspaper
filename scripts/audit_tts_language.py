@@ -7,6 +7,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+import generate_cosyvoice_lead as voice_base
 import tts_hktrad_v2 as tts_hktrad
 
 FIELDS = ("title", "dek", "summary", "body", "context", "background", "why", "whyImportant", "watchNext", "nextStep")
@@ -78,6 +79,13 @@ def speech_text(story):
     return "\n".join(values)
 
 
+def runtime_localize(text):
+    # Mirror production _localized_normalize exactly: the base normalizer first
+    # handles established names, numbers and symbols; the HKTrad v2 layer then
+    # resolves desk-specific names and digit-attached units such as 2nm.
+    return tts_hktrad.localize(voice_base.normalize_for_tts(text))
+
+
 def main():
     strict = "--strict" in sys.argv[1:]
     latest = load_json(Path("data/latest.json")) or {}
@@ -102,7 +110,7 @@ def main():
     for title, story in by_title.items():
         desk = desk_for(story)
         total_count[desk] += 1
-        localized = tts_hktrad.localize(speech_text(story))
+        localized = runtime_localize(speech_text(story))
         tokens = tts_hktrad.residual_latin_tokens(localized)
         if not tokens:
             clean_count[desk] += 1
@@ -129,10 +137,10 @@ def main():
         }
 
     report = {
-        "version": 1,
+        "version": 2,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "date": date_value,
-        "policy": "hk-traditional-chinese-first; taiwan-traditional-fallback",
+        "policy": "hk-traditional-chinese-first; taiwan-traditional-fallback; runtime-normalization-order",
         "deskPriority": DESK_ORDER,
         "storyCount": sum(total_count.values()),
         "cleanStoryCount": sum(clean_count.values()),
