@@ -1,22 +1,30 @@
 #!/usr/bin/env python3
-"""Promote only exact-current v6 F01 audio without loading the TTS runtime."""
+"""Promote only exact-current v7 F01 audio without loading the TTS runtime."""
 import json
 from pathlib import Path
 
 import promote_cosyvoice_prepublish_fast as legacy
 
-POLICY = "f01-news-anchor-v6-single-inference-hktrad"
+POLICY = "f01-news-anchor-v7-short-prompt-bistream-hktrad"
 INFERENCE_MODE = "cross-lingual-reference-only"
 VOICE_SPEED = 1.0
+REFERENCE_DURATION_SECONDS = 5.0
+INITIAL_CONDITIONING_POLICY = "short-reference-bistream"
 LANGUAGE_GATE = "residual-latin-zero"
 SEGMENT_POLICY = "single-inference-per-article"
 _ORIGINAL_INDEX = legacy.index_entries
 
 
 def _valid_entry(entry):
+    try:
+        reference_duration = float(entry.get("referenceDurationSeconds") or 0) if isinstance(entry, dict) else 0
+    except (TypeError, ValueError):
+        return False
     return (
         isinstance(entry, dict)
         and entry.get("prosodyPolicy") == POLICY
+        and entry.get("initialConditioningPolicy") == INITIAL_CONDITIONING_POLICY
+        and reference_duration == REFERENCE_DURATION_SECONDS
         and entry.get("languageGate") == LANGUAGE_GATE
         and entry.get("segmentPolicy") == SEGMENT_POLICY
         and int(entry.get("segmentCount") or 0) == 1
@@ -42,6 +50,8 @@ def _stamp_manifest():
         "prosodyPolicy": POLICY,
         "inferenceMode": INFERENCE_MODE,
         "speed": VOICE_SPEED,
+        "referenceDurationSeconds": REFERENCE_DURATION_SECONDS,
+        "initialConditioningPolicy": INITIAL_CONDITIONING_POLICY,
         "languageGate": LANGUAGE_GATE,
         "segmentPolicy": SEGMENT_POLICY,
     })
