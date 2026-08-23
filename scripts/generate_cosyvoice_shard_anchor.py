@@ -9,23 +9,20 @@ from pathlib import Path
 import torch
 import torchaudio
 
+import cosyvoice_policy as voice_policy
 import generate_cosyvoice_lead as voice_base
 import generate_cosyvoice_shard as legacy
 import tts_hktrad_v2 as hktrad
 
-POLICY = "f01-news-anchor-v7-short-prompt-bistream-hktrad"
-REFERENCE_POLICY = "user-approved-nvidia-anchor-v1"
-GOLDEN_REFERENCE_ASSET = "ai-nvidia-server-price-0800-79489f0afc38.wav"
+POLICY = voice_policy.POLICY
+REFERENCE_POLICY = voice_policy.REFERENCE_POLICY
+GOLDEN_REFERENCE_ASSET = voice_policy.REFERENCE_ASSET
 GOLDEN_REFERENCE_URL = (
     "https://github.com/kanuli/daily-brief-newspaper/releases/download/"
     "f01-voice-cache/" + GOLDEN_REFERENCE_ASSET
 )
-REFERENCE_START_SECONDS = 10.0
-# Native bistream interleaves reference speech tokens with the first incoming
-# text tokens.  Keep the already approved reference region, but shorten the
-# conditioning window so that its transient influence does not dominate the
-# first several seconds of each article.
-REFERENCE_DURATION_SECONDS = 5.0
+REFERENCE_START_SECONDS = voice_policy.REFERENCE_START_SECONDS
+REFERENCE_DURATION_SECONDS = voice_policy.REFERENCE_DURATION_SECONDS
 VOICE_RANDOM_SEED = 20260823
 # CosyVoice's normal Chinese frontend deliberately works around an ~80-token
 # ceiling. To keep one model session per article without sending ~260 tokens
@@ -42,14 +39,9 @@ _ORIGINAL_NORMALIZE = voice_base.normalize_for_tts
 
 
 def _localized_normalize(value):
-    # First retain all established number/punctuation handling, then apply the
-    # expanded speech-only Traditional-Chinese table. No policy/instruction
-    # sentence is ever appended to the spoken text.
     return hktrad.localize(_ORIGINAL_NORMALIZE(value))
 
 
-# All anchor users share this module object, so production hashing and spoken
-# text use the same normalization result.
 voice_base.normalize_for_tts = _localized_normalize
 
 
@@ -103,6 +95,8 @@ def _policy_remote_reusable(previous, story, digest):
     if old.get("referencePolicy") != REFERENCE_POLICY:
         return False
     if float(old.get("referenceDurationSeconds") or 0) != REFERENCE_DURATION_SECONDS:
+        return False
+    if old.get("initialConditioningPolicy") != voice_policy.INITIAL_CONDITIONING_POLICY:
         return False
     audio = str(old.get("audio") or "")
     if not audio.startswith(("https://", "http://")):
@@ -159,8 +153,6 @@ def _anchor_script_segments(story):
             + ", ".join(residual)
         )
 
-    # One logical segment = one CosyVoice inference session. The transport
-    # chunks are created later and streamed into that same session.
     return [{"role": "news", "text": script, "pause": 0.40}]
 
 
@@ -194,10 +186,6 @@ def _stable_segment_synth(model, prompt, item, index):
 
     audio_chunks = []
     with torch.inference_mode():
-        # Passing a Python generator activates CosyVoice2's native
-        # inference_bistream path. text_frontend=False prevents a second
-        # hidden split while still keeping all input chunks in ONE model.tts
-        # session/UUID. No textual language/style instruction is supplied.
         for chunk_index, result in enumerate(
             model.inference_cross_lingual(
                 token_text_stream(),
@@ -285,13 +273,13 @@ def _policy_synth(model, prompt, story, path):
         "referenceAsset": GOLDEN_REFERENCE_ASSET,
         "referenceStartSeconds": REFERENCE_START_SECONDS,
         "referenceDurationSeconds": REFERENCE_DURATION_SECONDS,
-        "initialConditioningPolicy": "short-reference-bistream",
+        "initialConditioningPolicy": voice_policy.INITIAL_CONDITIONING_POLICY,
         "randomSeed": VOICE_RANDOM_SEED,
         "inferenceMode": voice_base.VOICE_INFERENCE_MODE,
         "speed": voice_base.VOICE_SPEED,
         "instructionPolicy": "none-reference-only",
-        "languageGate": "residual-latin-zero",
-        "segmentPolicy": "single-inference-per-article",
+        "languageGate": voice_policy.LANGUAGE_GATE,
+        "segmentPolicy": voice_policy.SEGMENT_POLICY,
         "inputTransport": "native-bistream-single-session",
         "streamInputChunkChars": STREAM_INPUT_CHARS,
         "streamInputChunkCounts": input_chunk_counts,
