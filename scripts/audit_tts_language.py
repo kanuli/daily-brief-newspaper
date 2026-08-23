@@ -7,11 +7,12 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-import generate_cosyvoice_lead as voice_base
+import tts_hktrad as base_hktrad
 import tts_hktrad_v2 as tts_hktrad
 
 FIELDS = ("title", "dek", "summary", "body", "context", "background", "why", "whyImportant", "watchNext", "nextStep")
 DESK_ORDER = ["world", "asia", "hong-kong", "japan", "finance", "stock-news", "ai-tech", "manga-anime", "manchester-united", "football"]
+_DIGITS = "零一二三四五六七八九"
 
 
 def clean(value):
@@ -79,11 +80,70 @@ def speech_text(story):
     return "\n".join(values)
 
 
+def _small_integer_to_chinese(number):
+    number = int(number)
+    if number < 10:
+        return _DIGITS[number]
+    if number < 100:
+        tens, ones = divmod(number, 10)
+        head = "十" if tens == 1 else f"{_DIGITS[tens]}十"
+        return head + (_DIGITS[ones] if ones else "")
+    if number < 1000:
+        hundreds, remainder = divmod(number, 100)
+        out = f"{_DIGITS[hundreds]}百"
+        if remainder:
+            if remainder < 10:
+                out += "零"
+            out += _small_integer_to_chinese(remainder)
+        return out
+    if number < 10000:
+        thousands, remainder = divmod(number, 1000)
+        out = f"{_DIGITS[thousands]}千"
+        if remainder:
+            if remainder < 100:
+                out += "零"
+            out += _small_integer_to_chinese(remainder)
+        return out
+    return "".join(_DIGITS[int(char)] for char in str(number))
+
+
+def _number_string_for_speech(raw):
+    raw = str(raw)
+    if len(raw) == 4 and raw.isdigit() and 1900 <= int(raw) <= 2099:
+        return "".join(_DIGITS[int(char)] for char in raw)
+    if raw.isdigit() and int(raw) < 10000:
+        return _small_integer_to_chinese(int(raw))
+    if raw.isdigit():
+        return "".join(_DIGITS[int(char)] for char in raw)
+    return raw
+
+
+def _number_for_speech(match):
+    raw = match.group(0).replace(",", "")
+    if "." in raw:
+        whole, fraction = raw.split(".", 1)
+        return f"{_number_string_for_speech(whole)}點{''.join(_DIGITS[int(c)] for c in fraction)}"
+    return _number_string_for_speech(raw)
+
+
+def normalize_numbers_for_cantonese(text):
+    text = re.sub(r"(?<![A-Za-z])\d[\d,]*(?:\.\d+)?", _number_for_speech, text)
+    text = text.replace("%", "百分比")
+    text = text.replace("£", "英鎊").replace("€", "歐元").replace("$", "美元")
+    return text
+
+
 def runtime_localize(text):
-    # Mirror production _localized_normalize exactly: the base normalizer first
-    # handles established names, numbers and symbols; the HKTrad v2 layer then
-    # resolves desk-specific names and digit-attached units such as 2nm.
-    return tts_hktrad.localize(voice_base.normalize_for_tts(text))
+    # Lightweight mirror of production normalize_for_tts. Keep this module free
+    # of torch/torchaudio so Pages and the audit workflow can run before deploy.
+    out = base_hktrad.localize(clean(text))
+    out = re.sub(r"[「『“\"]?double[\-‐‑–— ]?tap[」』”\"]?", "二次打擊", out, flags=re.IGNORECASE)
+    out = re.sub(r"\bReuters\b", "路透社", out, flags=re.IGNORECASE)
+    out = re.sub(r"\bAssociated Press\b", "美聯社", out, flags=re.IGNORECASE)
+    out = re.sub(r"\bAP\b", "美聯社", out)
+    out = normalize_numbers_for_cantonese(out)
+    out = out.replace("–", "，").replace("—", "，")
+    return tts_hktrad.localize(clean(out))
 
 
 def main():
