@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -27,10 +27,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 0
-
-      - name: Build 2026-08-23 Daily snapshot when due
-        run: python scripts/publish_daily_20260823.py
 
       - name: Validate Daily Brief data schema
         run: python scripts/validate_site_data.py
@@ -55,16 +51,6 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
-      - name: Persist generated Daily snapshot to main
-        run: |
-          git add data/2026-08-23.json data/latest.json data/archive.json data/vocab/2026-08-23.json data/topic-more/2026-08-23.json data/desk-latest.json data/live.json editions/2026-08-23.html 2>/dev/null || true
-          if ! git diff --cached --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "Publish Daily Edition 2026-08-23"
-            git push origin HEAD:main
-          fi
 
       - name: Verify a newly published F01 voice is live
         if: startsWith(github.event.head_commit.message, 'Publish F01 voice slot')
