@@ -1,20 +1,34 @@
 #!/usr/bin/env python3
-"""Prepublish manifest publisher for the user-approved golden F01 policy."""
+"""Prepublish manifest publisher for the current F01 policy."""
 import json
 from pathlib import Path
 
 import generate_cosyvoice_lead as voice_base
 import publish_cosyvoice_prepublish as legacy
 
-POLICY = "f01-news-anchor-v5-golden-hktrad"
+POLICY = "f01-news-anchor-v6-single-inference-hktrad"
 REFERENCE_POLICY = "user-approved-nvidia-anchor-v1"
 REFERENCE_ASSET = "ai-nvidia-server-price-0800-79489f0afc38.wav"
+LANGUAGE_GATE = "residual-latin-zero"
+SEGMENT_POLICY = "single-inference-per-article"
+
+
+def _valid_policy_entry(entry, digest=None):
+    if not isinstance(entry, dict):
+        return False
+    if digest is not None and entry.get("contentSha256") != digest:
+        return False
+    return (
+        entry.get("prosodyPolicy") == POLICY
+        and entry.get("referencePolicy") == REFERENCE_POLICY
+        and entry.get("languageGate") == LANGUAGE_GATE
+        and entry.get("segmentPolicy") == SEGMENT_POLICY
+        and int(entry.get("segmentCount") or 0) == 1
+    )
 
 
 def _policy_valid_existing(entry, digest):
-    if not entry or entry.get("contentSha256") != digest or entry.get("prosodyPolicy") != POLICY:
-        return False
-    if entry.get("referencePolicy") != REFERENCE_POLICY:
+    if not _valid_policy_entry(entry, digest):
         return False
     return legacy.valid_existing(entry, digest)
 
@@ -31,12 +45,12 @@ def _stamp_manifest():
         "prosodyPolicy": POLICY,
         "inferenceMode": voice_base.VOICE_INFERENCE_MODE,
         "speed": voice_base.VOICE_SPEED,
+        "languageGate": LANGUAGE_GATE,
+        "segmentPolicy": SEGMENT_POLICY,
     })
     articles = {
         article_id: entry for article_id, entry in (data.get("articles") or {}).items()
-        if isinstance(entry, dict)
-        and entry.get("prosodyPolicy") == POLICY
-        and entry.get("referencePolicy") == REFERENCE_POLICY
+        if _valid_policy_entry(entry)
     }
     data["articles"] = articles
     available = len(articles)
