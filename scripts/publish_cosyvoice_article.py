@@ -143,6 +143,7 @@ def main():
             raise RuntimeError("copied F01 WAV byte size changed")
         public_audio = final_path.as_posix()
 
+    published_at = datetime.now(timezone.utc).isoformat()
     generated.update({
         "articleId": wanted["articleId"],
         "title": wanted["title"],
@@ -151,6 +152,7 @@ def main():
         "contentSha256": wanted["contentSha256"],
         "durationSeconds": final_duration,
         "bytes": final_size,
+        "publishedAt": published_at,
     })
 
     previous = gen.load_previous_manifest()
@@ -202,7 +204,8 @@ def main():
         "generationMode": "per-article-immediate-10-way",
         "storageBackend": "github-release" if PUBLIC_AUDIO_BASE or any(is_remote_audio(e.get("audio")) for e in entries.values()) else "git-tree",
         "retentionHours": 48,
-        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "generatedAt": published_at,
+        "lastVoicePublishedAt": published_at,
         "source": "multi-source-current-site",
         "sourceSha256": hashlib.sha256(latest_raw).hexdigest(),
         "sourceSetSha256": source_set_sha,
@@ -225,7 +228,8 @@ def main():
     print(
         "COSYVOICE_IMMEDIATE_PUBLISH_PASS "
         f"article={wanted['articleId']} available={available}/{collected} pending={manifest['pendingArticleCount']} "
-        f"duration={artifact_duration:.3f}s bytes={artifact_size} storage={manifest['storageBackend']} source_set_sha256={source_set_sha}",
+        f"published_at={published_at} duration={artifact_duration:.3f}s bytes={artifact_size} "
+        f"storage={manifest['storageBackend']} source_set_sha256={source_set_sha}",
         flush=True,
     )
     return 0
