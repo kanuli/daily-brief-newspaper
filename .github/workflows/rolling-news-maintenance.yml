@@ -60,11 +60,11 @@ jobs:
           fi
           echo "Rolling staging: lastSearchAt=${LAST_SEARCH_AT:-missing}; age=${AGE_SECONDS}s"
 
-          RUNS_JSON=$(gh run list --repo "${{ github.repository }}" --workflow rolling-news-search.yml --branch main --limit 12 --json status,conclusion,databaseId,createdAt,updatedAt,event)
-          python - <<'PY' <<< "$RUNS_JSON" > /tmp/rolling-active.env
-          import json, sys
+          gh run list --repo "${{ github.repository }}" --workflow rolling-news-search.yml --branch main --limit 12 --json status,conclusion,databaseId,createdAt,updatedAt,event > /tmp/rolling-runs.json
+          python - <<'PY' > /tmp/rolling-active.env
+          import json
           from datetime import datetime, timezone
-          runs=json.load(sys.stdin)
+          runs=json.load(open('/tmp/rolling-runs.json',encoding='utf-8'))
           now=datetime.now(timezone.utc)
           active=[r for r in runs if r.get('status') != 'completed']
           ages=[]
@@ -81,7 +81,6 @@ jobs:
           source /tmp/rolling-active.env
           echo "Rolling runs: active/queued=${ACTIVE_COUNT}; oldest=${ACTIVE_OLDEST_AGE_SECONDS}s; ids=${ACTIVE_IDS:-none}"
 
-          # A 15-minute collector should normally advance staging within 20 min.
           STALE_SECONDS=1200
           ACTIVE_GRACE_SECONDS=900
           echo "restart=false" >> "$GITHUB_OUTPUT"
