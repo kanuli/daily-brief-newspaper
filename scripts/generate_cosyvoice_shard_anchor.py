@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
-"""Generate one F01 shard using the current natural-newsreader policy.
+"""Generate one F01 shard using the stable natural-newsreader policy.
 
-This wrapper intentionally invalidates every pre-v2 voice so old irregular or
-instruction-leaking audio cannot be reused after the policy change. It also
-builds each article as a continuous news script, reducing independent prosody
-resets between title/dek/summary/body fields.
+Policy goals:
+- F01 reference-only Cantonese synthesis; no textual instruction can leak.
+- Keep coherent groups inside the model's proven short-input range.
+- Gently normalize segment tempo so adjacent groups do not jump abruptly.
+- Never reuse audio produced by an older prosody policy.
 """
 import re
+
+import torch
+import torchaudio
 
 import generate_cosyvoice_lead as voice_base
 import generate_cosyvoice_shard as legacy
 
-POLICY = voice_base.VOICE_POLICY_VERSION
+POLICY = "f01-news-anchor-v3-stable-tempo"
+SEGMENT_CHARS = 72
+TARGET_CHARS_PER_SECOND = 4.0
+MIN_TEMPO = 0.88
+MAX_TEMPO = 1.12
 
 
 def _policy_remote_reusable(previous, story, digest):
@@ -66,32 +74,87 @@ def _anchor_script_segments(story):
     if len(script) < 8:
         raise RuntimeError(f"story text too short for TTS: {story.get('title')!r}")
 
-    # Two or three coherent sentence groups per normal article is preferable to
-    # restarting the model for every editorial field. 150 chars is still short
-    # enough for stable CPU inference while substantially improving continuity.
-    pieces = voice_base.split_for_tts(script, max_chars=150)
+    # Keep each inference group close to the model's normal 60-80 token range.
+    # We still build from one continuous news script, so field boundaries no
+    # longer force an artificial prosody reset.
+    pieces = voice_base.split_for_tts(script, max_chars=SEGMENT_CHARS)
     return [
         {
             "role": "news",
             "text": piece,
-            "pause": 0.30 if index < len(pieces) - 1 else 0.42,
+            "pause": 0.26 if index < len(pieces) - 1 else 0.40,
         }
         for index, piece in enumerate(pieces)
     ]
 
 
-_original_synth = legacy.gen.synthesize_story
+def _speech_units(text):
+    text = str(text or "")
+    cjk = len(re.findall(r"[\u3400-\u9fff]", text))
+    latin_words = len(re.findall(r"[A-Za-z]+", text))
+    numbers = len(re.findall(r"\d+", text))
+    return max(1, cjk + latin_words * 2 + numbers)
+
+
+def _stabilize_tempo(audio, text, sample_rate):
+    duration = audio.shape[1] / float(sample_rate)
+    units = _speech_units(text)
+    target_duration = max(1.2, units / TARGET_CHARS_PER_SECOND)
+    factor = duration / target_duration
+    factor = max(MIN_TEMPO, min(MAX_TEMPO, factor))
+    if 0.98 <= factor <= 1.02:
+        return audio, 1.0
+    try:
+        adjusted, _ = torchaudio.sox_effects.apply_effects_tensor(
+            audio,
+            sample_rate,
+            [["tempo", "-s", f"{factor:.4f}"]],
+        )
+        if adjusted.numel() > 0:
+            return adjusted, factor
+    except Exception as exc:
+        print(f"tempo-normalization skipped: {exc}", flush=True)
+    return audio, 1.0
 
 
 def _policy_synth(model, prompt, story, path):
-    meta = _original_synth(model, prompt, story, path)
-    meta.update({
+    segments = _anchor_script_segments(story)
+    speech_chars = sum(len(item["text"]) for item in segments)
+    audio_parts = []
+    applied = []
+    for index, item in enumerate(segments):
+        audio = voice_base.synthesize_segment(model, prompt, item, index)
+        audio, factor = _stabilize_tempo(audio, item["text"], model.sample_rate)
+        applied.append(round(factor, 4))
+        audio_parts.append(audio)
+        pause_samples = int(round(model.sample_rate * item["pause"]))
+        if pause_samples > 0:
+            audio_parts.append(torch.zeros((1, pause_samples), dtype=audio.dtype))
+
+    speech = torch.cat(audio_parts, dim=1).clamp(-1.0, 1.0)
+    duration = speech.shape[1] / model.sample_rate
+    max_reasonable = max(40.0, speech_chars * 0.55)
+    if duration > max_reasonable:
+        raise RuntimeError(
+            f"audio suspiciously long: {story.get('title')} duration={duration:.3f}s limit={max_reasonable:.3f}s"
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torchaudio.save(str(path), speech, model.sample_rate, encoding="PCM_S", bits_per_sample=16, backend="soundfile")
+    duration, size = legacy.gen.wav_metadata(path)
+    if duration <= 2 or size < 50000:
+        raise RuntimeError(f"invalid generated WAV for {story.get('title')}: duration={duration:.3f}s bytes={size}")
+    return {
+        "segmentCount": len(segments),
+        "speechTextChars": speech_chars,
+        "durationSeconds": round(duration, 3),
+        "bytes": size,
         "prosodyPolicy": POLICY,
         "inferenceMode": voice_base.VOICE_INFERENCE_MODE,
         "speed": voice_base.VOICE_SPEED,
         "instructionPolicy": "none-reference-only",
-    })
-    return meta
+        "tempoTargetCharsPerSecond": TARGET_CHARS_PER_SECOND,
+        "tempoFactors": applied,
+    }
 
 
 legacy.remote_reusable = _policy_remote_reusable
