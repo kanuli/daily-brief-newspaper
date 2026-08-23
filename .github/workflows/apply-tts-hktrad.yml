@@ -1,0 +1,57 @@
+name: Apply Traditional Chinese TTS Normalization
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "scripts/tts_hktrad.py"
+      - "scripts/apply_tts_hktrad.py"
+      - ".github/workflows/apply-tts-hktrad.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "apply-tts-hktrad"
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply Traditional Chinese speech normalization
+        run: python scripts/apply_tts_hktrad.py
+
+      - name: Commit normalization migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            scripts/generate_cosyvoice_lead.py \
+            scripts/generate_cosyvoice_shard_anchor.py \
+            scripts/publish_cosyvoice_article_anchor.py \
+            scripts/publish_cosyvoice_prepublish_anchor.py \
+            scripts/promote_cosyvoice_prepublish_anchor.py
+          if git diff --cached --quiet; then
+            echo "Traditional Chinese TTS migration already applied."
+            exit 0
+          fi
+          git commit -m "Normalize F01 speech to Hong Kong Traditional Chinese"
+          for attempt in 1 2 3 4 5 6; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo "TTS_HKTRAD_PUSH_PASS"
+              exit 0
+            fi
+            sleep $((attempt * 2))
+          done
+          exit 1
