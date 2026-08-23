@@ -11,6 +11,7 @@ on:
       - "data/topic-more/**"
       - "data/editorial-overrides/**"
       - "scripts/cosyvoice_policy.py"
+      - "scripts/cosyvoice_cache_identity.py"
       - "scripts/tts_hktrad.py"
       - "scripts/tts_hktrad_v2.py"
       - "scripts/hktrad_units.py"
@@ -18,11 +19,14 @@ on:
       - "scripts/generate_cosyvoice_all.py"
       - "scripts/generate_cosyvoice_shard.py"
       - "scripts/generate_cosyvoice_shard_anchor.py"
+      - "scripts/generate_cosyvoice_shard_v10.py"
       - "scripts/publish_cosyvoice_article.py"
       - "scripts/publish_cosyvoice_article_anchor.py"
+      - "scripts/publish_cosyvoice_article_v10.py"
       - "scripts/promote_cosyvoice_prepublish.py"
       - "scripts/promote_cosyvoice_prepublish_fast.py"
       - "scripts/promote_cosyvoice_prepublish_anchor.py"
+      - "scripts/promote_cosyvoice_prepublish_v10.py"
       - ".github/workflows/cosyvoice-publish.yml"
   workflow_dispatch:
 
@@ -86,7 +90,7 @@ jobs:
             mkdir -p /tmp/prepublish-news/data
           fi
 
-          python scripts/promote_cosyvoice_prepublish_anchor.py /tmp/prepublish-news
+          python scripts/promote_cosyvoice_prepublish_v10.py /tmp/prepublish-news
           git add -- data/tts-manifest.json
           if git diff --cached --quiet; then
             echo "No prebuilt F01 promotion change required."
@@ -187,7 +191,7 @@ jobs:
             git reset --hard origin/main
             rm -rf artifacts/cosyvoice-shards
 
-            COSY_SHARD_INDEX="${SLOT}" python scripts/generate_cosyvoice_shard_anchor.py
+            COSY_SHARD_INDEX="${SLOT}" python scripts/generate_cosyvoice_shard_v10.py
             SHARD="artifacts/cosyvoice-shards/shard-${SLOT}.json"
             test -f "$SHARD"
 
@@ -215,7 +219,7 @@ jobs:
             for attempt in 1 2 3 4 5 6 7 8; do
               git fetch origin main
               git reset --hard origin/main
-              python scripts/publish_cosyvoice_article_anchor.py "/tmp/cosyvoice-one-article-${SLOT}.json"
+              python scripts/publish_cosyvoice_article_v10.py "/tmp/cosyvoice-one-article-${SLOT}.json"
               git add -- data/tts-manifest.json
               if git diff --cached --quiet; then
                 published=true
