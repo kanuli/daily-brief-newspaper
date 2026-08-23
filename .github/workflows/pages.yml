@@ -47,7 +47,7 @@ jobs:
           node --check assets/js/system-panel.js
           node --check assets/js/news-pipeline-status.js
           node --check assets/js/voice-production-status.js
-          node --check assets/js/site-tts-v5.js
+          node --check assets/js/site-tts-v9.js
           node --check assets/js/live-article.js
           node --check assets/js/stocks.js
 
@@ -60,7 +60,7 @@ jobs:
           changed=0
           for path in Path('.').rglob('*.html'):
               text=path.read_text(encoding='utf-8')
-              new=re.sub(r'assets/js/system-panel\.js\?v=[^"\']+', 'assets/js/system-panel.js?v=20260823-2102-pipeline', text)
+              new=re.sub(r'assets/js/system-panel\.js\?v=[^"\']+', 'assets/js/system-panel.js?v=20260824-0100-v9semantic', text)
               if new != text:
                   path.write_text(new, encoding='utf-8')
                   changed += 1
