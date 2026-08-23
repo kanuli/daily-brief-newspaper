@@ -1,6 +1,11 @@
 (() => {
   "use strict";
 
+  const LIVE_JSON = "data/live.json";
+  const REFRESH_MS = 60 * 1000;
+  let refreshTimer = null;
+  let lastKey = "";
+
   const esc = (value = "") => String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -63,37 +68,74 @@
     </article>`;
   }
 
-  async function init() {
+  function keyFor(data) {
+    return [data?.lastUpdated || "", data?.windowLabel || "", (data?.items || []).map((item) => `${item.id}:${item.status}`).join("|")].join("::");
+  }
+
+  function render(data) {
+    const host = document.querySelector("#live-page-items");
+    if (!host) return;
+    const items = Array.isArray(data.items) ? data.items : [];
+    const actual = items.reduce((counts, item) => {
+      const key = String(item.status || "").toUpperCase();
+      if (key in counts) counts[key] += 1;
+      return counts;
+    }, { NEW: 0, UPDATED: 0, DEVELOPING: 0 });
+
+    const headerTime = document.querySelector("#live-header-time");
+    if (headerTime) headerTime.textContent = data.lastUpdatedLabel || data.windowLabel || "Live";
+
+    const stats = document.querySelector("#live-page-stats");
+    if (stats) {
+      stats.innerHTML = `<div><strong>${actual.NEW}</strong><span>NEW</span></div><div><strong>${actual.UPDATED}</strong><span>UPDATED</span></div><div><strong>${actual.DEVELOPING}</strong><span>DEVELOPING</span></div><p>${esc(data.nextUpdateLabel || "")}</p>`;
+    }
+
+    const coverage = data.coverage || {};
+    const audit = document.querySelector("#live-audit");
+    if (audit) {
+      const sourceCount = Number(coverage.sourceOrganizationCount || 0);
+      const searchCount = Number(coverage.freshSearchCount || 0);
+      const rawCount = Number(coverage.rawFreshCandidateCount || 0);
+      const verifiedCount = Number(coverage.verifiedCandidateCount || 0);
+      const incrementalCount = Number(coverage.incrementalCandidateCount || 0);
+      audit.innerHTML = sourceCount || searchCount || rawCount || verifiedCount || incrementalCount
+        ? `<strong>最新搜集：</strong>${sourceCount} 個新聞機構 · ${searchCount} 次 fresh searches · raw ${rawCount} · verified ${verifiedCount} · incremental ${incrementalCount}`
+        : `<strong>最新出版：</strong>${esc(data.lastUpdatedLabel || data.windowLabel || "已更新")}`;
+    }
+
+    host.innerHTML = items.length
+      ? items.map(renderStory).join("")
+      : `<p class="notice">暫未能載入本小時新聞；系統會自動重新讀取最新 Live publication。</p>`;
+  }
+
+  async function refresh({ force = false } = {}) {
     try {
-      const response = await fetch("data/live.json", { cache: "no-store" });
+      const url = new URL(LIVE_JSON, document.baseURI);
+      url.searchParams.set("v", String(Date.now()));
+      const response = await fetch(url.href, { cache: "no-store" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
-      const host = document.querySelector("#live-page-items");
-      if (!host) return;
-
-      const items = Array.isArray(data.items) ? data.items : [];
-      const actual = items.reduce((counts, item) => {
-        const key = String(item.status || "").toUpperCase();
-        if (key in counts) counts[key] += 1;
-        return counts;
-      }, { NEW: 0, UPDATED: 0, DEVELOPING: 0 });
-
-      const stats = document.querySelector("#live-page-stats");
-      if (stats) {
-        stats.innerHTML = `<div><strong>${actual.NEW}</strong><span>NEW</span></div><div><strong>${actual.UPDATED}</strong><span>UPDATED</span></div><div><strong>${actual.DEVELOPING}</strong><span>DEVELOPING</span></div><p>${esc(data.nextUpdateLabel || "")}</p>`;
+      const nextKey = keyFor(data);
+      if (force || nextKey !== lastKey) {
+        lastKey = nextKey;
+        render(data);
       }
-
-      const coverage = data.coverage || {};
-      const audit = document.querySelector("#live-audit");
-      if (audit) {
-        audit.innerHTML = `<strong>本輪搜集：</strong>${Number(coverage.sourceOrganizationCount || 0)} 個新聞機構 · ${Number(coverage.freshSearchCount || 0)} 次 fresh searches · raw ${Number(coverage.rawFreshCandidateCount || 0)} · verified ${Number(coverage.verifiedCandidateCount || 0)} · incremental ${Number(coverage.incrementalCandidateCount || 0)}`;
-      }
-
-      host.innerHTML = items.length ? items.map(renderStory).join("") : `<p class="notice">本輪未有可刊出的 incremental story；各專版仍保留最近已核實的重要新聞。</p>`;
     } catch (error) {
-      console.error(error);
+      console.error("Live refresh failed", error);
+      const audit = document.querySelector("#live-audit");
+      if (audit) audit.textContent = "Live data 暫時讀取失敗，系統會自動重試。";
     }
   }
 
-  init();
+  function start() {
+    if (refreshTimer) window.clearInterval(refreshTimer);
+    refresh({ force: true });
+    refreshTimer = window.setInterval(refresh, REFRESH_MS);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") refresh({ force: true });
+    });
+    window.addEventListener("pageshow", () => refresh({ force: true }));
+  }
+
+  start();
 })();
