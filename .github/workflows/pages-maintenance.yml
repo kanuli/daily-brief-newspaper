@@ -12,7 +12,7 @@ on:
     workflows: ["Deploy Daily Brief to GitHub Pages"]
     types: [completed]
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check Pages deployment health against public Live and runtime
+      - name: Check Pages deployment health against public Live, voice manifest and runtime
         id: inspect
         env:
           GH_TOKEN: ${{ github.token }}
@@ -50,23 +50,51 @@ jobs:
             exit 0
           fi
 
+          rm -rf /tmp/site
           git clone --depth 1 "https://github.com/${{ github.repository }}.git" /tmp/site >/dev/null 2>&1
-          EXPECTED=$(python -c 'import json; print(json.load(open("/tmp/site/data/live.json",encoding="utf-8")).get("lastUpdated", ""))')
-          PUBLIC=$(python - <<'PY'
+
+          SNAPSHOT_OK=$(python - <<'PY'
           import json, time, urllib.request
-          url='https://kanuli.github.io/daily-brief-newspaper/data/live.json?v='+str(int(time.time()))
-          try:
-              req=urllib.request.Request(url,headers={'Cache-Control':'no-cache','User-Agent':'daily-brief-pages-maintenance'})
+          from pathlib import Path
+
+          base='https://kanuli.github.io/daily-brief-newspaper/data/'
+          local_live=json.loads(Path('/tmp/site/data/live.json').read_text(encoding='utf-8'))
+          local_tts=json.loads(Path('/tmp/site/data/tts-manifest.json').read_text(encoding='utf-8'))
+
+          def remote_json(name):
+              req=urllib.request.Request(
+                  base+name+'?v='+str(int(time.time()*1000)),
+                  headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-pages-maintenance'},
+              )
               with urllib.request.urlopen(req,timeout=20) as response:
-                  print(json.loads(response.read().decode('utf-8')).get('lastUpdated',''))
-          except Exception:
-              print('')
+                  return json.loads(response.read().decode('utf-8'))
+
+          try:
+              public_live=remote_json('live.json')
+              public_tts=remote_json('tts-manifest.json')
+          except Exception as exc:
+              print('snapshot-fetch-error', exc)
+              print('0')
+              raise SystemExit
+
+          live_ok=bool(local_live.get('lastUpdated') and public_live.get('lastUpdated')==local_live.get('lastUpdated'))
+          voice_ok=bool(
+              public_tts.get('prosodyPolicy')==local_tts.get('prosodyPolicy') and
+              int(public_tts.get('availableArticleCount') or 0)==int(local_tts.get('availableArticleCount') or 0) and
+              str(public_tts.get('lastVoicePublishedAt') or '')==str(local_tts.get('lastVoicePublishedAt') or '')
+          )
+          print(
+              'snapshot live', public_live.get('lastUpdated'), '/', local_live.get('lastUpdated'),
+              'voice', public_tts.get('prosodyPolicy'), public_tts.get('availableArticleCount'), public_tts.get('lastVoicePublishedAt'),
+              '/', local_tts.get('prosodyPolicy'), local_tts.get('availableArticleCount'), local_tts.get('lastVoicePublishedAt')
+          )
+          print('1' if live_ok and voice_ok else '0')
           PY
           )
-          echo "main_live=${EXPECTED} public_live=${PUBLIC}"
-          if [ -z "$EXPECTED" ] || [ "$PUBLIC" != "$EXPECTED" ]; then
+          SNAPSHOT_OK=$(printf '%s\n' "$SNAPSHOT_OK" | tail -n 1)
+          if [ "$SNAPSHOT_OK" != "1" ]; then
             echo "restart=true" >> "$GITHUB_OUTPUT"
-            echo "reason=public-live-behind-main" >> "$GITHUB_OUTPUT"
+            echo "reason=public-data-or-voice-manifest-behind-main" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -83,7 +111,7 @@ jobs:
                   continue
               expected=hashlib.sha256(local.read_bytes()).hexdigest()
               try:
-                  req=urllib.request.Request(base+rel+'?v='+str(int(time.time())),headers={'Cache-Control':'no-cache','User-Agent':'daily-brief-pages-maintenance'})
+                  req=urllib.request.Request(base+rel+'?v='+str(int(time.time()*1000)),headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-pages-maintenance'})
                   with urllib.request.urlopen(req,timeout=20) as response:
                       actual=hashlib.sha256(response.read()).hexdigest()
               except Exception as exc:
@@ -102,7 +130,7 @@ jobs:
             echo "reason=public-runtime-behind-main" >> "$GITHUB_OUTPUT"
           else
             echo "restart=false" >> "$GITHUB_OUTPUT"
-            echo "reason=public-live-and-runtime-current" >> "$GITHUB_OUTPUT"
+            echo "reason=public-live-voice-runtime-current" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Restart Pages deployment
