@@ -8,6 +8,8 @@
   const INVENTORY_REFRESH_MS = 30000;
   const WORKFLOW_REFRESH_MS = 45000;
   const RECENT_PUBLISH_MS = 8 * 60 * 1000;
+  const STALLED_PROGRESS_MS = 15 * 60 * 1000;
+  const ACTIVE_STARTUP_GRACE_MS = 20 * 60 * 1000;
   const HARD_FAILURE_MS = 30 * 60 * 1000;
   const ACTIVE_STATUSES = new Set(["in_progress", "queued", "waiting", "pending", "requested"]);
   const STORY_FIELDS = ["dek", "summary", "body", "context", "background", "why", "whyImportant", "watchNext", "nextStep"];
@@ -147,15 +149,15 @@
     const snap = manifestSnapshot(latestManifest);
     const wf = workflowState();
     const lastVoiceIso = trueLastVoiceIso(latestManifest);
-    // Transitional manifests created before true publish timestamps existed may
-    // still have audio but no lastVoicePublishedAt. Do not display generatedAt
-    // as a fake "Last voice" time. It may be a reconcile-only timestamp.
     const lastPublish = Date.parse(lastVoiceIso || "");
     const ageMs = Number.isFinite(lastPublish) ? Math.max(0, Date.now() - lastPublish) : Infinity;
     const recentlyPublishing = Number.isFinite(lastPublish) && ageMs <= RECENT_PUBLISH_MS;
     const hardStale = Number.isFinite(lastPublish) ? ageMs >= HARD_FAILURE_MS : false;
     const manifestDate = clean(latestManifest.date);
     const inventoryDrift = !!(latestInventory?.date && manifestDate && latestInventory.date !== manifestDate);
+    const activeRun = latestWorkflows.find((run) => run?.status === "in_progress");
+    const activeStarted = Date.parse(activeRun?.created_at || activeRun?.createdAt || "");
+    const activeAgeMs = Number.isFinite(activeStarted) ? Math.max(0, Date.now() - activeStarted) : 0;
 
     let creating = wf.creating;
     let state = wf.state;
@@ -187,6 +189,18 @@
       state = hardStale ? "failed" : "maintenance";
       stateLabel = `Manifest ${manifestDate || "old"} ≠ current ${latestInventory.date} · auto maintenance repairing`;
     }
+
+    // Match the backend watchdog: an in-progress run is not healthy by itself.
+    // If it has passed startup grace and no real WAV has appeared for 15m,
+    // surface maintenance/stall instead of a false green status.
+    if (snap.pending > 0 && wf.state === "active" && ageMs >= STALLED_PROGRESS_MS && activeAgeMs >= ACTIVE_STARTUP_GRACE_MS) {
+      creating = 0;
+      state = hardStale ? "failed" : "maintenance";
+      stateLabel = hardStale
+        ? "Worker pool active but no F01 progress for 30m · auto maintenance recycling"
+        : "Worker pool active but no F01 progress for 15m · auto maintenance recycling";
+    }
+
     if (snap.pending === 0) {
       creating = 0;
       state = "complete";
