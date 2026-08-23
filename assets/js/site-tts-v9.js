@@ -4,7 +4,7 @@
   const BUTTON_TEXT = "🔊 廣東話朗讀";
   const STOP_TEXT = "■ 停止朗讀";
   const PENDING_TEXT = "⏳ F01 音訊準備中";
-  const MANIFEST_URL = "https://raw.githubusercontent.com/kanuli/daily-brief-newspaper/main/data/tts-manifest.json";
+  const MANIFEST_URL = "data/tts-manifest.json";
   const REQUIRED_POLICY = "f01-news-anchor-v9-semantic-pauses-approved-10s-hktrad";
   const REQUIRED_LANGUAGE_GATE = "residual-latin-zero";
   const REQUIRED_SEGMENT_POLICY = "single-inference-per-article";
@@ -17,10 +17,15 @@
   let manifest = null;
   let activeButton = null;
   let timer = null;
+  let refreshQueued = false;
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
+
+  function setText(node, text) {
+    if (node && node.textContent !== text) node.textContent = text;
+  }
 
   function validEntry(entry) {
     return !!(
@@ -71,14 +76,15 @@
 
   function setStatus(text, open = true) {
     ensurePlayer();
-    $("#site-tts-player").dataset.open = open ? "true" : "false";
-    $("#site-tts-status").textContent = text;
+    const player = $("#site-tts-player");
+    if (player && player.dataset.open !== String(open)) player.dataset.open = String(open);
+    setText($("#site-tts-status"), text);
   }
 
   function resetButton(button) {
     if (!button) return;
-    button.dataset.speaking = "false";
-    button.textContent = BUTTON_TEXT;
+    if (button.dataset.speaking !== "false") button.dataset.speaking = "false";
+    setText(button, BUTTON_TEXT);
   }
 
   function finishActive() {
@@ -128,7 +134,7 @@
     activeButton = button;
     if (button) {
       button.dataset.speaking = "true";
-      button.textContent = STOP_TEXT;
+      setText(button, STOP_TEXT);
     }
     setStatus("使用中：F01 女聲 · 香港新聞主播節奏");
     const result = audio.play();
@@ -139,6 +145,7 @@
   function configure(article) {
     if (!(article instanceof Element) || article.tagName !== "ARTICLE" || !article.closest("main")) return;
     if (article.closest(".study-desk,[data-no-tts]") || !articleTitle(article)) return;
+
     let button = $(".site-tts-button", article);
     if (!button) {
       const wrap = document.createElement("div");
@@ -151,19 +158,26 @@
       if (heading?.nextSibling) heading.parentNode.insertBefore(wrap, heading.nextSibling);
       else article.prepend(wrap);
     }
+
     if (button === activeButton && button.dataset.speaking === "true") return;
+
     const entry = findEntry(article);
     button.onclick = null;
-    button.dataset.speaking = "false";
+    if (button.dataset.speaking !== "false") button.dataset.speaking = "false";
+
     if (validEntry(entry)) {
-      button.disabled = false;
-      button.textContent = BUTTON_TEXT;
-      button.title = "F01 女聲 · 10秒核准聲線 · 新聞主播語義停頓";
+      if (button.disabled) button.disabled = false;
+      setText(button, BUTTON_TEXT);
+      if (button.title !== "F01 女聲 · 10秒核准聲線 · 新聞主播語義停頓") {
+        button.title = "F01 女聲 · 10秒核准聲線 · 新聞主播語義停頓";
+      }
       button.onclick = () => play(entry, button);
     } else {
-      button.disabled = true;
-      button.textContent = PENDING_TEXT;
-      button.title = "只播放通過目前v9聲線與節奏政策的F01音訊。";
+      if (!button.disabled) button.disabled = true;
+      setText(button, PENDING_TEXT);
+      if (button.title !== "只播放通過目前v9聲線與節奏政策的F01音訊。") {
+        button.title = "只播放通過目前v9聲線與節奏政策的F01音訊。";
+      }
     }
   }
 
@@ -171,9 +185,21 @@
     $$("main article").forEach(configure);
   }
 
+  function queueButtonRefresh() {
+    if (refreshQueued) return;
+    refreshQueued = true;
+    const schedule = window.requestAnimationFrame || ((callback) => window.setTimeout(callback, 0));
+    schedule(() => {
+      refreshQueued = false;
+      refreshButtons();
+    });
+  }
+
   async function refreshManifest() {
     try {
-      const response = await fetch(`${MANIFEST_URL}?v=${Date.now()}`, { cache: "no-store" });
+      const url = new URL(MANIFEST_URL, document.baseURI);
+      url.searchParams.set("v", String(Date.now()));
+      const response = await fetch(url.href, { cache: "no-store" });
       if (!response.ok) throw new Error(`manifest HTTP ${response.status}`);
       const fresh = await response.json();
       manifest = validManifest(fresh) ? fresh : null;
@@ -200,14 +226,23 @@
     isReady() { return true; }
   };
 
+  function containsArticle(node) {
+    return node instanceof Element && (node.matches("article") || !!node.querySelector("article"));
+  }
+
   function boot() {
     ensurePlayer();
     refreshButtons();
     refreshManifest();
     if (timer) clearInterval(timer);
     timer = setInterval(refreshManifest, REFRESH_MS);
-    const observer = new MutationObserver(() => refreshButtons());
+
+    const observer = new MutationObserver((mutations) => {
+      const articleAdded = mutations.some((mutation) => [...mutation.addedNodes].some(containsArticle));
+      if (articleAdded) queueButtonRefresh();
+    });
     observer.observe(document.body, { childList: true, subtree: true });
+
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") refreshManifest();
     });
