@@ -10,6 +10,7 @@ on:
       - "data/stocks-latest.json"
       - "data/topic-more/**"
       - "data/editorial-overrides/**"
+      - "scripts/cosyvoice_policy.py"
       - "scripts/tts_hktrad.py"
       - "scripts/tts_hktrad_v2.py"
       - "scripts/hktrad_units.py"
@@ -30,7 +31,7 @@ permissions:
 
 concurrency:
   group: "cosyvoice2-yue-f01-current-news"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   F01_RELEASE_TAG: f01-voice-cache
@@ -108,8 +109,6 @@ jobs:
     needs: [ensure-release, promote-prebuilt]
     if: ${{ always() && needs.ensure-release.result == 'success' }}
     runs-on: ubuntu-latest
-    # Healthy CPU synthesis can take longer than 55 minutes across up to 12
-    # article cycles. Progress-based auto maintenance now handles true stalls.
     timeout-minutes: 90
     strategy:
       fail-fast: false
