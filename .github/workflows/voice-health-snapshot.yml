@@ -31,43 +31,7 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Capture latest F01 workflow state and failed logs
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          RUNS=$(gh run list --repo "${{ github.repository }}" --workflow cosyvoice-publish.yml --branch main --limit 8 --json databaseId,status,conclusion,headSha,createdAt,updatedAt,event,url)
-          LATEST_ID=$(python -c 'import json,sys; r=json.load(sys.stdin); print(r[0]["databaseId"] if r else "")' <<< "$RUNS")
-          if [ -n "$LATEST_ID" ]; then
-            gh run view "$LATEST_ID" --repo "${{ github.repository }}" --json jobs > /tmp/jobs.json || echo '[]' > /tmp/jobs.json
-            gh run view "$LATEST_ID" --repo "${{ github.repository }}" --log-failed > /tmp/failed.log 2>&1 || true
-          else
-            echo '[]' > /tmp/jobs.json
-            : > /tmp/failed.log
-          fi
-          python - <<'PY'
-          import json
-          from datetime import datetime, timezone
-          from pathlib import Path
-          runs=json.loads(Path('/tmp/runs.json').read_text()) if Path('/tmp/runs.json').exists() else []
-          jobs=json.loads(Path('/tmp/jobs.json').read_text()) if Path('/tmp/jobs.json').exists() else {}
-          log=Path('/tmp/failed.log').read_text(errors='replace') if Path('/tmp/failed.log').exists() else ''
-          lines=log.splitlines()
-          payload={
-              'checkedAt': datetime.now(timezone.utc).isoformat(),
-              'latestRunId': runs[0].get('databaseId') if runs else None,
-              'latestStatus': runs[0].get('status') if runs else None,
-              'latestConclusion': runs[0].get('conclusion') if runs else None,
-              'latestHeadSha': runs[0].get('headSha') if runs else None,
-              'runs': runs,
-              'jobs': jobs.get('jobs', jobs if isinstance(jobs,list) else []),
-              'failedLogTail': lines[-160:],
-          }
-          Path('/tmp/voice-health.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-          PY
-        # Save RUNS separately for Python without shell-escaping JSON.
-      - name: Rebuild snapshot payload safely
+      - name: Capture F01 workflow state, real publish progress and failed logs
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -82,24 +46,60 @@ jobs:
             echo '{"jobs":[]}' > /tmp/jobs.json
             : > /tmp/failed.log
           fi
+
           python - <<'PY'
           import json
           from datetime import datetime, timezone
           from pathlib import Path
-          runs=json.load(open('/tmp/runs.json',encoding='utf-8'))
-          jobs=json.load(open('/tmp/jobs.json',encoding='utf-8'))
+
+          def load(path, fallback):
+              try:
+                  return json.loads(Path(path).read_text(encoding='utf-8'))
+              except Exception:
+                  return fallback
+
+          runs=load('/tmp/runs.json', [])
+          jobs=load('/tmp/jobs.json', {'jobs': []})
+          manifest=load('data/tts-manifest.json', {})
           lines=Path('/tmp/failed.log').read_text(errors='replace').splitlines()
+
+          last_voice=str(manifest.get('lastVoicePublishedAt') or '')
+          if not last_voice:
+              times=sorted(
+                  str(entry.get('publishedAt') or '')
+                  for entry in (manifest.get('articles') or {}).values()
+                  if isinstance(entry,dict) and entry.get('publishedAt')
+              )
+              last_voice=times[-1] if times else ''
+          progress_age=None
+          if last_voice:
+              try:
+                  then=datetime.fromisoformat(last_voice.replace('Z','+00:00'))
+                  progress_age=max(0,int((datetime.now(timezone.utc)-then).total_seconds()))
+              except Exception:
+                  pass
+
+          done=int(manifest.get('availableArticleCount') or manifest.get('articleCount') or 0)
+          total=int(manifest.get('collectedStoryCount') or done)
           payload={
               'checkedAt': datetime.now(timezone.utc).isoformat(),
               'latestRunId': runs[0].get('databaseId') if runs else None,
               'latestStatus': runs[0].get('status') if runs else None,
               'latestConclusion': runs[0].get('conclusion') if runs else None,
               'latestHeadSha': runs[0].get('headSha') if runs else None,
+              'availableArticleCount': done,
+              'collectedStoryCount': total,
+              'pendingArticleCount': max(0,total-done),
+              'coverageComplete': bool(total and done >= total),
+              'lastVoicePublishedAt': last_voice or None,
+              'progressAgeSeconds': progress_age,
+              'prosodyPolicy': manifest.get('prosodyPolicy'),
               'runs': runs,
               'jobs': jobs.get('jobs', []),
               'failedLogTail': lines[-160:],
           }
           Path('/tmp/voice-health.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print(json.dumps({k:payload[k] for k in ('latestRunId','latestStatus','availableArticleCount','collectedStoryCount','pendingArticleCount','lastVoicePublishedAt','progressAgeSeconds')},ensure_ascii=False))
           PY
 
       - name: Publish snapshot to voice-status branch
