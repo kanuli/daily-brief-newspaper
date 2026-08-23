@@ -75,6 +75,18 @@ def _stamp_manifest():
         if _valid_policy_entry(entry)
     }
     data["articles"] = articles
+    newest = max(
+        ((str(entry.get("publishedAt") or ""), article_id, entry) for article_id, entry in articles.items() if entry.get("publishedAt")),
+        default=None,
+    )
+    if newest:
+        data["lastVoicePublishedAt"] = newest[0]
+        data["lastPublishedArticleId"] = newest[1]
+        data["lastPublishedTitle"] = newest[2].get("title") or ""
+    else:
+        data["lastVoicePublishedAt"] = ""
+        data["lastPublishedArticleId"] = ""
+        data["lastPublishedTitle"] = ""
     available = len(articles)
     total = int(data.get("collectedStoryCount") or available)
     data["articleCount"] = available
