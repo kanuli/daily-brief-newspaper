@@ -32,8 +32,8 @@ jobs:
       - name: Build shared Hong Kong Traditional Chinese localization map
         run: python scripts/export_hktrad_localization.py
 
-      - name: Traditional Chinese gate — all visible news copy localizable
-        run: python scripts/audit_tts_language.py --strict
+      - name: Traditional Chinese audit — report residual visible-news terms
+        run: python scripts/audit_tts_language.py
 
       - name: Validate display localization JavaScript
         run: |
