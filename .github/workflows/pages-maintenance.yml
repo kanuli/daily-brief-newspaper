@@ -25,14 +25,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check Pages deployment health
+      - name: Check Pages deployment health against public Live data
         id: inspect
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          MAIN_SHA=$(gh api "repos/${{ github.repository }}/commits/main" --jq .sha)
           RUNS=$(gh run list --repo "${{ github.repository }}" --workflow pages.yml --limit 10 --json status,conclusion,databaseId,headSha,createdAt,updatedAt)
           ACTIVE=$(python -c 'import json,sys; r=json.load(sys.stdin); print(sum(1 for x in r if x.get("status") != "completed"))' <<< "$RUNS")
           if [ "$ACTIVE" -gt 0 ]; then
@@ -40,20 +39,35 @@ jobs:
             echo "reason=pages-active" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
           LATEST_CONCLUSION=$(python -c 'import json,sys; r=json.load(sys.stdin); print((r[0].get("conclusion") if r else "") or "")' <<< "$RUNS")
-          LATEST_SHA=$(python -c 'import json,sys; r=json.load(sys.stdin); print((r[0].get("headSha") if r else "") or "")' <<< "$RUNS")
-          RESTART=false
-          REASON=healthy
-          if [ -z "$LATEST_SHA" ]; then
-            RESTART=true; REASON=no-pages-run
-          elif [ "$LATEST_CONCLUSION" != "success" ]; then
-            RESTART=true; REASON="pages-${LATEST_CONCLUSION:-unknown}"
-          elif [ "$LATEST_SHA" != "$MAIN_SHA" ]; then
-            RESTART=true; REASON=pages-behind-main
+          if [ -z "$LATEST_CONCLUSION" ] || [ "$LATEST_CONCLUSION" != "success" ]; then
+            echo "restart=true" >> "$GITHUB_OUTPUT"
+            echo "reason=pages-${LATEST_CONCLUSION:-missing}" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          echo "main=${MAIN_SHA} latest_pages=${LATEST_SHA} conclusion=${LATEST_CONCLUSION}"
-          echo "restart=${RESTART}" >> "$GITHUB_OUTPUT"
-          echo "reason=${REASON}" >> "$GITHUB_OUTPUT"
+
+          git clone --depth 1 "https://github.com/${{ github.repository }}.git" /tmp/site >/dev/null 2>&1
+          EXPECTED=$(python -c 'import json; print(json.load(open("/tmp/site/data/live.json",encoding="utf-8")).get("lastUpdated", ""))')
+          PUBLIC=$(python - <<'PY'
+          import json, time, urllib.request
+          url='https://kanuli.github.io/daily-brief-newspaper/data/live.json?v='+str(int(time.time()))
+          try:
+              req=urllib.request.Request(url,headers={'Cache-Control':'no-cache','User-Agent':'daily-brief-pages-maintenance'})
+              with urllib.request.urlopen(req,timeout=20) as response:
+                  print(json.loads(response.read().decode('utf-8')).get('lastUpdated',''))
+          except Exception:
+              print('')
+          PY
+          )
+          echo "main_live=${EXPECTED} public_live=${PUBLIC}"
+          if [ -z "$EXPECTED" ] || [ "$PUBLIC" != "$EXPECTED" ]; then
+            echo "restart=true" >> "$GITHUB_OUTPUT"
+            echo "reason=public-live-behind-main" >> "$GITHUB_OUTPUT"
+          else
+            echo "restart=false" >> "$GITHUB_OUTPUT"
+            echo "reason=public-live-current" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Restart Pages deployment
         if: steps.inspect.outputs.restart == 'true'
