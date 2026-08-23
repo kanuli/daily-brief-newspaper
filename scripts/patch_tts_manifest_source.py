@@ -4,6 +4,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW = "https://raw.githubusercontent.com/kanuli/daily-brief-newspaper/main/data/tts-manifest.json"
+VERSION = "20260823-1355rawmanifest"
 
 replacements = {
     ROOT / "assets/js/site-tts-v5.js": [
@@ -27,14 +28,16 @@ for path, pairs in replacements.items():
 
 system = ROOT / "assets/js/system-panel.js"
 text = system.read_text(encoding="utf-8")
-text = re.sub(r'assets/js/site-tts-v5\.js\?v=[^\"]+', 'assets/js/site-tts-v5.js?v=20260823-1340rawmanifest', text)
-text = re.sub(r'assets/js/voice-production-status\.js\?v=[^\"]+', 'assets/js/voice-production-status.js?v=20260823-1340rawmanifest', text)
+text = re.sub(r'assets/js/site-tts-v5\.js\?v=[^\"]+', f'assets/js/site-tts-v5.js?v={VERSION}', text)
+text = re.sub(r'assets/js/voice-production-status\.js\?v=[^\"]+', f'assets/js/voice-production-status.js?v={VERSION}', text)
 system.write_text(text, encoding="utf-8")
 print("updated assets/js/system-panel.js")
 
 for path in ROOT.glob("*.html"):
     text = path.read_text(encoding="utf-8")
-    new = re.sub(r'assets/js/system-panel\.js\?v=[^\"\']+', 'assets/js/system-panel.js?v=20260823-1340rawmanifest', text)
+    new = re.sub(r'assets/js/system-panel\.js\?v=[^\"\']+', f'assets/js/system-panel.js?v={VERSION}', text)
+    new = re.sub(r'assets/js/voice-production-status\.js\?v=[^\"\']+', f'assets/js/voice-production-status.js?v={VERSION}', new)
+    new = re.sub(r'assets/js/site-tts-v5\.js\?v=[^\"\']+', f'assets/js/site-tts-v5.js?v={VERSION}', new)
     if new != text:
         path.write_text(new, encoding="utf-8")
         print("cache-bust", path.name)
