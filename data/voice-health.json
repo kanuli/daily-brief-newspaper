@@ -1,7 +1,7 @@
 {
-  "checkedAt": "2026-08-23T12:14:38.240804+00:00",
+  "checkedAt": "2026-08-23T12:22:47.951981+00:00",
   "latestRunId": 32638822146,
-  "latestStatus": "pending",
+  "latestStatus": "in_progress",
   "latestConclusion": "",
   "latestHeadSha": "aa8e24de26c3f00afa29dbdb485e4a54c0281c72",
   "runs": [
@@ -11,8 +11,8 @@
       "databaseId": 32638822146,
       "event": "push",
       "headSha": "aa8e24de26c3f00afa29dbdb485e4a54c0281c72",
-      "status": "pending",
-      "updatedAt": "2026-08-23T12:14:22Z",
+      "status": "in_progress",
+      "updatedAt": "2026-08-23T12:22:40Z",
       "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/32638822146"
     },
     {
@@ -26,13 +26,13 @@
       "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/32638075759"
     },
     {
-      "conclusion": "",
+      "conclusion": "cancelled",
       "createdAt": "2026-08-23T11:05:18Z",
       "databaseId": 32635550399,
       "event": "push",
       "headSha": "7b989051563e7771fdf34298d1a773e960a18d3f",
-      "status": "in_progress",
-      "updatedAt": "2026-08-23T11:27:11Z",
+      "status": "completed",
+      "updatedAt": "2026-08-23T12:22:27Z",
       "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/32635550399"
     },
     {
@@ -86,7 +86,86 @@
       "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/32632052119"
     }
   ],
-  "jobs": [],
+  "jobs": [
+    {
+      "completedAt": "2026-08-23T12:22:36Z",
+      "conclusion": "success",
+      "databaseId": 97193567745,
+      "name": "ensure-release",
+      "startedAt": "2026-08-23T12:22:30Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-08-23T12:22:31Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-08-23T12:22:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-23T12:22:34Z",
+          "conclusion": "success",
+          "name": "Ensure rolling F01 release exists",
+          "number": 2,
+          "startedAt": "2026-08-23T12:22:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-23T12:22:34Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 3,
+          "startedAt": "2026-08-23T12:22:34Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/32638822146/job/97193567745"
+    },
+    {
+      "completedAt": "0001-01-01T00:00:00Z",
+      "conclusion": "",
+      "databaseId": 97193584143,
+      "name": "promote-prebuilt",
+      "startedAt": "2026-08-23T12:22:39Z",
+      "status": "in_progress",
+      "steps": [
+        {
+          "completedAt": "2026-08-23T12:22:40Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-08-23T12:22:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-23T12:22:45Z",
+          "conclusion": "success",
+          "name": "Checkout current public news",
+          "number": 2,
+          "startedAt": "2026-08-23T12:22:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Promote exact-hash current-policy prebuilt F01 URLs",
+          "number": 3,
+          "startedAt": "2026-08-23T12:22:45Z",
+          "status": "in_progress"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Post Checkout current public news",
+          "number": 6,
+          "startedAt": "0001-01-01T00:00:00Z",
+          "status": "pending"
+        }
+      ],
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/32638822146/job/97193584143"
+    }
+  ],
   "failedLogTail": [
     "run 32638822146 is still in progress; logs will be available when it is complete"
   ]
