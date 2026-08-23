@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""Generate one F01 shard using the user-approved golden news-anchor voice.
-
-Policy goals:
-- Use the Nvidia article voice explicitly approved by the user as the canonical
-  F01 news-anchor reference.
-- Keep reference-only Cantonese synthesis; no textual instruction can leak.
-- Reset the stochastic sampler for every segment so speaker age/timbre cannot
-  wander between the opening and later segments.
-- Use only gentle tempo correction; never push a segment by the old +/-12%.
-- Never reuse audio produced by an older prosody policy.
-"""
+"""Generate one production F01 shard with the approved news-anchor reference."""
 import re
 import sys
 import time
@@ -21,8 +11,9 @@ import torchaudio
 
 import generate_cosyvoice_lead as voice_base
 import generate_cosyvoice_shard as legacy
+import tts_hktrad_v2 as hktrad
 
-POLICY = "f01-news-anchor-v5-golden-hktrad"
+POLICY = "f01-news-anchor-v6-single-inference-hktrad"
 REFERENCE_POLICY = "user-approved-nvidia-anchor-v1"
 GOLDEN_REFERENCE_ASSET = "ai-nvidia-server-price-0800-79489f0afc38.wav"
 GOLDEN_REFERENCE_URL = (
@@ -32,12 +23,28 @@ GOLDEN_REFERENCE_URL = (
 REFERENCE_START_SECONDS = 10.0
 REFERENCE_DURATION_SECONDS = 10.0
 VOICE_RANDOM_SEED = 20260823
-SEGMENT_CHARS = 72
+# Article speech is capped at roughly 260 content characters.  Keep the whole
+# article in one inference call so a fresh cross-lingual call cannot change
+# language/accent halfway through an otherwise Cantonese article.
+SEGMENT_CHARS = 320
 TARGET_CHARS_PER_SECOND = 4.0
 MIN_TEMPO = 0.96
 MAX_TEMPO = 1.04
 
 _ORIGINAL_SEGMENT_SYNTH = voice_base.synthesize_segment
+_ORIGINAL_NORMALIZE = voice_base.normalize_for_tts
+
+
+def _localized_normalize(value):
+    # First retain all established number/punctuation handling, then apply the
+    # expanded speech-only Traditional-Chinese table.  No policy/instruction
+    # sentence is ever appended to the spoken text.
+    return hktrad.localize(_ORIGINAL_NORMALIZE(value))
+
+
+# All anchor users share this module object, so production hashing and spoken
+# text use the same normalization result.
+voice_base.normalize_for_tts = _localized_normalize
 
 
 def _setup_model_golden():
@@ -84,8 +91,6 @@ def _setup_model_golden():
 
 
 def _stable_segment_synth(model, prompt, item, index):
-    # CosyVoice cross-lingual generation contains stochastic sampling. Resetting
-    # to one fixed seed for every segment greatly reduces speaker/timbre drift.
     torch.manual_seed(VOICE_RANDOM_SEED)
     return _ORIGINAL_SEGMENT_SYNTH(model, prompt, item, index)
 
@@ -144,15 +149,20 @@ def _anchor_script_segments(story):
     if len(script) < 8:
         raise RuntimeError(f"story text too short for TTS: {story.get('title')!r}")
 
+    residual = hktrad.residual_latin_tokens(script)
+    if residual:
+        raise RuntimeError(
+            f"TTS residual Latin gate blocked {story.get('id') or story.get('title')}: "
+            + ", ".join(residual)
+        )
+
     pieces = voice_base.split_for_tts(script, max_chars=SEGMENT_CHARS)
-    return [
-        {
-            "role": "news",
-            "text": piece,
-            "pause": 0.26 if index < len(pieces) - 1 else 0.40,
-        }
-        for index, piece in enumerate(pieces)
-    ]
+    if len(pieces) != 1:
+        raise RuntimeError(
+            f"single-inference policy expected one segment, got {len(pieces)} "
+            f"for {story.get('id') or story.get('title')}"
+        )
+    return [{"role": "news", "text": pieces[0], "pause": 0.40}]
 
 
 def _speech_units(text):
@@ -222,6 +232,8 @@ def _policy_synth(model, prompt, story, path):
         "inferenceMode": voice_base.VOICE_INFERENCE_MODE,
         "speed": voice_base.VOICE_SPEED,
         "instructionPolicy": "none-reference-only",
+        "languageGate": "residual-latin-zero",
+        "segmentPolicy": "single-inference-per-article",
         "tempoTargetCharsPerSecond": TARGET_CHARS_PER_SECOND,
         "tempoFactors": applied,
     }
