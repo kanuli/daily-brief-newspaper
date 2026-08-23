@@ -1,0 +1,69 @@
+name: GitHub Pages Auto Maintenance
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/pages-maintenance.yml"
+  workflow_run:
+    workflows: ["Deploy Daily Brief to GitHub Pages"]
+    types: [completed]
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: "github-pages-auto-maintenance"
+  cancel-in-progress: true
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check Pages deployment health
+        id: inspect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAIN_SHA=$(gh api "repos/${{ github.repository }}/commits/main" --jq .sha)
+          RUNS=$(gh run list --repo "${{ github.repository }}" --workflow pages.yml --limit 10 --json status,conclusion,databaseId,headSha,createdAt,updatedAt)
+          ACTIVE=$(python -c 'import json,sys; r=json.load(sys.stdin); print(sum(1 for x in r if x.get("status") != "completed"))' <<< "$RUNS")
+          if [ "$ACTIVE" -gt 0 ]; then
+            echo "restart=false" >> "$GITHUB_OUTPUT"
+            echo "reason=pages-active" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          LATEST_CONCLUSION=$(python -c 'import json,sys; r=json.load(sys.stdin); print((r[0].get("conclusion") if r else "") or "")' <<< "$RUNS")
+          LATEST_SHA=$(python -c 'import json,sys; r=json.load(sys.stdin); print((r[0].get("headSha") if r else "") or "")' <<< "$RUNS")
+          RESTART=false
+          REASON=healthy
+          if [ -z "$LATEST_SHA" ]; then
+            RESTART=true; REASON=no-pages-run
+          elif [ "$LATEST_CONCLUSION" != "success" ]; then
+            RESTART=true; REASON="pages-${LATEST_CONCLUSION:-unknown}"
+          elif [ "$LATEST_SHA" != "$MAIN_SHA" ]; then
+            RESTART=true; REASON=pages-behind-main
+          fi
+          echo "main=${MAIN_SHA} latest_pages=${LATEST_SHA} conclusion=${LATEST_CONCLUSION}"
+          echo "restart=${RESTART}" >> "$GITHUB_OUTPUT"
+          echo "reason=${REASON}" >> "$GITHUB_OUTPUT"
+
+      - name: Restart Pages deployment
+        if: steps.inspect.outputs.restart == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Pages auto maintenance: ${{ steps.inspect.outputs.reason }}"
+          gh workflow run pages.yml --repo "${{ github.repository }}" --ref main
+          echo "PAGES_AUTO_MAINTENANCE_RESTART_DISPATCHED"
+
+      - name: Pages healthy
+        if: steps.inspect.outputs.restart != 'true'
+        run: echo "Pages deployment healthy (${{ steps.inspect.outputs.reason }})."
