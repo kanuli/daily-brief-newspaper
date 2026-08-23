@@ -3,17 +3,18 @@
 import json
 from pathlib import Path
 
+import cosyvoice_policy as voice_policy
 import generate_cosyvoice_lead as voice_base
 import publish_cosyvoice_prepublish as legacy
 
-POLICY = "f01-news-anchor-v7-short-prompt-bistream-hktrad"
-REFERENCE_POLICY = "user-approved-nvidia-anchor-v1"
-REFERENCE_ASSET = "ai-nvidia-server-price-0800-79489f0afc38.wav"
-REFERENCE_START_SECONDS = 10.0
-REFERENCE_DURATION_SECONDS = 5.0
-INITIAL_CONDITIONING_POLICY = "short-reference-bistream"
-LANGUAGE_GATE = "residual-latin-zero"
-SEGMENT_POLICY = "single-inference-per-article"
+POLICY = voice_policy.POLICY
+REFERENCE_POLICY = voice_policy.REFERENCE_POLICY
+REFERENCE_ASSET = voice_policy.REFERENCE_ASSET
+REFERENCE_START_SECONDS = voice_policy.REFERENCE_START_SECONDS
+REFERENCE_DURATION_SECONDS = voice_policy.REFERENCE_DURATION_SECONDS
+INITIAL_CONDITIONING_POLICY = voice_policy.INITIAL_CONDITIONING_POLICY
+LANGUAGE_GATE = voice_policy.LANGUAGE_GATE
+SEGMENT_POLICY = voice_policy.SEGMENT_POLICY
 
 
 def _valid_policy_entry(entry, digest=None):
