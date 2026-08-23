@@ -22,8 +22,6 @@ permissions:
   actions: write
   contents: read
 
-# Never let a newer watchdog event kill a watchdog that is already cancelling
-# a stale worker pool and dispatching its replacement.
 concurrency:
   group: "cosyvoice-f01-auto-maintenance"
   cancel-in-progress: false
@@ -108,7 +106,6 @@ jobs:
           manifest_total = int(manifest.get("collectedStoryCount") or manifest_done)
           manifest_date = str(manifest.get("date") or "")
 
-          # Progress means a real article WAV publish, never a reconcile timestamp.
           published = str(manifest.get("lastVoicePublishedAt") or "")
           if not published:
               article_times = sorted(
@@ -139,11 +136,11 @@ jobs:
 
           echo "Current F01: done=${CURRENT_DONE}/${CURRENT_TOTAL}, pending=${CURRENT_PENDING}; manifest=${MANIFEST_DONE}/${MANIFEST_TOTAL}; last real WAV=${LAST_VOICE_PUBLISHED_AT:-none}; progress-age=${PROGRESS_AGE_SECONDS}s"
 
-          RUNS_JSON=$(gh run list --workflow cosyvoice-publish.yml --branch main --limit 20 --json status,conclusion,databaseId,createdAt,updatedAt)
-          python - <<'PY' <<< "$RUNS_JSON" > /tmp/active-state.env
-          import json, sys
+          gh run list --workflow cosyvoice-publish.yml --branch main --limit 20 --json status,conclusion,databaseId,createdAt,updatedAt > /tmp/f01-runs.json
+          python - <<'PY' > /tmp/active-state.env
+          import json
           from datetime import datetime, timezone
-          runs=json.load(sys.stdin)
+          runs=json.load(open('/tmp/f01-runs.json',encoding='utf-8'))
           now=datetime.now(timezone.utc)
           active=[r for r in runs if r.get('status') != 'completed']
           ages=[]
@@ -161,7 +158,6 @@ jobs:
           source /tmp/active-state.env
           echo "Active/queued F01 runs=${ACTIVE_COUNT}; oldest-active-age=${ACTIVE_OLDEST_AGE_SECONDS}s; ids=${ACTIVE_IDS:-none}"
 
-          # Thresholds are deliberately based on output progress, not merely run state.
           PROGRESS_STALE_SECONDS=900
           STARTUP_GRACE_SECONDS=1200
 
@@ -187,9 +183,6 @@ jobs:
               echo "reason=worker-startup-grace-no-f01-yet" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-
-            # A pool that exists but has produced no WAV for 15m after a 20m startup
-            # window is not healthy. Cancel the stale pool/queue and replace it.
             echo "restart=true" >> "$GITHUB_OUTPUT"
             echo "cancel_ids=${ACTIVE_IDS}" >> "$GITHUB_OUTPUT"
             echo "reason=active-worker-stuck-no-f01-progress" >> "$GITHUB_OUTPUT"
