@@ -5,6 +5,7 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/cosyvoice-maintenance.yml"
+      - "scripts/cosyvoice_policy.py"
       - "data/latest.json"
       - "data/desk-latest.json"
       - "data/live.json"
@@ -37,7 +38,7 @@ jobs:
           ref: main
           fetch-depth: 1
 
-      - name: Inspect CURRENT inventory and real F01 progress
+      - name: Inspect CURRENT inventory, policy and real F01 progress
         id: inspect
         env:
           GH_TOKEN: ${{ github.token }}
@@ -48,7 +49,7 @@ jobs:
           set -euo pipefail
 
           python - <<'PY' > /tmp/voice-state.env
-          import json
+          import json, re
           from datetime import datetime, timezone
           from pathlib import Path
 
@@ -76,6 +77,10 @@ jobs:
               except Exception:
                   return None
 
+          policy_text = Path("scripts/cosyvoice_policy.py").read_text(encoding="utf-8")
+          m = re.search(r'^POLICY\s*=\s*["\']([^"\']+)["\']', policy_text, re.M)
+          current_policy = m.group(1) if m else ""
+
           latest = load(Path("data/latest.json")) or {}
           current_date = str(latest.get("date") or "")
           paths = [Path("data/latest.json"), Path("data/desk-latest.json"), Path("data/live.json"), Path("data/stocks-latest.json")]
@@ -94,6 +99,7 @@ jobs:
 
           manifest = load(Path("data/tts-manifest.json")) or {}
           entries = manifest.get("articles") or {}
+          manifest_policy = str(manifest.get("prosodyPolicy") or "")
           ready_titles = {
               clean(entry.get("title"))
               for entry in entries.values()
@@ -122,6 +128,8 @@ jobs:
               except Exception:
                   pass
 
+          print(f"CURRENT_POLICY={current_policy}")
+          print(f"MANIFEST_POLICY={manifest_policy}")
           print(f"CURRENT_DATE={current_date}")
           print(f"CURRENT_TOTAL={current_total}")
           print(f"CURRENT_DONE={current_done}")
@@ -134,35 +142,76 @@ jobs:
           PY
           source /tmp/voice-state.env
 
-          echo "Current F01: done=${CURRENT_DONE}/${CURRENT_TOTAL}, pending=${CURRENT_PENDING}; manifest=${MANIFEST_DONE}/${MANIFEST_TOTAL}; last real WAV=${LAST_VOICE_PUBLISHED_AT:-none}; progress-age=${PROGRESS_AGE_SECONDS}s"
+          echo "Current F01 policy=${CURRENT_POLICY}; manifest-policy=${MANIFEST_POLICY}; done=${CURRENT_DONE}/${CURRENT_TOTAL}, pending=${CURRENT_PENDING}; last real WAV=${LAST_VOICE_PUBLISHED_AT:-none}; progress-age=${PROGRESS_AGE_SECONDS}s"
 
-          gh run list --workflow cosyvoice-publish.yml --branch main --limit 20 --json status,conclusion,databaseId,createdAt,updatedAt > /tmp/f01-runs.json
+          gh run list --workflow cosyvoice-publish.yml --branch main --limit 30 --json status,conclusion,databaseId,createdAt,updatedAt > /tmp/f01-runs.json
           python - <<'PY' > /tmp/active-state.env
           import json
           from datetime import datetime, timezone
           runs=json.load(open('/tmp/f01-runs.json',encoding='utf-8'))
           now=datetime.now(timezone.utc)
           active=[r for r in runs if r.get('status') != 'completed']
+          running=[r for r in active if r.get('status') == 'in_progress']
+          pending=[r for r in active if r.get('status') != 'in_progress']
           ages=[]
+          running_ages=[]
           for r in active:
               try:
                   t=datetime.fromisoformat(str(r.get('createdAt') or '').replace('Z','+00:00'))
-                  ages.append(max(0,int((now-t).total_seconds())))
+                  age=max(0,int((now-t).total_seconds()))
+                  ages.append(age)
+                  if r.get('status') == 'in_progress':
+                      running_ages.append((age,r))
               except Exception:
                   pass
           ids=','.join(str(r.get('databaseId')) for r in active if r.get('databaseId'))
+          running_ids=','.join(str(r.get('databaseId')) for r in running if r.get('databaseId'))
+          stale_running_ids=','.join(str(r.get('databaseId')) for age,r in running_ages if age >= 1200 and r.get('databaseId'))
           print(f"ACTIVE_COUNT={len(active)}")
+          print(f"RUNNING_COUNT={len(running)}")
+          print(f"PENDING_COUNT={len(pending)}")
           print(f"ACTIVE_OLDEST_AGE_SECONDS={max(ages) if ages else 0}")
           print(f"ACTIVE_IDS={ids}")
+          print(f"RUNNING_IDS={running_ids}")
+          print(f"STALE_RUNNING_IDS={stale_running_ids}")
           PY
           source /tmp/active-state.env
-          echo "Active/queued F01 runs=${ACTIVE_COUNT}; oldest-active-age=${ACTIVE_OLDEST_AGE_SECONDS}s; ids=${ACTIVE_IDS:-none}"
+          echo "F01 runs active=${ACTIVE_COUNT}; running=${RUNNING_COUNT}; pending=${PENDING_COUNT}; oldest=${ACTIVE_OLDEST_AGE_SECONDS}s; running-ids=${RUNNING_IDS:-none}"
 
           PROGRESS_STALE_SECONDS=900
           STARTUP_GRACE_SECONDS=1200
 
           echo "restart=false" >> "$GITHUB_OUTPUT"
           echo "cancel_ids=" >> "$GITHUB_OUTPUT"
+
+          POLICY_DRIFT=false
+          if [ -n "${CURRENT_POLICY}" ] && [ "${MANIFEST_POLICY}" != "${CURRENT_POLICY}" ]; then
+            POLICY_DRIFT=true
+          fi
+
+          # During a policy migration, old-policy WAV progress must never keep an
+          # old worker pool alive. Cancel only long-running in-progress pools;
+          # preserve the newest queued/pending current-policy run so it can start.
+          if [ "$POLICY_DRIFT" = "true" ]; then
+            if [ -n "${STALE_RUNNING_IDS}" ]; then
+              echo "cancel_ids=${STALE_RUNNING_IDS}" >> "$GITHUB_OUTPUT"
+              if [ "${PENDING_COUNT}" -gt 0 ]; then
+                echo "restart=false" >> "$GITHUB_OUTPUT"
+                echo "reason=policy-migration-cancel-old-pool-preserve-new-pending" >> "$GITHUB_OUTPUT"
+              else
+                echo "restart=true" >> "$GITHUB_OUTPUT"
+                echo "reason=policy-migration-cancel-old-pool-and-restart" >> "$GITHUB_OUTPUT"
+              fi
+              exit 0
+            fi
+            if [ "${ACTIVE_COUNT}" -gt 0 ]; then
+              echo "reason=policy-migration-current-run-startup-grace" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "restart=true" >> "$GITHUB_OUTPUT"
+            echo "reason=policy-migration-no-active-current-run" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           if [ "${CURRENT_TOTAL}" -gt 0 ] && [ "${CURRENT_PENDING}" -le 0 ] && [ "${CURRENT_DATE}" = "${MANIFEST_DATE}" ]; then
             echo "reason=current-coverage-complete" >> "$GITHUB_OUTPUT"
@@ -184,7 +233,7 @@ jobs:
               exit 0
             fi
             echo "restart=true" >> "$GITHUB_OUTPUT"
-            echo "cancel_ids=${ACTIVE_IDS}" >> "$GITHUB_OUTPUT"
+            echo "cancel_ids=${RUNNING_IDS}" >> "$GITHUB_OUTPUT"
             echo "reason=active-worker-stuck-no-f01-progress" >> "$GITHUB_OUTPUT"
             exit 0
           fi
