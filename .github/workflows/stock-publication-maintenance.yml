@@ -1,0 +1,79 @@
+name: Stock News Auto Maintenance
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/stock-publication-maintenance.yml"
+      - "scripts/promote_verified_stock_draft.py"
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "stock-news-auto-maintenance"
+  cancel-in-progress: false
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Read latest verified prepublish draft
+        id: draft
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch -q origin prepublish-news:refs/remotes/origin/prepublish-news || true
+          if git show origin/prepublish-news:data/prepublish.json > /tmp/prepublish.json 2>/dev/null; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Promote verified tracked-stock updates
+        if: steps.draft.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+
+            python scripts/promote_verified_stock_draft.py /tmp/prepublish.json
+            python scripts/validate_stock_news.py
+            python scripts/audit_tts_language.py
+
+            git add -- data/stocks-latest.json
+            if git diff --cached --quiet; then
+              echo "STOCK_AUTO_MAINTENANCE_NOOP current or no verified tracked-stock update"
+              exit 0
+            fi
+
+            DRAFT_ID=$(python -c 'import json; print(json.load(open("/tmp/prepublish.json",encoding="utf-8")).get("draftId", "verified-draft"))')
+            git commit -m "Refresh Stock News from ${DRAFT_ID}"
+            if git push origin HEAD:main; then
+              echo "STOCK_AUTO_MAINTENANCE_PASS draft=${DRAFT_ID}"
+              exit 0
+            fi
+            sleep $((attempt * 2))
+          done
+
+          echo "Stock News auto maintenance could not push after retries" >&2
+          exit 1
+
+      - name: No verified draft available
+        if: steps.draft.outputs.available != 'true'
+        run: echo "Stock News maintenance waiting for verified prepublish draft."
