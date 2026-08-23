@@ -48,7 +48,7 @@ jobs:
               'finance.html','stocks.html','technology.html','manga-anime.html',
               'manchester-united.html','football.html','archive.html'
           ]
-          runtime_files=['assets/js/site-tts-v9.js','assets/js/system-panel.js','assets/js/live-article.js']
+          runtime_files=['assets/js/site-tts-v10.js','assets/js/system-panel.js','assets/js/live-article.js']
           known_error_markers=[
               'Error 500 (Server Error)',
               'That’s an error',
@@ -149,14 +149,15 @@ jobs:
                   }
           runtime_match=all(item.get('ok') for item in runtime_checks.values())
 
-          # Regression gate for the 2026-08-24 page-hang incident: the v9 client must
-          # only react to newly inserted articles and must not depend on raw GitHub for
-          # the same-repository manifest.
-          tts_local=Path('assets/js/site-tts-v9.js').read_text(encoding='utf-8')
+          # Regression gates: v10 must use the same-repository manifest, require
+          # policy-namespaced audio URLs and only refresh article controls when
+          # article nodes are inserted. This prevents stale audio and DOM loops.
+          tts_local=Path('assets/js/site-tts-v10.js').read_text(encoding='utf-8')
           tts_guard_ok=bool(
               'function containsArticle(node)' in tts_local and
               'mutation.addedNodes' in tts_local and
               'const MANIFEST_URL = "data/tts-manifest.json";' in tts_local and
+              'const REQUIRED_AUDIO_NAMESPACE = "-v10-";' in tts_local and
               'new MutationObserver(() => refreshButtons())' not in tts_local
           )
 
