@@ -13,9 +13,12 @@ on:
       - "scripts/generate_cosyvoice_lead.py"
       - "scripts/generate_cosyvoice_all.py"
       - "scripts/generate_cosyvoice_shard.py"
+      - "scripts/generate_cosyvoice_shard_anchor.py"
       - "scripts/publish_cosyvoice_article.py"
+      - "scripts/publish_cosyvoice_article_anchor.py"
       - "scripts/promote_cosyvoice_prepublish.py"
       - "scripts/promote_cosyvoice_prepublish_fast.py"
+      - "scripts/promote_cosyvoice_prepublish_anchor.py"
       - ".github/workflows/cosyvoice-publish.yml"
   workflow_dispatch:
 
@@ -64,7 +67,7 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Promote exact-hash prebuilt F01 URLs without loading the TTS runtime
+      - name: Promote only exact-hash current-policy prebuilt F01 URLs
         shell: bash
         run: |
           set -euo pipefail
@@ -79,22 +82,22 @@ jobs:
             git worktree add --detach /tmp/prepublish-news origin/prepublish-news
           fi
 
-          python scripts/promote_cosyvoice_prepublish_fast.py /tmp/prepublish-news
+          python scripts/promote_cosyvoice_prepublish_anchor.py /tmp/prepublish-news
           git add -- data/tts-manifest.json
           if git diff --cached --quiet; then
-            echo "Production F01 manifest already matches current reusable/prebuilt coverage."
+            echo "Production F01 manifest already matches current natural-newsreader coverage."
             exit 0
           fi
 
-          git commit -m "Reconcile F01 manifest with current news inventory"
+          git commit -m "Reconcile natural-newsreader F01 manifest"
           for attempt in 1 2 3 4 5 6; do
             if git pull --rebase origin main && git push origin HEAD:main; then
-              echo "COSYVOICE_FAST_PROMOTION_PUSH_PASS"
+              echo "COSYVOICE_ANCHOR_PROMOTION_PUSH_PASS"
               exit 0
             fi
             sleep $((attempt * 2))
           done
-          echo "Fast F01 manifest promotion could not push." >&2
+          echo "F01 natural-newsreader manifest promotion could not push." >&2
           exit 1
 
   worker:
@@ -153,7 +156,7 @@ jobs:
           git clone --depth 1 --recursive https://github.com/ASLP-lab/WenetSpeech-Yue.git /tmp/WenetSpeech-Yue
           test -f /tmp/WenetSpeech-Yue/CosyVoice2-Yue/cosyvoice/cli/cosyvoice.py
 
-      - name: Keep this lane generating and publishing one voice at a time
+      - name: Keep this lane generating and publishing one natural news voice at a time
         env:
           SLOT: ${{ matrix.slot }}
           GH_TOKEN: ${{ github.token }}
@@ -161,6 +164,8 @@ jobs:
           WSYUE_ROOT: /tmp/WenetSpeech-Yue
           COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
           COSY_ARTICLE_MAX_TEXT_CHARS: "260"
+          COSY_MAX_SEGMENT_CHARS: "120"
+          COSY_VOICE_SPEED: "1.0"
           COSY_SHARD_COUNT: "10"
           COSY_SHARD_ONE_ARTICLE: "1"
           COSY_SHARD_STABLE_SLOT: "1"
@@ -171,12 +176,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           for cycle in $(seq 1 12); do
-            echo "=== F01 worker slot ${SLOT} cycle ${cycle}/12 ==="
+            echo "=== F01 natural-newsreader worker slot ${SLOT} cycle ${cycle}/12 ==="
             git fetch origin main
             git reset --hard origin/main
             rm -rf artifacts/cosyvoice-shards
 
-            COSY_SHARD_INDEX="${SLOT}" python scripts/generate_cosyvoice_shard.py
+            COSY_SHARD_INDEX="${SLOT}" python scripts/generate_cosyvoice_shard_anchor.py
             SHARD="artifacts/cosyvoice-shards/shard-${SLOT}.json"
             test -f "$SHARD"
 
@@ -186,7 +191,7 @@ jobs:
           sys.exit(0 if len(data.get('entries') or {}) == 0 else 1)
           PY
             then
-              echo "Worker slot ${SLOT} has no more current F01 work."
+              echo "Worker slot ${SLOT} has no more current-policy F01 work."
               exit 0
             fi
 
@@ -200,7 +205,7 @@ jobs:
             )
             test -f "$ARTIFACT"
             gh release upload "$F01_RELEASE_TAG" "$ARTIFACT" --clobber --repo "${{ github.repository }}"
-            echo "F01 release asset uploaded: $(basename "$ARTIFACT")"
+            echo "F01 natural-newsreader release asset uploaded: $(basename "$ARTIFACT")"
 
             published=false
             for attempt in 1 2 3 4 5 6 7 8; do
@@ -208,7 +213,7 @@ jobs:
               git fetch origin main
               git reset --hard origin/main
 
-              python scripts/publish_cosyvoice_article.py "/tmp/cosyvoice-one-article-${SLOT}.json"
+              python scripts/publish_cosyvoice_article_anchor.py "/tmp/cosyvoice-one-article-${SLOT}.json"
               git add -- data/tts-manifest.json
 
               if git diff --cached --quiet; then
@@ -217,9 +222,9 @@ jobs:
                 break
               fi
 
-              git commit -m "Publish F01 voice slot ${SLOT} cycle ${cycle}"
+              git commit -m "Publish natural F01 voice slot ${SLOT} cycle ${cycle}"
               if git push origin HEAD:main; then
-                echo "COSYVOICE_ONE_ARTICLE_MAIN_PUSH_PASS slot=${SLOT} cycle=${cycle} storage=github-release"
+                echo "COSYVOICE_ANCHOR_ONE_ARTICLE_PUSH_PASS slot=${SLOT} cycle=${cycle} storage=github-release"
                 published=true
                 break
               fi
@@ -229,7 +234,7 @@ jobs:
             done
 
             if [ "$published" != "true" ]; then
-              echo "Could not publish F01 manifest after conflict retries." >&2
+              echo "Could not publish natural F01 manifest after conflict retries." >&2
               exit 1
             fi
           done
