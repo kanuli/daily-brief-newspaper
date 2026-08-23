@@ -1,0 +1,65 @@
+name: Audit TTS Traditional Chinese Coverage
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "data/latest.json"
+      - "data/desk-latest.json"
+      - "data/live.json"
+      - "data/stocks-latest.json"
+      - "data/topic-more/**"
+      - "scripts/tts_hktrad.py"
+      - "scripts/audit_tts_language.py"
+      - ".github/workflows/tts-language-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "tts-language-audit"
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Run TTS language audit
+        run: python scripts/audit_tts_language.py
+
+      - name: Publish audit to voice-status branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin voice-status:refs/remotes/origin/voice-status
+          rm -rf /tmp/voice-status
+          git worktree add --detach /tmp/voice-status origin/voice-status
+          mkdir -p /tmp/voice-status/data
+          cp /tmp/tts-language-audit.json /tmp/voice-status/data/tts-language-audit.json
+          cd /tmp/voice-status
+          git add data/tts-language-audit.json
+          if git diff --cached --quiet; then
+            echo "Audit unchanged."
+            exit 0
+          fi
+          git commit -m "Update TTS Traditional Chinese audit"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin voice-status
+            if git rebase origin/voice-status && git push origin HEAD:voice-status; then
+              echo "TTS_LANGUAGE_AUDIT_PUSH_PASS"
+              exit 0
+            fi
+            git rebase --abort >/dev/null 2>&1 || true
+            sleep $((attempt * 2))
+          done
+          exit 1
