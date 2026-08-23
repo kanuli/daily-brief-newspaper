@@ -2,6 +2,7 @@
 import hashlib
 import json
 import re
+import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -78,6 +79,7 @@ def speech_text(story):
 
 
 def main():
+    strict = "--strict" in sys.argv[1:]
     latest = load_json(Path("data/latest.json")) or {}
     date_value = latest.get("date")
     by_title = {}
@@ -145,7 +147,16 @@ def main():
         "unresolvedStoryCount": report["unresolvedStoryCount"],
         "deskSummary": {k: {"clean": v["cleanStoryCount"], "total": v["storyCount"], "unresolved": v["unresolvedStoryCount"]} for k, v in desks.items()},
     }, ensure_ascii=False, indent=2))
+    if strict and report["unresolvedStoryCount"]:
+        print("HKTRAD_VISIBLE_NEWS_GATE_FAILED", file=sys.stderr)
+        for desk, detail in desks.items():
+            for story in detail["stories"][:10]:
+                print(f"- {desk}: {story['title']} :: {', '.join(story['tokens'])}", file=sys.stderr)
+        return 1
+    if strict:
+        print(f"HKTRAD_VISIBLE_NEWS_GATE_OK {report['cleanStoryCount']}/{report['storyCount']}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
