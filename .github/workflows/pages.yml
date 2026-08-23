@@ -10,8 +10,6 @@ permissions:
   pages: write
   id-token: write
 
-# Always deploy the newest main snapshot. Hourly news can appear immediately,
-# and every independently completed F01 commit triggers another deployment.
 concurrency:
   group: "pages"
   cancel-in-progress: true
@@ -22,23 +20,79 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout latest main
         uses: actions/checkout@v4
         with:
           ref: main
 
-      - name: Validate Daily Brief data schema
-        run: python scripts/validate_site_data.py
-
       - name: Validate Daily v3 newspaper depth
         run: python scripts/validate_daily_v3.py
 
-      - name: Validate editorial depth and desk coverage
-        run: python scripts/validate_editorial_v2.py
-
       - name: Validate Stock News data
         run: python scripts/validate_stock_news.py
+
+      - name: Validate current Live and Rolling Desk publication contract
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, pathlib, re
+          root = pathlib.Path('.')
+          def load(path):
+              return json.loads((root / path).read_text(encoding='utf-8'))
+          def need(cond, msg):
+              if not cond:
+                  raise SystemExit(msg)
+          def rich(story, label):
+              need(isinstance(story, dict), f'{label}: not object')
+              for key in ('id','title','dek','summary','body','context','why','watchNext','sourceName','sourceUrl','timeLabel'):
+                  need(isinstance(story.get(key), str) and story[key].strip(), f'{label}: missing {key}')
+              paras=[p.strip() for p in re.split(r'\n\s*\n', story['body']) if p.strip()]
+              need(len(paras)>=2, f'{label}: body needs >=2 paragraphs')
+              cjk=len(re.findall(r'[\u3400-\u9fff]', story['body']))
+              measure=cjk if cjk>=50 else len(re.sub(r'\s+','',story['body']))
+              need(measure>=100, f'{label}: body too short {measure}')
+
+          latest=load('data/latest.json')
+          live=load('data/live.json')
+          desk=load('data/desk-latest.json')
+          need(live.get('mode')=='live', 'live mode invalid')
+          need(live.get('date')==latest.get('date'), 'live date does not match latest')
+          for key in ('lastUpdated','lastUpdatedLabel','windowLabel','nextUpdateLabel'):
+              need(isinstance(live.get(key),str) and live[key].strip(), f'live missing {key}')
+          items=live.get('items')
+          need(isinstance(items,list) and len(items)>0, 'Live publication must not be empty')
+          actual={'NEW':0,'UPDATED':0,'DEVELOPING':0}
+          ids=[]
+          for i,story in enumerate(items):
+              rich(story,f'live[{i}]')
+              status=story.get('status')
+              need(status in actual, f'live[{i}] invalid status {status!r}')
+              actual[status]+=1
+              ids.append(story['id'])
+          need(len(ids)==len(set(ids)), 'Live has duplicate ids')
+          need(live.get('newCount')==actual['NEW'], 'newCount mismatch')
+          need(live.get('updatedCount')==actual['UPDATED'], 'updatedCount mismatch')
+          need(live.get('developingCount')==actual['DEVELOPING'], 'developingCount mismatch')
+          need(isinstance(live.get('coverage'),dict) and str(live['coverage'].get('status','')).strip(), 'coverage.status required')
+
+          floors={'world':4,'asia':5,'hong-kong':5,'japan':5,'market-economy':5,'ai-tech':4,'manga-anime':3,'manchester-united':3,'football':6}
+          need(desk.get('mode')=='ROLLING_DESK_LATEST', 'desk mode invalid')
+          desks=desk.get('desks')
+          need(isinstance(desks,dict), 'desk-latest desks invalid')
+          for slug,minimum in floors.items():
+              stories=desks.get(slug)
+              need(isinstance(stories,list) and len(stories)>=minimum, f'{slug} desk depth below {minimum}')
+              seen=set()
+              for i,story in enumerate(stories):
+                  rich(story,f'desk {slug}[{i}]')
+                  need(story['id'] not in seen, f'desk {slug} duplicate id {story["id"]}')
+                  seen.add(story['id'])
+                  slugs=story.get('deskSlugs')
+                  need(isinstance(slugs,list) and slug in slugs, f'desk {slug}[{i}] deskSlugs mismatch')
+          print(f'CURRENT_PUBLICATION_VALIDATION_OK {live["windowLabel"]} items={len(items)} next={live["nextUpdateLabel"]}')
+          PY
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -52,6 +106,29 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: Verify a newly published F01 voice is live
-        if: startsWith(github.event.head_commit.message, 'Publish F01 voice slot')
-        run: python scripts/check_live_cosyvoice_pages.py
+      - name: Verify deployed Live snapshot matches main
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, time, urllib.request
+          local=json.load(open('data/live.json',encoding='utf-8'))
+          expected=local.get('lastUpdated')
+          base=os.environ['PAGE_URL'].rstrip('/')+'/'
+          url=base+'data/live.json?v='+str(int(time.time()))
+          last_error=None
+          for attempt in range(12):
+              try:
+                  req=urllib.request.Request(url,headers={'Cache-Control':'no-cache','User-Agent':'daily-brief-pages-check'})
+                  with urllib.request.urlopen(req,timeout=15) as response:
+                      remote=json.loads(response.read().decode('utf-8'))
+                  if remote.get('lastUpdated')==expected and (remote.get('items') or []):
+                      print('PAGES_LIVE_SNAPSHOT_MATCH', expected, 'items', len(remote.get('items') or []))
+                      raise SystemExit(0)
+                  last_error=f"remote lastUpdated={remote.get('lastUpdated')} expected={expected} items={len(remote.get('items') or [])}"
+              except Exception as exc:
+                  last_error=str(exc)
+              time.sleep(5)
+          raise SystemExit('GitHub Pages Live snapshot did not converge: '+str(last_error))
+          PY
