@@ -9,10 +9,17 @@ from pathlib import Path
 import torch
 import torchaudio
 
+import cosyvoice_cache_identity as cache_identity
 import cosyvoice_policy as voice_policy
 import generate_cosyvoice_lead as voice_base
 import generate_cosyvoice_shard as legacy
 import tts_hktrad_v2 as hktrad
+
+# Install at the core anchor layer as well as in the v10 wrappers. Old workflow
+# processes reset to current main between article cycles, so they also inherit
+# the current policy-salted digest and -v10- asset namespace instead of being
+# able to publish a current-policy manifest entry at a stale legacy URL.
+cache_identity.install(legacy.gen)
 
 POLICY = voice_policy.POLICY
 REFERENCE_POLICY = voice_policy.REFERENCE_POLICY
@@ -50,8 +57,6 @@ def _semantic_sentence_pauses(sentence):
     if len(text) < 8:
         return text
 
-    # Long introductory modifiers: breathe after a complete time/location/
-    # circumstance phrase instead of rushing directly into the main clause.
     if "，" not in text[:28]:
         intro = re.match(
             r"((?:在|截至|隨著|由於|根據|按照|受)[^，。！？；]{7,26}?(?:後|前|時|期間|之際|下|中|內|方面))",
@@ -61,8 +66,6 @@ def _semantic_sentence_pauses(sentence):
             cut = intro.end()
             text = text[:cut] + "，" + text[cut:]
 
-    # Long subject phrases get one micro-pause before the reporting verb. For a
-    # shorter subject, pause after the reporting verb before a long object/clause.
     verb_match = re.search("|".join(_REPORTING_VERBS), text)
     if verb_match:
         before = text[:verb_match.start()]
@@ -73,13 +76,8 @@ def _semantic_sentence_pauses(sentence):
             pos = verb_match.end()
             text = text[:pos] + "，" + text[pos:]
 
-    # Key numerical data should land cleanly. Add a micro-pause after the full
-    # number+unit phrase, never split the number from its unit.
     text = _KEY_DATA_RE.sub(r"\1，", text)
 
-    # A long clause with very little punctuation gets one additional semantic
-    # break at a natural connector near the middle. This reduces cognitive load
-    # without turning every phrase into a separate TTS inference session.
     if len(text) >= 42 and text.count("，") < 2:
         for connector in _CONNECTORS:
             idx = text.find(connector, 16)
@@ -95,8 +93,6 @@ def _semantic_sentence_pauses(sentence):
 def _apply_semantic_pauses(text):
     out = str(text or "")
     out = out.replace(",", "，").replace(";", "；")
-    # Preserve sentence-ending punctuation while applying the rules sentence by
-    # sentence so a full stop remains a full beat and commas remain micro-pauses.
     parts = re.split(r"([。！？；])", out)
     rebuilt = []
     for idx in range(0, len(parts), 2):
@@ -167,6 +163,8 @@ def _policy_remote_reusable(previous, story, digest):
     if old.get("tempoPolicy") != voice_policy.TEMPO_POLICY:
         return False
     audio = str(old.get("audio") or "")
+    if voice_policy.ASSET_NAMESPACE and f"-{voice_policy.ASSET_NAMESPACE}-" not in audio:
+        return False
     if not audio.startswith(("https://", "http://")):
         return False
     try:
@@ -287,8 +285,6 @@ def _policy_synth(model, prompt, story, path):
         if pause_samples > 0:
             audio_parts.append(torch.zeros((1, pause_samples), dtype=audio.dtype))
 
-    # Do not post-stretch the waveform. Speaker age/timbre is more important
-    # than forcing every article into an artificial characters-per-second target.
     speech = torch.cat(audio_parts, dim=1).clamp(-1.0, 1.0)
     duration = speech.shape[1] / model.sample_rate
     max_reasonable = max(40.0, speech_chars * 0.70)
