@@ -24,16 +24,7 @@ GOLDEN_REFERENCE_URL = (
 REFERENCE_START_SECONDS = voice_policy.REFERENCE_START_SECONDS
 REFERENCE_DURATION_SECONDS = voice_policy.REFERENCE_DURATION_SECONDS
 VOICE_RANDOM_SEED = 20260823
-# CosyVoice's normal Chinese frontend deliberately works around an ~80-token
-# ceiling. To keep one model session per article without sending ~260 tokens
-# as one oversized tensor, stream conservative text chunks through CosyVoice2's
-# native inference_bistream path. The chunks are input transport only: they do
-# NOT create new cross-lingual inference sessions and therefore do not reset the
-# voice/language anchor halfway through an article.
 STREAM_INPUT_CHARS = 48
-TARGET_CHARS_PER_SECOND = 4.0
-MIN_TEMPO = 0.96
-MAX_TEMPO = 1.04
 
 _ORIGINAL_NORMALIZE = voice_base.normalize_for_tts
 
@@ -43,6 +34,79 @@ def _localized_normalize(value):
 
 
 voice_base.normalize_for_tts = _localized_normalize
+
+
+_REPORTING_VERBS = ("表示", "指出", "宣布", "稱", "認為", "警告", "強調", "證實")
+_CONNECTORS = ("同時", "另外", "其後", "不過", "然而", "而", "但", "以及", "並")
+_KEY_DATA_RE = re.compile(
+    r"([零一二三四五六七八九十百千萬億兆點]+(?:百分比|美元|港元|英鎊|歐元|日圓|公里|納米|級))"
+    r"(?=[^，。！？；：])"
+)
+
+
+def _semantic_sentence_pauses(sentence):
+    """Add punctuation-only anchor pauses without adding spoken instructions."""
+    text = str(sentence or "").strip()
+    if len(text) < 8:
+        return text
+
+    # Long introductory modifiers: breathe after a complete time/location/
+    # circumstance phrase instead of rushing directly into the main clause.
+    if "，" not in text[:28]:
+        intro = re.match(
+            r"((?:在|截至|隨著|由於|根據|按照|受)[^，。！？；]{7,26}?(?:後|前|時|期間|之際|下|中|內|方面))",
+            text,
+        )
+        if intro:
+            cut = intro.end()
+            text = text[:cut] + "，" + text[cut:]
+
+    # Long subject phrases get one micro-pause before the reporting verb. For a
+    # shorter subject, pause after the reporting verb before a long object/clause.
+    verb_match = re.search("|".join(_REPORTING_VERBS), text)
+    if verb_match:
+        before = text[:verb_match.start()]
+        after = text[verb_match.end():]
+        if len(before) >= 12 and not re.search(r"[，；：]", before[-14:]):
+            text = text[:verb_match.start()] + "，" + text[verb_match.start():]
+        elif len(after) >= 12 and after[:1] not in "，。！？；：":
+            pos = verb_match.end()
+            text = text[:pos] + "，" + text[pos:]
+
+    # Key numerical data should land cleanly. Add a micro-pause after the full
+    # number+unit phrase, never split the number from its unit.
+    text = _KEY_DATA_RE.sub(r"\1，", text)
+
+    # A long clause with very little punctuation gets one additional semantic
+    # break at a natural connector near the middle. This reduces cognitive load
+    # without turning every phrase into a separate TTS inference session.
+    if len(text) >= 42 and text.count("，") < 2:
+        for connector in _CONNECTORS:
+            idx = text.find(connector, 16)
+            if 16 <= idx <= len(text) - 10 and text[idx - 1:idx] not in "，；：。！？":
+                text = text[:idx] + "，" + text[idx:]
+                break
+
+    text = re.sub(r"，{2,}", "，", text)
+    text = re.sub(r"；{2,}", "；", text)
+    return text
+
+
+def _apply_semantic_pauses(text):
+    out = str(text or "")
+    out = out.replace(",", "，").replace(";", "；")
+    # Preserve sentence-ending punctuation while applying the rules sentence by
+    # sentence so a full stop remains a full beat and commas remain micro-pauses.
+    parts = re.split(r"([。！？；])", out)
+    rebuilt = []
+    for idx in range(0, len(parts), 2):
+        sentence = parts[idx]
+        mark = parts[idx + 1] if idx + 1 < len(parts) else ""
+        if sentence:
+            rebuilt.append(_semantic_sentence_pauses(sentence))
+        if mark:
+            rebuilt.append(mark)
+    return "".join(rebuilt)
 
 
 def _setup_model_golden():
@@ -98,6 +162,10 @@ def _policy_remote_reusable(previous, story, digest):
         return False
     if old.get("initialConditioningPolicy") != voice_policy.INITIAL_CONDITIONING_POLICY:
         return False
+    if old.get("pacingPolicy") != voice_policy.PACING_POLICY:
+        return False
+    if old.get("tempoPolicy") != voice_policy.TEMPO_POLICY:
+        return False
     audio = str(old.get("audio") or "")
     if not audio.startswith(("https://", "http://")):
         return False
@@ -132,7 +200,7 @@ def _anchor_script_segments(story):
     chunks = []
     used = 0
     for raw in values:
-        text = voice_base.normalize_for_tts(raw)
+        text = _apply_semantic_pauses(voice_base.normalize_for_tts(raw))
         if not text or used >= budget:
             continue
         remaining = budget - used
@@ -170,9 +238,9 @@ def _stable_segment_synth(model, prompt, item, index):
     torch.manual_seed(VOICE_RANDOM_SEED)
     print(
         f"segment={index} role={item['role']} chars={len(text)} "
-        f"mode={voice_base.VOICE_INFERENCE_MODE} input=single-session-bistream "
-        f"chunks={len(pieces)} speed={voice_base.VOICE_SPEED} "
-        f"reference_seconds={REFERENCE_DURATION_SECONDS}",
+        f"mode={voice_policy.INFERENCE_MODE} input=single-session-bistream "
+        f"chunks={len(pieces)} speed={voice_policy.VOICE_SPEED} "
+        f"reference_seconds={REFERENCE_DURATION_SECONDS} pacing={voice_policy.PACING_POLICY}",
         flush=True,
     )
 
@@ -191,7 +259,7 @@ def _stable_segment_synth(model, prompt, item, index):
                 token_text_stream(),
                 prompt,
                 stream=False,
-                speed=voice_base.VOICE_SPEED,
+                speed=voice_policy.VOICE_SPEED,
                 text_frontend=False,
             )
         ):
@@ -206,54 +274,24 @@ def _stable_segment_synth(model, prompt, item, index):
     return torch.cat(audio_chunks, dim=1), len(pieces)
 
 
-def _speech_units(text):
-    text = str(text or "")
-    cjk = len(re.findall(r"[\u3400-\u9fff]", text))
-    latin_words = len(re.findall(r"[A-Za-z]+", text))
-    numbers = len(re.findall(r"\d+", text))
-    return max(1, cjk + latin_words * 2 + numbers)
-
-
-def _stabilize_tempo(audio, text, sample_rate):
-    duration = audio.shape[1] / float(sample_rate)
-    units = _speech_units(text)
-    target_duration = max(1.2, units / TARGET_CHARS_PER_SECOND)
-    factor = duration / target_duration
-    factor = max(MIN_TEMPO, min(MAX_TEMPO, factor))
-    if 0.985 <= factor <= 1.015:
-        return audio, 1.0
-    try:
-        adjusted, _ = torchaudio.sox_effects.apply_effects_tensor(
-            audio,
-            sample_rate,
-            [["tempo", "-s", f"{factor:.4f}"]],
-        )
-        if adjusted.numel() > 0:
-            return adjusted, factor
-    except Exception as exc:
-        print(f"tempo-normalization skipped: {exc}", flush=True)
-    return audio, 1.0
-
-
 def _policy_synth(model, prompt, story, path):
     segments = _anchor_script_segments(story)
     speech_chars = sum(len(item["text"]) for item in segments)
     audio_parts = []
-    applied = []
     input_chunk_counts = []
     for index, item in enumerate(segments):
         audio, input_chunks = _stable_segment_synth(model, prompt, item, index)
         input_chunk_counts.append(input_chunks)
-        audio, factor = _stabilize_tempo(audio, item["text"], model.sample_rate)
-        applied.append(round(factor, 4))
         audio_parts.append(audio)
         pause_samples = int(round(model.sample_rate * item["pause"]))
         if pause_samples > 0:
             audio_parts.append(torch.zeros((1, pause_samples), dtype=audio.dtype))
 
+    # Do not post-stretch the waveform. Speaker age/timbre is more important
+    # than forcing every article into an artificial characters-per-second target.
     speech = torch.cat(audio_parts, dim=1).clamp(-1.0, 1.0)
     duration = speech.shape[1] / model.sample_rate
-    max_reasonable = max(40.0, speech_chars * 0.60)
+    max_reasonable = max(40.0, speech_chars * 0.70)
     if duration > max_reasonable:
         raise RuntimeError(
             f"audio suspiciously long: {story.get('title')} duration={duration:.3f}s limit={max_reasonable:.3f}s"
@@ -275,16 +313,18 @@ def _policy_synth(model, prompt, story, path):
         "referenceDurationSeconds": REFERENCE_DURATION_SECONDS,
         "initialConditioningPolicy": voice_policy.INITIAL_CONDITIONING_POLICY,
         "randomSeed": VOICE_RANDOM_SEED,
-        "inferenceMode": voice_base.VOICE_INFERENCE_MODE,
-        "speed": voice_base.VOICE_SPEED,
+        "inferenceMode": voice_policy.INFERENCE_MODE,
+        "speed": voice_policy.VOICE_SPEED,
         "instructionPolicy": "none-reference-only",
         "languageGate": voice_policy.LANGUAGE_GATE,
         "segmentPolicy": voice_policy.SEGMENT_POLICY,
+        "pacingPolicy": voice_policy.PACING_POLICY,
+        "tempoPolicy": voice_policy.TEMPO_POLICY,
+        "pauseMarkup": "punctuation-semantic",
         "inputTransport": "native-bistream-single-session",
         "streamInputChunkChars": STREAM_INPUT_CHARS,
         "streamInputChunkCounts": input_chunk_counts,
-        "tempoTargetCharsPerSecond": TARGET_CHARS_PER_SECOND,
-        "tempoFactors": applied,
+        "tempoFactors": [1.0],
     }
 
 
