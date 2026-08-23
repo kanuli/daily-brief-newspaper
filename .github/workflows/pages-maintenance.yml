@@ -5,6 +5,9 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/pages-maintenance.yml"
+      - "assets/js/system-panel.js"
+      - "assets/js/site-tts-v10.js"
+      - ".github/workflows/pages.yml"
   workflow_run:
     workflows: ["Deploy Daily Brief to GitHub Pages"]
     types: [completed]
@@ -25,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check Pages deployment health against public Live data
+      - name: Check Pages deployment health against public Live and runtime
         id: inspect
         env:
           GH_TOKEN: ${{ github.token }}
@@ -64,9 +67,42 @@ jobs:
           if [ -z "$EXPECTED" ] || [ "$PUBLIC" != "$EXPECTED" ]; then
             echo "restart=true" >> "$GITHUB_OUTPUT"
             echo "reason=public-live-behind-main" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          RUNTIME_OK=$(python - <<'PY'
+          import hashlib, pathlib, time, urllib.request
+          base='https://kanuli.github.io/daily-brief-newspaper/'
+          paths=['assets/js/system-panel.js','assets/js/site-tts-v10.js']
+          ok=True
+          for rel in paths:
+              local=pathlib.Path('/tmp/site')/rel
+              if not local.is_file():
+                  print('missing-local', rel)
+                  ok=False
+                  continue
+              expected=hashlib.sha256(local.read_bytes()).hexdigest()
+              try:
+                  req=urllib.request.Request(base+rel+'?v='+str(int(time.time())),headers={'Cache-Control':'no-cache','User-Agent':'daily-brief-pages-maintenance'})
+                  with urllib.request.urlopen(req,timeout=20) as response:
+                      actual=hashlib.sha256(response.read()).hexdigest()
+              except Exception as exc:
+                  print('runtime-fetch-error', rel, exc)
+                  ok=False
+                  continue
+              print('runtime', rel, 'expected', expected, 'public', actual)
+              if actual != expected:
+                  ok=False
+          print('1' if ok else '0')
+          PY
+          )
+          RUNTIME_OK=$(printf '%s\n' "$RUNTIME_OK" | tail -n 1)
+          if [ "$RUNTIME_OK" != "1" ]; then
+            echo "restart=true" >> "$GITHUB_OUTPUT"
+            echo "reason=public-runtime-behind-main" >> "$GITHUB_OUTPUT"
           else
             echo "restart=false" >> "$GITHUB_OUTPUT"
-            echo "reason=public-live-current" >> "$GITHUB_OUTPUT"
+            echo "reason=public-live-and-runtime-current" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Restart Pages deployment
