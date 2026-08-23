@@ -1,18 +1,63 @@
 #!/usr/bin/env python3
+import hashlib
 import json
+import re
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-import generate_cosyvoice_all as gen
 import tts_hktrad
 
 FIELDS = ("title", "dek", "summary", "body", "context", "background", "why", "whyImportant", "watchNext", "nextStep")
 DESK_ORDER = ["world", "asia", "hong-kong", "japan", "finance", "stock-news", "ai-tech", "manga-anime", "manchester-united", "football"]
 
 
+def clean(value):
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def safe_id(value):
+    raw = clean(value).lower()
+    raw = re.sub(r"[^a-z0-9._-]+", "-", raw).strip("-._")
+    return raw[:72] or "story-" + hashlib.sha256(clean(value).encode("utf-8")).hexdigest()[:16]
+
+
+def story_identity(story):
+    return safe_id(story.get("id") or story.get("articleId") or story.get("storyId") or story.get("title"))
+
+
+def looks_like_story(obj):
+    if not isinstance(obj, dict) or not clean(obj.get("title")):
+        return False
+    return any(clean(obj.get(key)) for key in FIELDS[1:])
+
+
+def walk_stories(node):
+    if isinstance(node, dict):
+        if looks_like_story(node):
+            yield node
+        for value in node.values():
+            yield from walk_stories(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from walk_stories(value)
+
+
+def load_json(path):
+    if not path.is_file():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def source_paths(date_value):
+    paths = [Path("data/latest.json"), Path("data/desk-latest.json"), Path("data/live.json"), Path("data/stocks-latest.json")]
+    if date_value:
+        paths.extend([Path(f"data/topic-more/{date_value}.json"), Path(f"data/editorial-overrides/{date_value}.json")])
+    return paths
+
+
 def desk_for(story):
-    desk = str(story.get("desk") or "").strip()
+    desk = clean(story.get("desk"))
     if desk:
         return desk
     slugs = story.get("deskSlugs") or []
@@ -22,24 +67,26 @@ def desk_for(story):
 
 
 def speech_text(story):
-    values=[]; seen=set()
+    values = []
+    seen = set()
     for key in FIELDS:
-        value=gen.clean(story.get(key))
+        value = clean(story.get(key))
         if value and value not in seen:
-            seen.add(value); values.append(value)
+            seen.add(value)
+            values.append(value)
     return "\n".join(values)
 
 
 def main():
-    latest, _ = gen.load_json(Path("data/latest.json"))
-    date_value = (latest or {}).get("date")
+    latest = load_json(Path("data/latest.json")) or {}
+    date_value = latest.get("date")
     by_title = {}
-    for path in gen.source_paths(date_value):
-        data, _ = gen.load_json(path)
+    for path in source_paths(date_value):
+        data = load_json(path)
         if data is None:
             continue
-        for story in gen.walk_stories(data):
-            title = gen.clean(story.get("title"))
+        for story in walk_stories(data):
+            title = clean(story.get("title"))
             if not title:
                 continue
             old = by_title.get(title)
@@ -53,17 +100,12 @@ def main():
     for title, story in by_title.items():
         desk = desk_for(story)
         total_count[desk] += 1
-        source = speech_text(story)
-        localized = tts_hktrad.localize(source)
+        localized = tts_hktrad.localize(speech_text(story))
         tokens = tts_hktrad.residual_latin_tokens(localized)
         if not tokens:
             clean_count[desk] += 1
             continue
-        grouped[desk].append({
-            "id": gen.story_identity(story),
-            "title": title,
-            "tokens": tokens,
-        })
+        grouped[desk].append({"id": story_identity(story), "title": title, "tokens": tokens})
         for token in tokens:
             token_counts[desk][token] += 1
 
@@ -96,12 +138,12 @@ def main():
         "desks": desks,
     }
     out = Path("/tmp/tts-language-audit.json")
-    out.write_text(json.dumps(report, ensure_ascii=False, indent=2)+"\n", encoding="utf-8")
+    out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({
         "storyCount": report["storyCount"],
         "cleanStoryCount": report["cleanStoryCount"],
         "unresolvedStoryCount": report["unresolvedStoryCount"],
-        "deskSummary": {k: {"clean": v["cleanStoryCount"], "total": v["storyCount"], "unresolved": v["unresolvedStoryCount"]} for k,v in desks.items()},
+        "deskSummary": {k: {"clean": v["cleanStoryCount"], "total": v["storyCount"], "unresolved": v["unresolvedStoryCount"]} for k, v in desks.items()},
     }, ensure_ascii=False, indent=2))
 
 
