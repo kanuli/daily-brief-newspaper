@@ -33,9 +33,13 @@ on:
 permissions:
   contents: write
 
+# v10 has its own concurrency namespace so a legacy v7/v8/v9 worker that is
+# stuck in the historical group cannot block the current-policy pool. Healthy
+# v10 workers are never cancelled by ordinary news/data pushes; progress-based
+# maintenance is responsible for recycling a genuinely stalled v10 pool.
 concurrency:
-  group: "cosyvoice2-yue-f01-current-news"
-  cancel-in-progress: true
+  group: "cosyvoice2-yue-f01-v10-current-news"
+  cancel-in-progress: false
 
 env:
   F01_RELEASE_TAG: f01-voice-cache
