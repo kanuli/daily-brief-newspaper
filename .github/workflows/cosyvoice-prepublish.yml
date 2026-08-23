@@ -56,6 +56,18 @@ jobs:
           ref: prepublish-news
           fetch-depth: 0
 
+      - name: Load latest approved F01 runtime from main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          rm -rf /tmp/f01-main
+          mkdir -p /tmp/f01-main
+          git archive origin/main scripts | tar -x -C /tmp/f01-main
+          test -f /tmp/f01-main/scripts/generate_cosyvoice_lead.py
+          test -f /tmp/f01-main/scripts/generate_cosyvoice_prepublish_shard_anchor.py
+          test -f /tmp/f01-main/scripts/publish_cosyvoice_prepublish_anchor.py
+
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
@@ -96,7 +108,7 @@ jobs:
           git clone --depth 1 --recursive https://github.com/ASLP-lab/WenetSpeech-Yue.git /tmp/WenetSpeech-Yue
           test -f /tmp/WenetSpeech-Yue/CosyVoice2-Yue/cosyvoice/cli/cosyvoice.py
 
-      - name: Prebuild verified draft voices independently
+      - name: Prebuild verified draft voices with natural news-anchor policy
         env:
           SLOT: ${{ matrix.slot }}
           GH_TOKEN: ${{ github.token }}
@@ -104,6 +116,8 @@ jobs:
           WSYUE_ROOT: /tmp/WenetSpeech-Yue
           COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
           COSY_ARTICLE_MAX_TEXT_CHARS: "260"
+          COSY_MAX_SEGMENT_CHARS: "120"
+          COSY_VOICE_SPEED: "1.0"
           COSY_SHARD_COUNT: "10"
           COSY_PUBLIC_AUDIO_BASE: ${{ env.F01_PUBLIC_BASE }}
         shell: bash
@@ -113,12 +127,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           for cycle in $(seq 1 5); do
-            echo "=== F01 prepublish slot ${SLOT} cycle ${cycle}/5 ==="
+            echo "=== F01 natural prepublish slot ${SLOT} cycle ${cycle}/5 ==="
             git fetch origin prepublish-news
             git reset --hard origin/prepublish-news
             rm -rf artifacts/cosyvoice-prepublish
 
-            COSY_SHARD_INDEX="${SLOT}" python scripts/generate_cosyvoice_prepublish_shard.py
+            COSY_SHARD_INDEX="${SLOT}" python /tmp/f01-main/scripts/generate_cosyvoice_prepublish_shard_anchor.py
             SHARD="artifacts/cosyvoice-prepublish/shard-${SLOT}.json"
             test -f "$SHARD"
 
@@ -128,7 +142,7 @@ jobs:
           sys.exit(0 if len(data.get('entries') or {}) == 0 else 1)
           PY
             then
-              echo "Prepublish slot ${SLOT} has no more verified draft work."
+              echo "Prepublish slot ${SLOT} has no more current-policy draft work."
               exit 0
             fi
 
@@ -142,24 +156,24 @@ jobs:
             )
             test -f "$ARTIFACT"
             gh release upload "$F01_RELEASE_TAG" "$ARTIFACT" --clobber --repo "${{ github.repository }}"
-            echo "Prepublish F01 release asset uploaded: $(basename "$ARTIFACT")"
+            echo "Prepublish natural F01 release asset uploaded: $(basename "$ARTIFACT")"
 
             published=false
             for attempt in 1 2 3 4 5 6 7 8; do
               git fetch origin prepublish-news
               git reset --hard origin/prepublish-news
-              python scripts/publish_cosyvoice_prepublish.py "/tmp/prepublish-shard-${SLOT}.json"
+              python /tmp/f01-main/scripts/publish_cosyvoice_prepublish_anchor.py "/tmp/prepublish-shard-${SLOT}.json"
               git add -- data/prepublish-tts-manifest.json
 
               if git diff --cached --quiet; then
-                echo "Draft changed or voice already prepared; release cleanup will remove any orphan asset later."
+                echo "Draft changed or current-policy voice already prepared; release cleanup will remove any orphan asset later."
                 published=true
                 break
               fi
 
-              git commit -m "Prebuild F01 voice slot ${SLOT} cycle ${cycle}"
+              git commit -m "Prebuild natural F01 voice slot ${SLOT} cycle ${cycle}"
               if git push origin HEAD:prepublish-news; then
-                echo "COSYVOICE_PREPUBLISH_PUSH_PASS slot=${SLOT} cycle=${cycle} storage=github-release"
+                echo "COSYVOICE_PREPUBLISH_ANCHOR_PUSH_PASS slot=${SLOT} cycle=${cycle} storage=github-release"
                 published=true
                 break
               fi
@@ -167,7 +181,7 @@ jobs:
             done
 
             if [ "$published" != "true" ]; then
-              echo "Could not publish prebuilt F01 manifest after retries." >&2
+              echo "Could not publish natural prebuilt F01 manifest after retries." >&2
               exit 1
             fi
           done
