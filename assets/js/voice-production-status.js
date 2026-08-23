@@ -5,15 +5,21 @@
   const WORKFLOW_API = "https://api.github.com/repos/kanuli/daily-brief-newspaper/actions/workflows/cosyvoice-publish.yml/runs?branch=main&per_page=6";
   const MAX_PARALLEL = 10;
   const MANIFEST_REFRESH_MS = 15000;
+  const INVENTORY_REFRESH_MS = 30000;
   const WORKFLOW_REFRESH_MS = 45000;
   const RECENT_PUBLISH_MS = 8 * 60 * 1000;
   const HARD_FAILURE_MS = 30 * 60 * 1000;
   const ACTIVE_STATUSES = new Set(["in_progress", "queued", "waiting", "pending", "requested"]);
+  const STORY_FIELDS = ["dek", "summary", "body", "context", "background", "why", "whyImportant", "watchNext", "nextStep"];
 
   let manifestTimer = null;
+  let inventoryTimer = null;
   let workflowTimer = null;
   let latestManifest = null;
+  let latestInventory = null;
   let latestWorkflows = [];
+
+  const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
 
   function ensureStyles() {
     if (document.getElementById("voice-production-status-style")) return;
@@ -33,11 +39,6 @@
     document.head.appendChild(style);
   }
 
-  function numberOr(value, fallback) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : fallback;
-  }
-
   function formatHKT(iso) {
     if (!iso) return "—";
     const date = new Date(iso);
@@ -48,13 +49,71 @@
     }).format(date) + " HKT";
   }
 
+  function looksLikeStory(obj) {
+    return !!(obj && typeof obj === "object" && !Array.isArray(obj) && clean(obj.title) && STORY_FIELDS.some((key) => clean(obj[key])));
+  }
+
+  function collectTitles(node, target) {
+    if (Array.isArray(node)) {
+      node.forEach((item) => collectTitles(item, target));
+      return;
+    }
+    if (!node || typeof node !== "object") return;
+    if (looksLikeStory(node)) target.add(clean(node.title));
+    Object.values(node).forEach((value) => collectTitles(value, target));
+  }
+
+  async function fetchJson(path) {
+    const url = new URL(path, document.baseURI);
+    url.searchParams.set("status", String(Date.now()));
+    const response = await fetch(url.href, { cache: "no-store" });
+    if (!response.ok) throw new Error(`${path} HTTP ${response.status}`);
+    return response.json();
+  }
+
+  async function loadInventory() {
+    try {
+      const latest = await fetchJson("data/latest.json");
+      const date = clean(latest?.date);
+      const paths = [
+        "data/desk-latest.json",
+        "data/live.json",
+        "data/stocks-latest.json",
+        ...(date ? [`data/topic-more/${date}.json`, `data/editorial-overrides/${date}.json`] : [])
+      ];
+      const results = await Promise.all(paths.map(async (path) => {
+        try { return await fetchJson(path); } catch (_) { return null; }
+      }));
+      const titles = new Set();
+      collectTitles(latest, titles);
+      results.forEach((data) => { if (data) collectTitles(data, titles); });
+      latestInventory = { date, titles, total: titles.size, loadedAt: new Date().toISOString() };
+    } catch (error) {
+      console.warn("Current news inventory unavailable", error);
+      latestInventory = null;
+    }
+    render();
+  }
+
   function manifestSnapshot(manifest) {
-    const fallbackDone = Object.keys(manifest?.articles || {}).length;
-    const done = Math.max(0, numberOr(manifest?.availableArticleCount ?? manifest?.articleCount, fallbackDone));
-    const total = Math.max(done, numberOr(manifest?.collectedStoryCount, done));
-    const pending = Math.max(0, numberOr(manifest?.pendingArticleCount, total - done));
+    const manifestEntries = Object.values(manifest?.articles || {});
+    const readyTitles = new Set(manifestEntries.filter((entry) => clean(entry?.audio)).map((entry) => clean(entry?.title)).filter(Boolean));
+
+    if (latestInventory?.total > 0) {
+      let done = 0;
+      latestInventory.titles.forEach((title) => { if (readyTitles.has(title)) done += 1; });
+      const total = latestInventory.total;
+      const pending = Math.max(0, total - done);
+      const percent = total > 0 ? Math.min(100, Math.max(0, (done / total) * 100)) : 0;
+      return { done, total, pending, percent, source: "current-inventory" };
+    }
+
+    const done = manifestEntries.filter((entry) => clean(entry?.audio)).length;
+    const manifestTotal = Number(manifest?.collectedStoryCount);
+    const total = Math.max(done, Number.isFinite(manifestTotal) ? manifestTotal : done);
+    const pending = Math.max(0, total - done);
     const percent = total > 0 ? Math.min(100, Math.max(0, (done / total) * 100)) : 0;
-    return { done, total, pending, percent };
+    return { done, total, pending, percent, source: "manifest-fallback" };
   }
 
   function workflowState() {
@@ -63,7 +122,6 @@
       if (active.status === "in_progress") return { state: "active", creating: null, label: "10-worker pool active" };
       return { state: "queued", creating: 0, label: "Worker pool queued / starting" };
     }
-
     const run = latestWorkflows[0];
     if (!run) return { state: "unknown", creating: null, label: "Checking workers" };
     if (run.status === "completed" && run.conclusion === "success") return { state: "idle", creating: 0, label: "Worker run completed" };
@@ -82,6 +140,8 @@
     const ageMs = Number.isFinite(lastPublish) ? Math.max(0, Date.now() - lastPublish) : Infinity;
     const recentlyPublishing = ageMs <= RECENT_PUBLISH_MS;
     const hardStale = ageMs >= HARD_FAILURE_MS;
+    const manifestDate = clean(latestManifest.date);
+    const inventoryDrift = !!(latestInventory?.date && manifestDate && latestInventory.date !== manifestDate);
 
     let creating = wf.creating;
     let state = wf.state;
@@ -92,42 +152,35 @@
     if (snap.pending > 0 && wf.state === "cancelled") {
       creating = 0;
       state = hardStale ? "failed" : "maintenance";
-      stateLabel = recentlyPublishing
-        ? "Previous run replaced · recent F01 publishing detected"
-        : hardStale
-          ? "Worker run cancelled · no F01 progress for 30+ min"
-          : "Worker run cancelled · auto maintenance will restart it";
+      stateLabel = hardStale ? "Worker cancelled · current F01 backlog is stale" : "Previous run replaced · auto maintenance checking replacement";
     }
-
     if (snap.pending > 0 && wf.state === "idle") {
       state = "maintenance";
-      stateLabel = "Worker run completed · auto maintenance continuing backlog";
+      stateLabel = "Worker ended · auto maintenance continuing current backlog";
     }
-
     if (snap.pending > 0 && wf.state === "failed") {
       state = hardStale ? "failed" : "maintenance";
-      stateLabel = hardStale
-        ? `${wf.label} · no F01 progress for 30+ min`
-        : `${wf.label} · auto maintenance retrying`;
+      stateLabel = hardStale ? `${wf.label} · current backlog has no recent F01 progress` : `${wf.label} · auto maintenance retrying`;
     }
-
     if (snap.pending > 0 && wf.state === "unknown" && recentlyPublishing) {
       state = "active";
       creating = null;
       stateLabel = "Recent F01 publishing detected · worker API pending";
     }
-
+    if (inventoryDrift && snap.pending > 0 && wf.state !== "active" && wf.state !== "queued") {
+      state = hardStale ? "failed" : "maintenance";
+      stateLabel = `Manifest ${manifestDate || "old"} ≠ current ${latestInventory.date} · auto maintenance repairing`;
+    }
     if (snap.pending === 0) {
       creating = 0;
       state = "complete";
-      stateLabel = "Coverage complete";
+      stateLabel = "Current news coverage complete";
     }
 
     row.classList.remove("status-ok", "status-check", "status-warn", "status-fail");
     row.classList.add(state === "complete" || state === "active" ? "status-ok" : state === "failed" ? "status-fail" : "status-warn");
 
-    const percentText = `${snap.percent.toFixed(1)}%`;
-    row.querySelector(".voice-progress-percent").textContent = percentText;
+    row.querySelector(".voice-progress-percent").textContent = `${snap.percent.toFixed(1)}%`;
     const progress = row.querySelector(".voice-progress-track");
     progress?.setAttribute("aria-valuenow", snap.percent.toFixed(1));
     row.querySelector(".voice-progress-fill").style.width = `${snap.percent.toFixed(2)}%`;
@@ -136,7 +189,8 @@
       ? `Creating ?/${snap.pending} pending`
       : `Creating ${creating}/${snap.pending} pending`;
     const maintenance = snap.pending > 0 ? " · Auto maintenance: ON" : "";
-    row.querySelector(".voice-progress-detail").textContent = `${stateLabel}${maintenance} · Last voice ${formatHKT(latestManifest.generatedAt)} · F01 only`;
+    const countSource = snap.source === "current-inventory" ? "current news inventory" : "manifest fallback";
+    row.querySelector(".voice-progress-detail").textContent = `${stateLabel}${maintenance} · ${countSource} · Last voice ${formatHKT(latestManifest.generatedAt)} · F01 only`;
 
     const systemLabel = document.querySelector("#system-status-button .system-status-label");
     if (systemLabel) systemLabel.textContent = "SYSTEM";
@@ -146,11 +200,7 @@
 
   async function loadManifest() {
     try {
-      const url = new URL(MANIFEST_PATH, document.baseURI);
-      url.searchParams.set("status", String(Date.now()));
-      const response = await fetch(url.href, { cache: "no-store" });
-      if (!response.ok) throw new Error(`manifest HTTP ${response.status}`);
-      latestManifest = await response.json();
+      latestManifest = await fetchJson(MANIFEST_PATH);
       render();
     } catch (error) {
       const row = document.getElementById("voice-production-status-row");
@@ -164,7 +214,7 @@
 
   async function loadWorkflow() {
     try {
-      const response = await fetch(WORKFLOW_API, { cache: "no-store", headers: { "Accept": "application/vnd.github+json" } });
+      const response = await fetch(`${WORKFLOW_API}&statusCache=${Date.now()}`, { cache: "no-store", headers: { "Accept": "application/vnd.github+json" } });
       if (!response.ok) throw new Error(`workflow HTTP ${response.status}`);
       const data = await response.json();
       latestWorkflows = Array.isArray(data.workflow_runs) ? data.workflow_runs : [];
@@ -177,15 +227,16 @@
 
   function stopLiveRefresh() {
     if (manifestTimer) window.clearInterval(manifestTimer);
+    if (inventoryTimer) window.clearInterval(inventoryTimer);
     if (workflowTimer) window.clearInterval(workflowTimer);
-    manifestTimer = null;
-    workflowTimer = null;
+    manifestTimer = inventoryTimer = workflowTimer = null;
   }
 
   function startLiveRefresh() {
     stopLiveRefresh();
-    loadManifest(); loadWorkflow();
+    loadManifest(); loadInventory(); loadWorkflow();
     manifestTimer = window.setInterval(loadManifest, MANIFEST_REFRESH_MS);
+    inventoryTimer = window.setInterval(loadInventory, INVENTORY_REFRESH_MS);
     workflowTimer = window.setInterval(loadWorkflow, WORKFLOW_REFRESH_MS);
   }
 
@@ -204,7 +255,7 @@
         <div class="voice-progress-top"><strong>Voice Creation</strong><span class="voice-progress-percent">—</span></div>
         <div class="voice-progress-track" role="progressbar" aria-label="F01 voice production progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="voice-progress-fill"></span></div>
         <small class="voice-progress-stats"><span class="voice-done">Done —/—</span><span class="voice-creating">Creating —/—</span></small>
-        <small class="voice-progress-detail">Loading production status…</small>
+        <small class="voice-progress-detail">Loading current news inventory…</small>
       </div>`;
 
     const cantoneseRow = Array.from(panel.querySelectorAll(".system-panel-row")).find((item) => item.textContent.includes("Cantonese Voice"));
@@ -217,7 +268,7 @@
     panel.querySelector(".system-panel-close")?.addEventListener("click", () => window.setTimeout(syncOpenState, 0));
     const observer = new MutationObserver(syncOpenState);
     observer.observe(panel, { attributes: true, attributeFilter: ["hidden"] });
-    loadManifest();
+    loadManifest(); loadInventory();
     return true;
   }
 
