@@ -10,6 +10,8 @@ on:
       - "data/stocks-latest.json"
       - "data/topic-more/**"
       - "data/editorial-overrides/**"
+      - "scripts/tts_hktrad.py"
+      - "scripts/tts_hktrad_v2.py"
       - "scripts/generate_cosyvoice_lead.py"
       - "scripts/generate_cosyvoice_all.py"
       - "scripts/generate_cosyvoice_shard.py"
@@ -165,7 +167,7 @@ jobs:
           WSYUE_ROOT: /tmp/WenetSpeech-Yue
           COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
           COSY_ARTICLE_MAX_TEXT_CHARS: "260"
-          COSY_MAX_SEGMENT_CHARS: "72"
+          COSY_MAX_SEGMENT_CHARS: "320"
           COSY_VOICE_SPEED: "1.0"
           COSY_SHARD_COUNT: "10"
           COSY_SHARD_ONE_ARTICLE: "1"
