@@ -4,7 +4,7 @@
   const BUTTON_TEXT = "🔊 廣東話朗讀";
   const STOP_TEXT = "■ 停止朗讀";
   const PENDING_TEXT = "⏳ F01 音訊準備中";
-  const MANIFEST_URL = "data/tts-manifest.json";
+  const MANIFEST_URL = "https://raw.githubusercontent.com/kanuli/daily-brief-newspaper/main/data/tts-manifest.json";
   const MANIFEST_REFRESH_MS = 15000;
   const PAGE_CACHE_KEY = Date.now();
 

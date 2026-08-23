@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const MANIFEST_PATH = "data/tts-manifest.json";
+  const MANIFEST_PATH = "https://raw.githubusercontent.com/kanuli/daily-brief-newspaper/main/data/tts-manifest.json";
   const WORKFLOW_API = "https://api.github.com/repos/kanuli/daily-brief-newspaper/actions/workflows/cosyvoice-publish.yml/runs?branch=main&per_page=6";
   const MAX_PARALLEL = 10;
   const MANIFEST_REFRESH_MS = 15000;

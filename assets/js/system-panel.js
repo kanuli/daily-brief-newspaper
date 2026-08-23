@@ -72,11 +72,11 @@
 
   function loadSiteTTS() {
     if (document.body.dataset.page === "archive") return;
-    inject("assets/js/site-tts-v5.js?v=20260823-0218release", "data-site-tts");
+    inject("assets/js/site-tts-v5.js?v=20260823-1340rawmanifest", "data-site-tts");
   }
 
   function loadVoiceProductionStatus() {
-    inject("assets/js/voice-production-status.js?v=20260823-1225dynamic", "data-voice-production-status");
+    inject("assets/js/voice-production-status.js?v=20260823-1340rawmanifest", "data-voice-production-status");
   }
 
   function playMainLeadFromClick(button) {
