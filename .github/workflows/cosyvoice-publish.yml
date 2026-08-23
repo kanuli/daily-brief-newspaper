@@ -108,7 +108,9 @@ jobs:
     needs: [ensure-release, promote-prebuilt]
     if: ${{ always() && needs.ensure-release.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    # Healthy CPU synthesis can take longer than 55 minutes across up to 12
+    # article cycles. Progress-based auto maintenance now handles true stalls.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       max-parallel: 10
