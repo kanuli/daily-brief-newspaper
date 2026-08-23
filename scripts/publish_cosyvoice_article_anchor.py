@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 import cosyvoice_policy as voice_policy
-import generate_cosyvoice_lead as voice_base
 import publish_cosyvoice_article as legacy
 
 POLICY = voice_policy.POLICY
@@ -15,6 +14,8 @@ REFERENCE_DURATION_SECONDS = voice_policy.REFERENCE_DURATION_SECONDS
 INITIAL_CONDITIONING_POLICY = voice_policy.INITIAL_CONDITIONING_POLICY
 LANGUAGE_GATE = voice_policy.LANGUAGE_GATE
 SEGMENT_POLICY = voice_policy.SEGMENT_POLICY
+PACING_POLICY = voice_policy.PACING_POLICY
+TEMPO_POLICY = voice_policy.TEMPO_POLICY
 
 
 def _valid_policy_entry(entry, digest=None):
@@ -33,6 +34,8 @@ def _valid_policy_entry(entry, digest=None):
         and reference_duration == REFERENCE_DURATION_SECONDS
         and entry.get("languageGate") == LANGUAGE_GATE
         and entry.get("segmentPolicy") == SEGMENT_POLICY
+        and entry.get("pacingPolicy") == PACING_POLICY
+        and entry.get("tempoPolicy") == TEMPO_POLICY
         and int(entry.get("segmentCount") or 0) == 1
     )
 
@@ -65,10 +68,12 @@ def _stamp_manifest():
         "referenceDurationSeconds": REFERENCE_DURATION_SECONDS,
         "initialConditioningPolicy": INITIAL_CONDITIONING_POLICY,
         "prosodyPolicy": POLICY,
-        "inferenceMode": voice_base.VOICE_INFERENCE_MODE,
-        "speed": voice_base.VOICE_SPEED,
+        "inferenceMode": voice_policy.INFERENCE_MODE,
+        "speed": voice_policy.VOICE_SPEED,
         "languageGate": LANGUAGE_GATE,
         "segmentPolicy": SEGMENT_POLICY,
+        "pacingPolicy": PACING_POLICY,
+        "tempoPolicy": TEMPO_POLICY,
     })
     articles = {
         article_id: entry for article_id, entry in (data.get("articles") or {}).items()
