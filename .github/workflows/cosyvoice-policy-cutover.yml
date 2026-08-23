@@ -1,0 +1,83 @@
+name: CosyVoice F01 Policy Cutover
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "scripts/cosyvoice_policy.py"
+      - ".github/workflows/cosyvoice-policy-cutover.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: "cosyvoice-f01-policy-cutover"
+  cancel-in-progress: true
+
+jobs:
+  cutover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout current policy history
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Cancel worker runs created before current voice policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          POLICY_EPOCH=$(git log -1 --format=%ct -- scripts/cosyvoice_policy.py)
+          echo "Current F01 policy epoch=${POLICY_EPOCH}"
+          gh run list --workflow cosyvoice-publish.yml --branch main --limit 40 \
+            --json status,databaseId,createdAt,headSha > /tmp/f01-runs.json
+
+          python - "$POLICY_EPOCH" <<'PY' > /tmp/cutover.env
+          import json, sys
+          from datetime import datetime, timezone
+          policy_epoch=int(sys.argv[1])
+          runs=json.load(open('/tmp/f01-runs.json',encoding='utf-8'))
+          obsolete=[]
+          current=[]
+          for run in runs:
+              if run.get('status') == 'completed':
+                  continue
+              try:
+                  created=int(datetime.fromisoformat(str(run.get('createdAt') or '').replace('Z','+00:00')).timestamp())
+              except Exception:
+                  continue
+              rid=str(run.get('databaseId') or '')
+              if not rid:
+                  continue
+              if created < policy_epoch:
+                  obsolete.append(rid)
+              else:
+                  current.append(rid)
+          print('OBSOLETE_IDS='+','.join(obsolete))
+          print('CURRENT_IDS='+','.join(current))
+          PY
+          source /tmp/cutover.env
+          echo "obsolete=${OBSOLETE_IDS:-none} current=${CURRENT_IDS:-none}"
+
+          if [ -n "${OBSOLETE_IDS}" ]; then
+            IFS=',' read -ra IDS <<< "$OBSOLETE_IDS"
+            for run_id in "${IDS[@]}"; do
+              [ -n "$run_id" ] || continue
+              echo "Cancelling obsolete pre-policy F01 run ${run_id}"
+              gh run cancel "$run_id" --repo "${{ github.repository }}" || true
+            done
+            sleep 8
+          fi
+
+          if [ -z "${CURRENT_IDS}" ]; then
+            echo "No current-policy F01 run is queued/running; dispatching one."
+            gh workflow run cosyvoice-publish.yml --repo "${{ github.repository }}" --ref main
+          else
+            echo "Current-policy F01 run already queued/running; preserving it."
+          fi
