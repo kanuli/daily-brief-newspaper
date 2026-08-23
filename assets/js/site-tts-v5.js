@@ -7,9 +7,11 @@
   const MANIFEST_URL = "https://raw.githubusercontent.com/kanuli/daily-brief-newspaper/main/data/tts-manifest.json";
   const MANIFEST_REFRESH_MS = 15000;
   const PAGE_CACHE_KEY = Date.now();
-  const REQUIRED_POLICY = "f01-news-anchor-v6-single-inference-hktrad";
+  const REQUIRED_POLICY = "f01-news-anchor-v7-short-prompt-bistream-hktrad";
   const REQUIRED_LANGUAGE_GATE = "residual-latin-zero";
   const REQUIRED_SEGMENT_POLICY = "single-inference-per-article";
+  const REQUIRED_CONDITIONING_POLICY = "short-reference-bistream";
+  const REQUIRED_REFERENCE_SECONDS = 5;
 
   let activeButton = null;
   let manifestPromise = null;
@@ -82,6 +84,8 @@
       entry?.prosodyPolicy === REQUIRED_POLICY &&
       entry?.languageGate === REQUIRED_LANGUAGE_GATE &&
       entry?.segmentPolicy === REQUIRED_SEGMENT_POLICY &&
+      entry?.initialConditioningPolicy === REQUIRED_CONDITIONING_POLICY &&
+      Number(entry?.referenceDurationSeconds) === REQUIRED_REFERENCE_SECONDS &&
       Number(entry?.segmentCount) === 1
     );
   }
@@ -143,6 +147,8 @@
     if (manifest?.prosodyPolicy !== REQUIRED_POLICY) throw new Error("Outdated TTS policy");
     if (manifest?.languageGate !== REQUIRED_LANGUAGE_GATE) throw new Error("TTS language gate missing");
     if (manifest?.segmentPolicy !== REQUIRED_SEGMENT_POLICY) throw new Error("TTS segment policy missing");
+    if (manifest?.initialConditioningPolicy !== REQUIRED_CONDITIONING_POLICY) throw new Error("TTS conditioning policy missing");
+    if (Number(manifest?.referenceDurationSeconds) !== REQUIRED_REFERENCE_SECONDS) throw new Error("Outdated TTS reference duration");
     return manifest;
   }
 
@@ -152,7 +158,8 @@
       manifest?.availableArticleCount ?? manifest?.articleCount ?? Object.keys(manifest?.articles || {}).length,
       manifest?.pendingArticleCount ?? "",
       manifest?.sourceSetSha256 || "",
-      manifest?.prosodyPolicy || ""
+      manifest?.prosodyPolicy || "",
+      manifest?.referenceDurationSeconds ?? ""
     ].join("|");
   }
 
