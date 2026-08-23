@@ -13,6 +13,8 @@ REFERENCE_DURATION_SECONDS = voice_policy.REFERENCE_DURATION_SECONDS
 INITIAL_CONDITIONING_POLICY = voice_policy.INITIAL_CONDITIONING_POLICY
 LANGUAGE_GATE = voice_policy.LANGUAGE_GATE
 SEGMENT_POLICY = voice_policy.SEGMENT_POLICY
+PACING_POLICY = voice_policy.PACING_POLICY
+TEMPO_POLICY = voice_policy.TEMPO_POLICY
 _ORIGINAL_INDEX = legacy.index_entries
 
 
@@ -28,6 +30,8 @@ def _valid_entry(entry):
         and reference_duration == REFERENCE_DURATION_SECONDS
         and entry.get("languageGate") == LANGUAGE_GATE
         and entry.get("segmentPolicy") == SEGMENT_POLICY
+        and entry.get("pacingPolicy") == PACING_POLICY
+        and entry.get("tempoPolicy") == TEMPO_POLICY
         and int(entry.get("segmentCount") or 0) == 1
     )
 
@@ -55,6 +59,8 @@ def _stamp_manifest():
         "initialConditioningPolicy": INITIAL_CONDITIONING_POLICY,
         "languageGate": LANGUAGE_GATE,
         "segmentPolicy": SEGMENT_POLICY,
+        "pacingPolicy": PACING_POLICY,
+        "tempoPolicy": TEMPO_POLICY,
     })
     articles = {
         article_id: entry for article_id, entry in (data.get("articles") or {}).items()
