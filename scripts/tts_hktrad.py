@@ -48,7 +48,11 @@ REPLACEMENTS = [
     ("ASEAN", "東盟"),
     ("APEC", "亞太經合組織"),
 
+    # Hong Kong / compact identifiers that must be resolved before number handling
+    ("MU88", "都大八十八學生宿舍"),
+
     # Finance / economics
+    ("£51m", "五千一百萬英鎊"),
     ("Federal Reserve", "美國聯儲局"),
     ("Fed", "美國聯儲局"),
     ("FOMC", "美國聯儲局公開市場委員會"),
@@ -81,6 +85,13 @@ REPLACEMENTS = [
     ("API", "應用程式介面"),
     ("cloud", "雲端"),
     ("Cloud", "雲端"),
+
+    # Manga / anime — visible copy and speech both use Traditional Chinese
+    ("ONE PIECE FILM GOD VALLEY", "海賊王劇場版：神之谷"),
+    ("ONE PIECE FILM BAAD", "海賊王劇場版：巴德（暫譯）"),
+    ("ONE PIECE FILM RED", "海賊王劇場版：紅髮歌姬"),
+    ("ONE PIECE DAY", "海賊王日"),
+    ("ONE PIECE", "海賊王"),
 
     # Japan football — Hong Kong sports-media naming
     ("JEF United Chiba", "千葉市原"),
