@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Promote only exact-current F01 audio built under the current news-anchor policy."""
+"""Promote only exact-current F01 audio built under the stable-tempo policy."""
 import json
 from pathlib import Path
 
 import generate_cosyvoice_lead as voice_base
 import promote_cosyvoice_prepublish_fast as legacy
 
-POLICY = voice_base.VOICE_POLICY_VERSION
+POLICY = "f01-news-anchor-v3-stable-tempo"
 _ORIGINAL_INDEX = legacy.index_entries
 
 
@@ -30,9 +30,8 @@ def _stamp_manifest():
         "inferenceMode": voice_base.VOICE_INFERENCE_MODE,
         "speed": voice_base.VOICE_SPEED,
     })
-    articles = data.get("articles") or {}
     articles = {
-        article_id: entry for article_id, entry in articles.items()
+        article_id: entry for article_id, entry in (data.get("articles") or {}).items()
         if isinstance(entry, dict) and entry.get("prosodyPolicy") == POLICY
     }
     data["articles"] = articles
