@@ -31,6 +31,21 @@ CAPS = {
     "manchester-united": 6,
     "football": 12,
 }
+DESK_ALIASES = {
+    "world": ["world"],
+    "asia": ["asia"],
+    "hong-kong": ["hong-kong"],
+    "japan": ["japan"],
+    "finance": ["market-economy"],
+    "market-economy": ["market-economy"],
+    "ai-tech": ["ai-tech"],
+    "manga-anime": ["manga-anime"],
+    "manchester-united": ["manchester-united"],
+    "football": ["football"],
+    # Stock News has its own tracked-ticker data stream and is not copied into
+    # the geographic/editorial rolling desks.
+    "stock-news": [],
+}
 REQUIRED = (
     "title", "dek", "summary", "body", "context", "why", "watchNext",
     "sourceName", "sourceUrl", "timeLabel",
@@ -45,6 +60,13 @@ FORBIDDEN = re.compile(
 
 def load(path):
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def desk_slugs(item):
+    explicit = item.get("deskSlugs")
+    if isinstance(explicit, list) and explicit:
+        return list(dict.fromkeys(str(slug) for slug in explicit if slug in FLOORS))
+    return DESK_ALIASES.get(str(item.get("desk") or ""), [])
 
 
 def main():
@@ -67,11 +89,11 @@ def main():
         if FORBIDDEN.search(public):
             raise SystemExit(f"Live item {item.get('id')} contains process copy")
 
-        for slug in item.get("deskSlugs", []):
-            if slug not in desks:
-                continue
+        slugs = desk_slugs(item)
+        for slug in slugs:
             story = copy.deepcopy(item)
             story["status"] = "LATEST"
+            story["deskSlugs"] = list(dict.fromkeys(slugs))
             desks[slug] = [s for s in desks[slug] if s.get("id") != story.get("id")]
             desks[slug].insert(0, story)
             desks[slug] = desks[slug][:CAPS[slug]]
