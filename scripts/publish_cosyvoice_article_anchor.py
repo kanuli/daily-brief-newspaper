@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Immediate production manifest publisher for the current F01 news-anchor policy."""
+"""Immediate production manifest publisher for the stable-tempo F01 news-anchor policy."""
 import json
 from pathlib import Path
 
 import generate_cosyvoice_lead as voice_base
 import publish_cosyvoice_article as legacy
 
-POLICY = voice_base.VOICE_POLICY_VERSION
+POLICY = "f01-news-anchor-v3-stable-tempo"
 
 
 def _policy_reusable_previous(previous, story, digest):
@@ -21,7 +21,7 @@ def _policy_reusable_previous(previous, story, digest):
             return old
         except Exception:
             return None
-    return legacy.gen.reusable_entry(previous, story, digest)
+    return None
 
 
 def _stamp_manifest():
@@ -35,10 +35,8 @@ def _stamp_manifest():
         "inferenceMode": voice_base.VOICE_INFERENCE_MODE,
         "speed": voice_base.VOICE_SPEED,
     })
-    articles = data.get("articles") or {}
-    # Only policy-compliant entries are allowed to remain after this rollout.
     articles = {
-        article_id: entry for article_id, entry in articles.items()
+        article_id: entry for article_id, entry in (data.get("articles") or {}).items()
         if isinstance(entry, dict) and entry.get("prosodyPolicy") == POLICY
     }
     data["articles"] = articles
