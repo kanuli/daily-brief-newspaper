@@ -17,11 +17,12 @@ def patch(path, transform):
 
 
 def patch_base(text):
-    if "import tts_hktrad" not in text:
+    text = text.replace("import tts_hktrad\n", "import tts_hktrad_v2 as tts_hktrad\n")
+    if "import tts_hktrad_v2 as tts_hktrad" not in text:
         marker = "from huggingface_hub import snapshot_download\n"
         if marker not in text:
             raise SystemExit("generate_cosyvoice_lead.py import marker missing")
-        text = text.replace(marker, marker + "\nimport tts_hktrad\n", 1)
+        text = text.replace(marker, marker + "\nimport tts_hktrad_v2 as tts_hktrad\n", 1)
     marker = "def normalize_for_tts(value):\n    text = clean_text(value)\n"
     replacement = "def normalize_for_tts(value):\n    text = tts_hktrad.localize(clean_text(value))\n"
     if marker in text:
@@ -31,7 +32,13 @@ def patch_base(text):
     return text
 
 
+def patch_audit(text):
+    text = text.replace("import tts_hktrad\n", "import tts_hktrad_v2 as tts_hktrad\n")
+    return text
+
+
 patch(ROOT / "scripts/generate_cosyvoice_lead.py", patch_base)
+patch(ROOT / "scripts/audit_tts_language.py", patch_audit)
 
 for rel in [
     "scripts/generate_cosyvoice_shard_anchor.py",
