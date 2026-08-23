@@ -22,9 +22,11 @@ permissions:
   actions: write
   contents: read
 
+# Never let a newer watchdog event kill a watchdog that is already cancelling
+# a stale worker pool and dispatching its replacement.
 concurrency:
   group: "cosyvoice-f01-auto-maintenance"
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   watchdog:
@@ -37,7 +39,7 @@ jobs:
           ref: main
           fetch-depth: 1
 
-      - name: Inspect CURRENT news inventory and worker health
+      - name: Inspect CURRENT inventory and real F01 progress
         id: inspect
         env:
           GH_TOKEN: ${{ github.token }}
@@ -93,24 +95,33 @@ jobs:
                       titles.add(title)
 
           manifest = load(Path("data/tts-manifest.json")) or {}
-          manifest_articles = manifest.get("articles") or {}
+          entries = manifest.get("articles") or {}
           ready_titles = {
               clean(entry.get("title"))
-              for entry in manifest_articles.values()
+              for entry in entries.values()
               if isinstance(entry, dict) and clean(entry.get("title")) and str(entry.get("audio") or "")
           }
           current_done = len(titles & ready_titles)
           current_total = len(titles)
           current_pending = max(0, current_total - current_done)
-          manifest_done = int(manifest.get("availableArticleCount") or manifest.get("articleCount") or len(manifest_articles) or 0)
+          manifest_done = int(manifest.get("availableArticleCount") or manifest.get("articleCount") or len(entries) or 0)
           manifest_total = int(manifest.get("collectedStoryCount") or manifest_done)
           manifest_date = str(manifest.get("date") or "")
-          generated = str(manifest.get("generatedAt") or "")
-          age = 10**9
-          if generated:
+
+          # Progress means a real article WAV publish, never a reconcile timestamp.
+          published = str(manifest.get("lastVoicePublishedAt") or "")
+          if not published:
+              article_times = sorted(
+                  str(entry.get("publishedAt") or "")
+                  for entry in entries.values()
+                  if isinstance(entry, dict) and entry.get("publishedAt")
+              )
+              published = article_times[-1] if article_times else ""
+          progress_age = 10**9
+          if published:
               try:
-                  then = datetime.fromisoformat(generated.replace("Z", "+00:00"))
-                  age = max(0, int((datetime.now(timezone.utc) - then).total_seconds()))
+                  then = datetime.fromisoformat(published.replace("Z", "+00:00"))
+                  progress_age = max(0, int((datetime.now(timezone.utc) - then).total_seconds()))
               except Exception:
                   pass
 
@@ -121,25 +132,44 @@ jobs:
           print(f"MANIFEST_DATE={manifest_date}")
           print(f"MANIFEST_TOTAL={manifest_total}")
           print(f"MANIFEST_DONE={manifest_done}")
-          print(f"AGE_SECONDS={age}")
+          print(f"LAST_VOICE_PUBLISHED_AT={published}")
+          print(f"PROGRESS_AGE_SECONDS={progress_age}")
           PY
           source /tmp/voice-state.env
 
-          echo "Current inventory: done=${CURRENT_DONE}/${CURRENT_TOTAL}, pending=${CURRENT_PENDING}; manifest=${MANIFEST_DONE}/${MANIFEST_TOTAL} date=${MANIFEST_DATE}; current_date=${CURRENT_DATE}; last-publish-age=${AGE_SECONDS}s"
-
-          if [ "${CURRENT_TOTAL}" -gt 0 ] && [ "${CURRENT_PENDING}" -le 0 ] && [ "${CURRENT_DATE}" = "${MANIFEST_DATE}" ]; then
-            echo "restart=false" >> "$GITHUB_OUTPUT"
-            echo "reason=current-coverage-complete" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          echo "Current F01: done=${CURRENT_DONE}/${CURRENT_TOTAL}, pending=${CURRENT_PENDING}; manifest=${MANIFEST_DONE}/${MANIFEST_TOTAL}; last real WAV=${LAST_VOICE_PUBLISHED_AT:-none}; progress-age=${PROGRESS_AGE_SECONDS}s"
 
           RUNS_JSON=$(gh run list --workflow cosyvoice-publish.yml --branch main --limit 20 --json status,conclusion,databaseId,createdAt,updatedAt)
-          ACTIVE_COUNT=$(python -c 'import json,sys; runs=json.load(sys.stdin); print(sum(1 for r in runs if r.get("status") != "completed"))' <<< "$RUNS_JSON")
-          echo "Active/queued F01 production runs: ${ACTIVE_COUNT}"
+          python - <<'PY' <<< "$RUNS_JSON" > /tmp/active-state.env
+          import json, sys
+          from datetime import datetime, timezone
+          runs=json.load(sys.stdin)
+          now=datetime.now(timezone.utc)
+          active=[r for r in runs if r.get('status') != 'completed']
+          ages=[]
+          for r in active:
+              try:
+                  t=datetime.fromisoformat(str(r.get('createdAt') or '').replace('Z','+00:00'))
+                  ages.append(max(0,int((now-t).total_seconds())))
+              except Exception:
+                  pass
+          ids=','.join(str(r.get('databaseId')) for r in active if r.get('databaseId'))
+          print(f"ACTIVE_COUNT={len(active)}")
+          print(f"ACTIVE_OLDEST_AGE_SECONDS={max(ages) if ages else 0}")
+          print(f"ACTIVE_IDS={ids}")
+          PY
+          source /tmp/active-state.env
+          echo "Active/queued F01 runs=${ACTIVE_COUNT}; oldest-active-age=${ACTIVE_OLDEST_AGE_SECONDS}s; ids=${ACTIVE_IDS:-none}"
 
-          if [ "${ACTIVE_COUNT}" -gt 0 ]; then
-            echo "restart=false" >> "$GITHUB_OUTPUT"
-            echo "reason=worker-active" >> "$GITHUB_OUTPUT"
+          # Thresholds are deliberately based on output progress, not merely run state.
+          PROGRESS_STALE_SECONDS=900
+          STARTUP_GRACE_SECONDS=1200
+
+          echo "restart=false" >> "$GITHUB_OUTPUT"
+          echo "cancel_ids=" >> "$GITHUB_OUTPUT"
+
+          if [ "${CURRENT_TOTAL}" -gt 0 ] && [ "${CURRENT_PENDING}" -le 0 ] && [ "${CURRENT_DATE}" = "${MANIFEST_DATE}" ]; then
+            echo "reason=current-coverage-complete" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -148,24 +178,56 @@ jobs:
             DRIFT=true
           fi
 
-          RESTART=false
-          REASON=""
+          if [ "${CURRENT_PENDING}" -gt 0 ] && [ "${ACTIVE_COUNT}" -gt 0 ]; then
+            if [ "${PROGRESS_AGE_SECONDS}" -le "${PROGRESS_STALE_SECONDS}" ]; then
+              echo "reason=worker-active-with-recent-f01-progress" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "${ACTIVE_OLDEST_AGE_SECONDS}" -lt "${STARTUP_GRACE_SECONDS}" ]; then
+              echo "reason=worker-startup-grace-no-f01-yet" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
 
-          # Any completed worker run with a CURRENT backlog needs a replacement.
-          # This includes failure/timed_out, not only success/cancelled.
-          if [ "${EVENT_NAME}" = "workflow_run" ] && [ "${CURRENT_PENDING}" -gt 0 ]; then
-            RESTART=true
-            REASON="worker-ended-with-current-backlog-${EVENT_CONCLUSION:-unknown}"
-          elif [ "${DRIFT}" = "true" ] && [ "${CURRENT_PENDING}" -gt 0 ]; then
-            RESTART=true
-            REASON="current-news-inventory-drift"
-          elif [ "${CURRENT_PENDING}" -gt 0 ] && [ "${AGE_SECONDS}" -ge 300 ]; then
-            RESTART=true
-            REASON="no-active-worker-and-f01-stale"
+            # A pool that exists but has produced no WAV for 15m after a 20m startup
+            # window is not healthy. Cancel the stale pool/queue and replace it.
+            echo "restart=true" >> "$GITHUB_OUTPUT"
+            echo "cancel_ids=${ACTIVE_IDS}" >> "$GITHUB_OUTPUT"
+            echo "reason=active-worker-stuck-no-f01-progress" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-          echo "restart=${RESTART}" >> "$GITHUB_OUTPUT"
-          echo "reason=${REASON:-healthy-grace-window}" >> "$GITHUB_OUTPUT"
+          if [ "${CURRENT_PENDING}" -gt 0 ]; then
+            if [ "${EVENT_NAME}" = "workflow_run" ]; then
+              echo "restart=true" >> "$GITHUB_OUTPUT"
+              echo "reason=worker-ended-with-current-backlog-${EVENT_CONCLUSION:-unknown}" >> "$GITHUB_OUTPUT"
+            elif [ "${DRIFT}" = "true" ]; then
+              echo "restart=true" >> "$GITHUB_OUTPUT"
+              echo "reason=current-news-inventory-drift" >> "$GITHUB_OUTPUT"
+            elif [ "${PROGRESS_AGE_SECONDS}" -ge 300 ]; then
+              echo "restart=true" >> "$GITHUB_OUTPUT"
+              echo "reason=no-active-worker-and-f01-stale" >> "$GITHUB_OUTPUT"
+            else
+              echo "reason=no-active-worker-progress-grace" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "reason=healthy-no-current-backlog" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cancel stale F01 worker pool
+        if: steps.inspect.outputs.cancel_ids != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IDS: ${{ steps.inspect.outputs.cancel_ids }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          IFS=',' read -ra RUN_IDS <<< "$IDS"
+          for run_id in "${RUN_IDS[@]}"; do
+            [ -n "$run_id" ] || continue
+            echo "Cancelling stale F01 run ${run_id}"
+            gh run cancel "$run_id" --repo "${{ github.repository }}" || true
+          done
+          sleep 5
 
       - name: Restart F01 production automatically
         if: steps.inspect.outputs.restart == 'true'
@@ -174,8 +236,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "Auto maintenance restart: ${{ steps.inspect.outputs.reason }}"
-          gh workflow run cosyvoice-publish.yml --ref main
+          echo "F01 auto maintenance restart: ${{ steps.inspect.outputs.reason }}"
+          gh workflow run cosyvoice-publish.yml --repo "${{ github.repository }}" --ref main
           echo "COSYVOICE_AUTO_MAINTENANCE_RESTART_DISPATCHED reason=${{ steps.inspect.outputs.reason }}"
 
       - name: Healthy / no action required
