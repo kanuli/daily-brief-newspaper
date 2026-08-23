@@ -18,6 +18,7 @@
   let manifest = null;
   let activeButton = null;
   let timer = null;
+  let refreshQueued = false;
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
@@ -173,6 +174,20 @@
 
   function refreshButtons() { $$("main article").forEach(configure); }
 
+  function containsArticle(node) {
+    return node instanceof Element && (node.matches("article") || !!node.querySelector("article"));
+  }
+
+  function queueButtonRefresh() {
+    if (refreshQueued) return;
+    refreshQueued = true;
+    const schedule = window.requestAnimationFrame || ((callback) => window.setTimeout(callback, 0));
+    schedule(() => {
+      refreshQueued = false;
+      refreshButtons();
+    });
+  }
+
   async function refreshManifest() {
     try {
       const url = new URL(MANIFEST_URL, document.baseURI);
@@ -210,7 +225,10 @@
     refreshManifest();
     if (timer) clearInterval(timer);
     timer = setInterval(refreshManifest, REFRESH_MS);
-    const observer = new MutationObserver(() => refreshButtons());
+    const observer = new MutationObserver((mutations) => {
+      const articleAdded = mutations.some((mutation) => [...mutation.addedNodes].some(containsArticle));
+      if (articleAdded) queueButtonRefresh();
+    });
     observer.observe(document.body, { childList: true, subtree: true });
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") refreshManifest();
