@@ -15,15 +15,29 @@
       ]);
   }
 
+  function makeUnitRules(pairs) {
+    return [...(pairs || [])]
+      .sort((a, b) => String(b?.[0] || "").length - String(a?.[0] || "").length)
+      .filter((item) => Array.isArray(item) && item.length >= 2 && item[0])
+      .map(([source, target]) => [
+        // Units are commonly attached directly to digits, e.g. 2nm. Only
+        // alphabetic neighbours block the replacement.
+        new RegExp(`(?<![A-Za-z])${escapeRegExp(source)}(?![A-Za-z])`, "gi"),
+        String(target || ""),
+      ]);
+  }
+
   function buildLocalizer(data) {
     const baseRules = makeRules(data?.baseReplacements, "gi");
     const shortRules = makeRules(Object.entries(data?.shortAcronyms || {}), "g");
     const overrideRules = makeRules(data?.overrides, "gi");
+    const unitRules = makeUnitRules(data?.unitReplacements);
     return (value) => {
       let out = String(value || "");
       for (const [pattern, target] of baseRules) out = out.replace(pattern, target);
       for (const [pattern, target] of shortRules) out = out.replace(pattern, target);
       for (const [pattern, target] of overrideRules) out = out.replace(pattern, target);
+      for (const [pattern, target] of unitRules) out = out.replace(pattern, target);
       return out;
     };
   }
