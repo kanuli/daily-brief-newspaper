@@ -14,7 +14,7 @@ import torch
 import torchaudio
 from huggingface_hub import snapshot_download
 
-import tts_hktrad
+import tts_hktrad_v2 as tts_hktrad
 
 # Production speech policy: reference-audio-only Cantonese synthesis.
 # Do NOT send a textual style/language instruction to CosyVoice2. Instruct2 can
