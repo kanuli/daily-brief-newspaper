@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+"""Traditional-Chinese localization for Cantonese TTS.
+
+Display copy may keep official English/romanized names, but the speech script
+should use established Hong Kong Traditional-Chinese names wherever possible.
+Taiwan Traditional-Chinese names are used only when Hong Kong has no stable
+local form. The final speech string is audited for residual Latin words so we
+can expand this table instead of asking CosyVoice to guess pronunciation.
+"""
+from __future__ import annotations
+
+import re
+
+# Longest/specific phrases first. These are speech-only substitutions.
+# HK usage examples include RTHK/Now/on.cc naming such as 卡尼、美墨加貿易協定、
+# FC東京、千葉市原、川崎前鋒、柏雷素爾、長崎成功丸、曼聯、侯城；
+# Nvidia is rendered 輝達 following Traditional-Chinese Hong Kong usage.
+REPLACEMENTS = [
+    # World / North America / institutions
+    ("Long Island Expressway", "長島高速公路"),
+    ("Associated Press", "美聯社"),
+    ("Mark Carney", "卡尼"),
+    ("Long Island", "長島"),
+    ("Atlantic Beach", "大西洋海灘"),
+    ("Sandy Hook", "桑迪胡克"),
+    ("Alex Jones", "亞歷斯鍾斯"),
+    ("Connecticut", "康涅狄格州"),
+    ("Delaware", "特拉華州"),
+    ("Queens", "皇后區"),
+    ("Dover", "多佛"),
+    ("USMCA", "美墨加貿易協定"),
+    ("NASA", "美國太空總署"),
+    ("Reuters", "路透社"),
+    ("The Guardian", "英國衛報"),
+    ("BBC", "英國廣播公司"),
+    ("CNN", "美國有線新聞網絡"),
+    ("ABC", "美國廣播公司"),
+    ("CBS", "哥倫比亞廣播公司"),
+    ("NBC", "全國廣播公司"),
+    ("UN", "聯合國"),
+    ("WHO", "世界衛生組織"),
+    ("WTO", "世界貿易組織"),
+    ("IMF", "國際貨幣基金組織"),
+    ("NATO", "北約"),
+    ("EU", "歐盟"),
+    ("ASEAN", "東盟"),
+    ("APEC", "亞太經合組織"),
+
+    # Finance / economics
+    ("Federal Reserve", "美國聯儲局"),
+    ("Fed", "美國聯儲局"),
+    ("FOMC", "美國聯儲局公開市場委員會"),
+    ("ECB", "歐洲中央銀行"),
+    ("BOJ", "日本銀行"),
+    ("HKMA", "香港金融管理局"),
+    ("GDP", "本地生產總值"),
+    ("CPI", "消費物價指數"),
+    ("PPI", "生產物價指數"),
+    ("IPO", "首次公開招股"),
+    ("ETF", "交易所買賣基金"),
+    ("SEC", "美國證券交易委員會"),
+    ("FDA", "美國食品藥物管理局"),
+
+    # Technology / AI
+    ("NVIDIA", "輝達"),
+    ("Nvidia", "輝達"),
+    ("Microsoft", "微軟"),
+    ("Apple", "蘋果公司"),
+    ("Amazon", "亞馬遜"),
+    ("Meta", "Meta公司"),
+    ("OpenAI", "開放人工智能公司"),
+    ("ChatGPT", "人工智能聊天機械人"),
+    ("Google", "谷歌"),
+    ("Android", "安卓"),
+    ("iPhone", "蘋果手機"),
+    ("AI", "人工智能"),
+    ("GPU", "圖像處理器"),
+    ("CPU", "中央處理器"),
+    ("API", "應用程式介面"),
+    ("cloud", "雲端"),
+    ("Cloud", "雲端"),
+
+    # Japan football — Hong Kong sports-media naming
+    ("JEF United Chiba", "千葉市原"),
+    ("JEF Chiba", "千葉市原"),
+    ("Kawasaki Frontale", "川崎前鋒"),
+    ("Kashiwa Reysol", "柏雷素爾"),
+    ("V-Varen Nagasaki", "長崎成功丸"),
+    ("V Varen Nagasaki", "長崎成功丸"),
+    ("FC Tokyo", "東京足球會"),
+    ("FC東京", "東京足球會"),
+    ("J.League", "日本職業足球聯賽"),
+    ("J League", "日本職業足球聯賽"),
+    ("J1", "日職聯賽"),
+
+    # English / European football — Hong Kong naming
+    ("Manchester United", "曼聯"),
+    ("Manchester City", "曼城"),
+    ("Hull City", "侯城"),
+    ("Arsenal", "阿仙奴"),
+    ("Liverpool", "利物浦"),
+    ("Chelsea", "車路士"),
+    ("Tottenham Hotspur", "熱刺"),
+    ("Tottenham", "熱刺"),
+    ("Newcastle United", "紐卡素"),
+    ("Newcastle", "紐卡素"),
+    ("Aston Villa", "阿士東維拉"),
+    ("Brighton", "白禮頓"),
+    ("Bournemouth", "般尼茅夫"),
+    ("Brentford", "賓福特"),
+    ("Fulham", "富咸"),
+    ("Everton", "愛華頓"),
+    ("Crystal Palace", "水晶宮"),
+    ("Ipswich Town", "葉士域治"),
+    ("Sunderland", "新特蘭"),
+    ("Nottingham Forest", "諾定咸森林"),
+    ("Leeds United", "列斯聯"),
+    ("Coventry City", "高雲地利"),
+    ("AC Milan", "AC米蘭"),
+    ("Barcelona", "巴塞隆拿"),
+    ("Real Madrid", "皇家馬德里"),
+    ("Bayern Munich", "拜仁慕尼黑"),
+    ("Paris Saint-Germain", "巴黎聖日耳門"),
+    ("PSG", "巴黎聖日耳門"),
+    ("Champions League", "歐洲聯賽冠軍盃"),
+    ("Premier League", "英格蘭超級聯賽"),
+    ("La Liga", "西班牙甲組聯賽"),
+    ("Serie A", "意大利甲組聯賽"),
+    ("Bundesliga", "德國甲組聯賽"),
+    ("Ligue 1", "法國甲組聯賽"),
+    ("UEFA", "歐洲足協"),
+    ("FIFA", "國際足協"),
+    ("FT", "完場"),
+
+    # Common editorial/source words that should not switch the TTS language.
+    ("Official", "官方"),
+    ("official", "官方"),
+    ("Breaking News", "突發新聞"),
+    ("Live", "即時"),
+    ("Update", "更新"),
+]
+
+# Remaining short acronyms may be converted semantically rather than handed to
+# the model. Keep this intentionally small; new meaningful names should be
+# added to REPLACEMENTS after the audit identifies them.
+SHORT_ACRONYMS = {
+    "US": "美國",
+    "USA": "美國",
+    "UK": "英國",
+    "HK": "香港",
+    "HKT": "香港時間",
+    "PRC": "中國",
+    "UAE": "阿聯酋",
+    "EV": "電動車",
+    "EVs": "電動車",
+    "PC": "個人電腦",
+    "TV": "電視",
+    "PV": "宣傳片",
+}
+
+LATIN_TOKEN_RE = re.compile(r"(?<![\w])([A-Za-z][A-Za-z0-9.+&'’/-]*)(?![\w])")
+
+
+def _phrase_replace(text: str, source: str, target: str) -> str:
+    # ASCII phrases get case-insensitive boundaries; mixed Chinese phrases use
+    # direct replacement to avoid regex word-boundary surprises.
+    if source.isascii() and any(ch.isalpha() for ch in source):
+        pattern = re.compile(r"(?<![A-Za-z0-9])" + re.escape(source) + r"(?![A-Za-z0-9])", re.IGNORECASE)
+        return pattern.sub(target, text)
+    return text.replace(source, target)
+
+
+def localize(text: str) -> str:
+    out = str(text or "")
+    for source, target in sorted(REPLACEMENTS, key=lambda item: len(item[0]), reverse=True):
+        out = _phrase_replace(out, source, target)
+    for source, target in sorted(SHORT_ACRONYMS.items(), key=lambda item: len(item[0]), reverse=True):
+        out = re.sub(r"(?<![A-Za-z0-9])" + re.escape(source) + r"(?![A-Za-z0-9])", target, out)
+    return out
+
+
+def residual_latin_tokens(text: str) -> list[str]:
+    localized = localize(text)
+    return sorted({m.group(1) for m in LATIN_TOKEN_RE.finditer(localized)}, key=str.lower)
+
+
+def has_residual_latin(text: str) -> bool:
+    return bool(residual_latin_tokens(text))
