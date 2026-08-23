@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Promote only exact-current F01 audio built under the stable-tempo policy."""
+"""Promote exact-current F01 audio without importing the heavy TTS runtime."""
 import json
 from pathlib import Path
 
-import generate_cosyvoice_lead as voice_base
 import promote_cosyvoice_prepublish_fast as legacy
 
 POLICY = "f01-news-anchor-v3-stable-tempo"
+INFERENCE_MODE = "cross-lingual-reference-only"
+VOICE_SPEED = 1.0
 _ORIGINAL_INDEX = legacy.index_entries
 
 
@@ -27,8 +28,8 @@ def _stamp_manifest():
     data.update({
         "instructionPolicy": "none-reference-only",
         "prosodyPolicy": POLICY,
-        "inferenceMode": voice_base.VOICE_INFERENCE_MODE,
-        "speed": voice_base.VOICE_SPEED,
+        "inferenceMode": INFERENCE_MODE,
+        "speed": VOICE_SPEED,
     })
     articles = {
         article_id: entry for article_id, entry in (data.get("articles") or {}).items()
