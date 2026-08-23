@@ -3,8 +3,14 @@
 import json
 from pathlib import Path
 
+import cosyvoice_cache_identity as cache_identity
 import cosyvoice_policy as voice_policy
 import publish_cosyvoice_article as legacy
+
+# Enforce the policy-salted digest in the core publisher too. This protects
+# against older workflow processes that reset to current main between cycles
+# but still invoke this anchor path directly rather than the v10 wrapper.
+cache_identity.install(legacy.gen)
 
 POLICY = voice_policy.POLICY
 REFERENCE_POLICY = voice_policy.REFERENCE_POLICY
@@ -16,6 +22,7 @@ LANGUAGE_GATE = voice_policy.LANGUAGE_GATE
 SEGMENT_POLICY = voice_policy.SEGMENT_POLICY
 PACING_POLICY = voice_policy.PACING_POLICY
 TEMPO_POLICY = voice_policy.TEMPO_POLICY
+ASSET_NAMESPACE = voice_policy.ASSET_NAMESPACE
 
 
 def _valid_policy_entry(entry, digest=None):
@@ -27,6 +34,7 @@ def _valid_policy_entry(entry, digest=None):
         reference_duration = float(entry.get("referenceDurationSeconds") or 0)
     except (TypeError, ValueError):
         return False
+    audio = str(entry.get("audio") or "")
     return (
         entry.get("prosodyPolicy") == POLICY
         and entry.get("referencePolicy") == REFERENCE_POLICY
@@ -37,6 +45,7 @@ def _valid_policy_entry(entry, digest=None):
         and entry.get("pacingPolicy") == PACING_POLICY
         and entry.get("tempoPolicy") == TEMPO_POLICY
         and int(entry.get("segmentCount") or 0) == 1
+        and (not ASSET_NAMESPACE or f"-{ASSET_NAMESPACE}-" in audio)
     )
 
 
@@ -68,6 +77,7 @@ def _stamp_manifest():
         "referenceDurationSeconds": REFERENCE_DURATION_SECONDS,
         "initialConditioningPolicy": INITIAL_CONDITIONING_POLICY,
         "prosodyPolicy": POLICY,
+        "assetNamespace": ASSET_NAMESPACE,
         "inferenceMode": voice_policy.INFERENCE_MODE,
         "speed": voice_policy.VOICE_SPEED,
         "languageGate": LANGUAGE_GATE,
@@ -90,9 +100,6 @@ def _stamp_manifest():
         data["lastPublishedArticleId"] = newest[1]
         data["lastPublishedTitle"] = newest[2].get("title") or ""
     else:
-        # Reconcile-only worker cycles must not impersonate a voice publish.
-        # Keeping generatedAt blank makes the manifest stable until the first
-        # valid current-policy WAV is actually accepted.
         data["generatedAt"] = ""
         data["lastVoicePublishedAt"] = ""
         data["lastPublishedArticleId"] = ""
