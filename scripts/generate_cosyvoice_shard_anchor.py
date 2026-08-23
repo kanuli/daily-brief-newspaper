@@ -23,15 +23,17 @@ GOLDEN_REFERENCE_URL = (
 REFERENCE_START_SECONDS = 10.0
 REFERENCE_DURATION_SECONDS = 10.0
 VOICE_RANDOM_SEED = 20260823
-# Article speech is capped at roughly 260 content characters.  Keep the whole
-# article in one inference call so a fresh cross-lingual call cannot change
-# language/accent halfway through an otherwise Cantonese article.
-SEGMENT_CHARS = 320
+# CosyVoice's normal Chinese frontend deliberately works around an ~80-token
+# ceiling.  To keep one model session per article without sending ~260 tokens
+# as one oversized tensor, stream conservative text chunks through CosyVoice2's
+# native inference_bistream path.  The chunks are input transport only: they do
+# NOT create new cross-lingual inference sessions and therefore do not reset the
+# voice/language anchor halfway through an article.
+STREAM_INPUT_CHARS = 48
 TARGET_CHARS_PER_SECOND = 4.0
 MIN_TEMPO = 0.96
 MAX_TEMPO = 1.04
 
-_ORIGINAL_SEGMENT_SYNTH = voice_base.synthesize_segment
 _ORIGINAL_NORMALIZE = voice_base.normalize_for_tts
 
 
@@ -88,11 +90,6 @@ def _setup_model_golden():
         flush=True,
     )
     return model, prompt
-
-
-def _stable_segment_synth(model, prompt, item, index):
-    torch.manual_seed(VOICE_RANDOM_SEED)
-    return _ORIGINAL_SEGMENT_SYNTH(model, prompt, item, index)
 
 
 def _policy_remote_reusable(previous, story, digest):
@@ -156,13 +153,62 @@ def _anchor_script_segments(story):
             + ", ".join(residual)
         )
 
-    pieces = voice_base.split_for_tts(script, max_chars=SEGMENT_CHARS)
-    if len(pieces) != 1:
-        raise RuntimeError(
-            f"single-inference policy expected one segment, got {len(pieces)} "
-            f"for {story.get('id') or story.get('title')}"
-        )
-    return [{"role": "news", "text": pieces[0], "pause": 0.40}]
+    # One logical segment = one CosyVoice inference session.  The transport
+    # chunks are created later and streamed into that same session.
+    return [{"role": "news", "text": script, "pause": 0.40}]
+
+
+def _stream_input_pieces(text):
+    pieces = voice_base.split_for_tts(text, max_chars=STREAM_INPUT_CHARS)
+    pieces = [piece for piece in pieces if piece]
+    if not pieces:
+        raise RuntimeError("streaming TTS input produced no text chunks")
+    return pieces
+
+
+def _stable_segment_synth(model, prompt, item, index):
+    text = item["text"]
+    pieces = _stream_input_pieces(text)
+    torch.manual_seed(VOICE_RANDOM_SEED)
+    print(
+        f"segment={index} role={item['role']} chars={len(text)} "
+        f"mode={voice_base.VOICE_INFERENCE_MODE} input=single-session-bistream "
+        f"chunks={len(pieces)} speed={voice_base.VOICE_SPEED}",
+        flush=True,
+    )
+
+    def token_text_stream():
+        for chunk_index, piece in enumerate(pieces):
+            print(
+                f"segment={index} input_chunk={chunk_index}/{len(pieces)} chars={len(piece)} text={piece}",
+                flush=True,
+            )
+            yield piece
+
+    audio_chunks = []
+    with torch.inference_mode():
+        # Passing a Python generator activates CosyVoice2's native
+        # inference_bistream path.  text_frontend=False prevents a second
+        # hidden split while still keeping all input chunks in ONE model.tts
+        # session/UUID.  No textual language/style instruction is supplied.
+        for chunk_index, result in enumerate(
+            model.inference_cross_lingual(
+                token_text_stream(),
+                prompt,
+                stream=False,
+                speed=voice_base.VOICE_SPEED,
+                text_frontend=False,
+            )
+        ):
+            speech = result["tts_speech"].detach().cpu()
+            if speech.numel() == 0:
+                continue
+            print(f"segment={index} output_chunk={chunk_index} shape={tuple(speech.shape)}", flush=True)
+            audio_chunks.append(speech)
+
+    if not audio_chunks:
+        raise RuntimeError(f"CosyVoice2-Yue returned zero audio for article session {index}")
+    return torch.cat(audio_chunks, dim=1), len(pieces)
 
 
 def _speech_units(text):
@@ -199,8 +245,10 @@ def _policy_synth(model, prompt, story, path):
     speech_chars = sum(len(item["text"]) for item in segments)
     audio_parts = []
     applied = []
+    input_chunk_counts = []
     for index, item in enumerate(segments):
-        audio = _stable_segment_synth(model, prompt, item, index)
+        audio, input_chunks = _stable_segment_synth(model, prompt, item, index)
+        input_chunk_counts.append(input_chunks)
         audio, factor = _stabilize_tempo(audio, item["text"], model.sample_rate)
         applied.append(round(factor, 4))
         audio_parts.append(audio)
@@ -234,6 +282,9 @@ def _policy_synth(model, prompt, story, path):
         "instructionPolicy": "none-reference-only",
         "languageGate": "residual-latin-zero",
         "segmentPolicy": "single-inference-per-article",
+        "inputTransport": "native-bistream-single-session",
+        "streamInputChunkChars": STREAM_INPUT_CHARS,
+        "streamInputChunkCounts": input_chunk_counts,
         "tempoTargetCharsPerSecond": TARGET_CHARS_PER_SECOND,
         "tempoFactors": applied,
     }
