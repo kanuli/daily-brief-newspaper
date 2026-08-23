@@ -1,4 +1,4 @@
-name: Verify Public Pages Live Snapshot
+name: Verify Public Pages Publication Snapshot
 
 on:
   push:
@@ -8,13 +8,15 @@ on:
   workflow_run:
     workflows: ["Deploy Daily Brief to GitHub Pages"]
     types: [completed]
+  schedule:
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: "public-pages-live-probe"
+  group: "public-pages-publication-probe"
   cancel-in-progress: true
 
 jobs:
@@ -28,39 +30,73 @@ jobs:
           ref: main
           fetch-depth: 1
 
-      - name: Compare public Pages Live snapshot with main
+      - name: Compare public Live, Rolling Desk and Stock snapshots
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           import json, os, time, urllib.request
           from datetime import datetime, timezone
+
           repo=os.environ.get('GITHUB_REPOSITORY','kanuli/daily-brief-newspaper')
           owner,name=repo.split('/',1)
-          url=f'https://{owner}.github.io/{name}/data/live.json?v={int(time.time())}'
-          local=json.load(open('data/live.json',encoding='utf-8'))
-          expected=local.get('lastUpdated')
-          remote=None
+          base=f'https://{owner}.github.io/{name}/data/'
+          local_live=json.load(open('data/live.json',encoding='utf-8'))
+          local_stocks=json.load(open('data/stocks-latest.json',encoding='utf-8'))
+          expected_live=local_live.get('lastUpdated')
+          expected_stocks=local_stocks.get('generatedAt')
+
+          def fetch_json(filename):
+              url=base+filename+'?v='+str(int(time.time()*1000))
+              req=urllib.request.Request(url,headers={
+                  'Cache-Control':'no-cache',
+                  'Pragma':'no-cache',
+                  'User-Agent':'daily-brief-pages-probe',
+              })
+              with urllib.request.urlopen(req,timeout=15) as response:
+                  return json.loads(response.read().decode('utf-8'))
+
+          remote_live=remote_desk=remote_stocks=None
           error=None
           for attempt in range(12):
               try:
-                  req=urllib.request.Request(url,headers={'Cache-Control':'no-cache','User-Agent':'daily-brief-pages-probe'})
-                  with urllib.request.urlopen(req,timeout=15) as response:
-                      remote=json.loads(response.read().decode('utf-8'))
-                  if remote.get('lastUpdated')==expected and (remote.get('items') or []):
+                  remote_live=fetch_json('live.json')
+                  remote_desk=fetch_json('desk-latest.json')
+                  remote_stocks=fetch_json('stocks-latest.json')
+                  live_match=bool(remote_live.get('lastUpdated')==expected_live and (remote_live.get('items') or []))
+                  desk_match=bool(remote_desk.get('generatedAt')==expected_live)
+                  stock_match=bool(remote_stocks.get('generatedAt')==expected_stocks)
+                  if live_match and desk_match and stock_match:
+                      error=None
                       break
+                  error=(
+                      f"live={remote_live.get('lastUpdated')} expected={expected_live}; "
+                      f"desk={remote_desk.get('generatedAt')} expected={expected_live}; "
+                      f"stocks={remote_stocks.get('generatedAt')} expected={expected_stocks}"
+                  )
               except Exception as exc:
                   error=str(exc)
               time.sleep(5)
+
+          live_match=bool(isinstance(remote_live,dict) and remote_live.get('lastUpdated')==expected_live and (remote_live.get('items') or []))
+          desk_match=bool(isinstance(remote_desk,dict) and remote_desk.get('generatedAt')==expected_live)
+          stock_match=bool(isinstance(remote_stocks,dict) and remote_stocks.get('generatedAt')==expected_stocks)
           payload={
               'checkedAt': datetime.now(timezone.utc).isoformat(),
-              'publicUrl': url.split('?')[0],
-              'mainLastUpdated': expected,
-              'publicLastUpdated': remote.get('lastUpdated') if isinstance(remote,dict) else None,
-              'mainWindowLabel': local.get('windowLabel'),
-              'publicWindowLabel': remote.get('windowLabel') if isinstance(remote,dict) else None,
-              'publicItemCount': len(remote.get('items') or []) if isinstance(remote,dict) else 0,
-              'match': bool(isinstance(remote,dict) and remote.get('lastUpdated')==expected and (remote.get('items') or [])),
+              'publicBaseUrl': base,
+              'mainLastUpdated': expected_live,
+              'publicLastUpdated': remote_live.get('lastUpdated') if isinstance(remote_live,dict) else None,
+              'mainWindowLabel': local_live.get('windowLabel'),
+              'publicWindowLabel': remote_live.get('windowLabel') if isinstance(remote_live,dict) else None,
+              'publicItemCount': len(remote_live.get('items') or []) if isinstance(remote_live,dict) else 0,
+              'mainDeskExpectedAt': expected_live,
+              'publicDeskGeneratedAt': remote_desk.get('generatedAt') if isinstance(remote_desk,dict) else None,
+              'mainStocksGeneratedAt': expected_stocks,
+              'publicStocksGeneratedAt': remote_stocks.get('generatedAt') if isinstance(remote_stocks,dict) else None,
+              'liveMatch': live_match,
+              'deskMatch': desk_match,
+              'stockMatch': stock_match,
+              'match': bool(live_match and desk_match and stock_match),
               'error': error,
           }
           open('/tmp/pages-live-status.json','w',encoding='utf-8').write(json.dumps(payload,ensure_ascii=False,indent=2)+'\n')
@@ -82,6 +118,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -q -b pages-status
           git add data/pages-live-status.json
-          git commit -q -m "Update public Pages Live probe"
+          git commit -q -m "Update public Pages publication probe"
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push -q --force origin pages-status
