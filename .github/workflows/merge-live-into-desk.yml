@@ -5,130 +5,59 @@ on:
     branches: ["main"]
     paths:
       - "data/live.json"
-      - "scripts/validate_site_data.py"
+      - "scripts/merge_live_into_desk.py"
       - ".github/workflows/merge-live-into-desk.yml"
+  schedule:
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 concurrency:
   group: "rolling-desk-merge"
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  merge-and-deploy:
+  merge:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    timeout-minutes: 5
     steps:
-      - name: Checkout
+      - name: Checkout latest main
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
-      - name: Merge verified Live items into Rolling Desk
+      - name: Align Rolling Desk to current Live
+        shell: bash
         run: |
-          python - <<'PY'
-          import copy, json, pathlib, re
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          root = pathlib.Path('.')
-          live_path = root / 'data' / 'live.json'
-          desk_path = root / 'data' / 'desk-latest.json'
-          live = json.loads(live_path.read_text(encoding='utf-8'))
-          desk = json.loads(desk_path.read_text(encoding='utf-8'))
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
 
-          floors = {
-              'world': 4, 'asia': 5, 'hong-kong': 5, 'japan': 5,
-              'market-economy': 5, 'ai-tech': 4, 'manga-anime': 3,
-              'manchester-united': 3, 'football': 6,
-          }
-          caps = {
-              'world': 8, 'asia': 10, 'hong-kong': 8, 'japan': 8,
-              'market-economy': 10, 'ai-tech': 8, 'manga-anime': 6,
-              'manchester-united': 6, 'football': 12,
-          }
-          required = ('title','dek','summary','body','context','why','watchNext','sourceName','sourceUrl','timeLabel')
-          forbidden = re.compile(r'本輪|本報|incremental|duplicate|重複刊登|coverage\s*(?:check|test)|collection\s*(?:design|test)|這次重新檢查|之後每一輪|每一輪Football|固定檢查HKFA|不應由全球搜尋排名決定', re.I)
+            python scripts/merge_live_into_desk.py
+            python scripts/validate_publication_current.py
+            python scripts/audit_tts_language.py
 
-          desks = desk.setdefault('desks', {})
-          for slug in floors:
-              desks.setdefault(slug, [])
-
-          for item in live.get('items', []):
-              for field in required:
-                  if not isinstance(item.get(field), str) or not item[field].strip():
-                      raise SystemExit(f'Live item {item.get("id")} missing {field}')
-              paras = [p.strip() for p in re.split(r'\n\s*\n', item['body']) if p.strip()]
-              if len(paras) < 2:
-                  raise SystemExit(f'Live item {item.get("id")} body lacks 2 paragraphs')
-              public = ' '.join(str(item.get(k,'')) for k in ('title','dek','summary','body','context','why','watchNext'))
-              if forbidden.search(public):
-                  raise SystemExit(f'Live item {item.get("id")} contains process copy')
-              for slug in item.get('deskSlugs', []):
-                  if slug not in desks:
-                      continue
-                  story = copy.deepcopy(item)
-                  story['status'] = 'LATEST'
-                  desks[slug] = [s for s in desks[slug] if s.get('id') != story.get('id')]
-                  desks[slug].insert(0, story)
-                  desks[slug] = desks[slug][:caps[slug]]
-
-          counts = {slug: len(desks.get(slug, [])) for slug in floors}
-          for slug, minimum in floors.items():
-              if counts[slug] < minimum:
-                  raise SystemExit(f'{slug} depth {counts[slug]} < {minimum}')
-
-          desk['date'] = live.get('date', desk.get('date'))
-          desk['generatedAt'] = live.get('lastUpdated')
-          desk['mode'] = 'ROLLING_DESK_LATEST'
-          desk['editorialStandardVersion'] = 3
-          desk['contentVersion'] = 3
-
-          coverage = live.setdefault('coverage', {})
-          coverage['deskLatestStoryCounts'] = counts
-          coverage['deskLatestDepthMet'] = all(counts[slug] >= minimum for slug, minimum in floors.items())
-
-          desk_path.write_text(json.dumps(desk, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-          live_path.write_text(json.dumps(live, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-          PY
-
-      - name: Validate Daily Brief data schema
-        run: python scripts/validate_site_data.py
-
-      - name: Validate Daily v3 newspaper depth
-        run: python scripts/validate_daily_v3.py
-
-      - name: Validate editorial depth and desk coverage
-        run: python scripts/validate_editorial_v2.py
-
-      - name: Validate Stock News data
-        run: python scripts/validate_stock_news.py
-
-      - name: Commit Rolling Desk refresh
-        run: |
-          if git diff --quiet -- data/desk-latest.json data/live.json; then
-            echo "No rolling data changes"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -- data/desk-latest.json data/live.json
-            git commit -m "Merge verified Live items into Rolling Desk"
-            git pull --rebase origin main
-            git push origin HEAD:main
-          fi
+            if git diff --cached --quiet; then
+              echo "ROLLING_DESK_CURRENT no merge change required"
+              exit 0
+            fi
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
+            LIVE_LABEL=$(python -c 'import json; print(json.load(open("data/live.json",encoding="utf-8")).get("windowLabel", "Live"))')
+            git commit -m "Sync Rolling Desk to ${LIVE_LABEL}"
+            if git push origin HEAD:main; then
+              echo "ROLLING_DESK_AUTO_SYNC_PASS ${LIVE_LABEL}"
+              exit 0
+            fi
+            sleep $((attempt * 2))
+          done
 
-      - name: Upload static site
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: .
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          echo "Rolling Desk auto-sync could not push after retries" >&2
+          exit 1
