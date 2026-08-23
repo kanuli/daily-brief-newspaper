@@ -29,6 +29,11 @@ jobs:
         with:
           ref: main
 
+      # Do not depend on a second push-triggered workflow to keep section pages
+      # aligned. GitHub-token commits may not trigger another workflow.
+      - name: Rebuild Rolling Desk from the exact Live snapshot being deployed
+        run: python scripts/merge_live_into_desk.py
+
       - name: Build shared Hong Kong Traditional Chinese localization map
         run: python scripts/export_hktrad_localization.py
 
@@ -55,14 +60,14 @@ jobs:
           changed=0
           for path in Path('.').rglob('*.html'):
               text=path.read_text(encoding='utf-8')
-              new=re.sub(r'assets/js/system-panel\.js\?v=[^"\']+', 'assets/js/system-panel.js?v=20260823-2058-selfheal', text)
+              new=re.sub(r'assets/js/system-panel\.js\?v=[^"\']+', 'assets/js/system-panel.js?v=20260823-2102-pipeline', text)
               if new != text:
                   path.write_text(new, encoding='utf-8')
                   changed += 1
           print('SELF_HEAL_CLIENT_CACHE_BUST_OK pages', changed)
           PY
 
-      - name: Availability gate — JSON readable and Live non-empty
+      - name: Availability gate — JSON readable, Live non-empty and Desk aligned
         shell: bash
         run: |
           python - <<'PY'
@@ -76,11 +81,14 @@ jobs:
                   raise SystemExit(f'missing required public data: {name}')
               loaded[name]=json.loads(path.read_text(encoding='utf-8'))
           live=loaded['data/live.json']
+          desk=loaded['data/desk-latest.json']
           if not live.get('lastUpdated') or not live.get('nextUpdateLabel'):
               raise SystemExit('Live timestamps missing')
           if not isinstance(live.get('items'),list) or not live['items']:
               raise SystemExit('Live publication must not be empty')
-          print('PUBLIC_AVAILABILITY_GATE_OK', live.get('windowLabel'), 'items', len(live['items']), 'next', live.get('nextUpdateLabel'))
+          if desk.get('generatedAt') != live.get('lastUpdated'):
+              raise SystemExit(f"Rolling Desk behind Live: desk={desk.get('generatedAt')} live={live.get('lastUpdated')}")
+          print('PUBLIC_AVAILABILITY_GATE_OK', live.get('windowLabel'), 'items', len(live['items']), 'desk', desk.get('generatedAt'), 'next', live.get('nextUpdateLabel'))
           PY
 
       - name: Editorial QA — Daily v3
