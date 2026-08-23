@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Promote only exact-current v7 F01 audio without loading the TTS runtime."""
+"""Promote only exact-current F01 audio without loading the TTS runtime."""
 import json
 from pathlib import Path
 
+import cosyvoice_policy as voice_policy
 import promote_cosyvoice_prepublish_fast as legacy
 
-POLICY = "f01-news-anchor-v7-short-prompt-bistream-hktrad"
-INFERENCE_MODE = "cross-lingual-reference-only"
-VOICE_SPEED = 1.0
-REFERENCE_DURATION_SECONDS = 5.0
-INITIAL_CONDITIONING_POLICY = "short-reference-bistream"
-LANGUAGE_GATE = "residual-latin-zero"
-SEGMENT_POLICY = "single-inference-per-article"
+POLICY = voice_policy.POLICY
+INFERENCE_MODE = voice_policy.INFERENCE_MODE
+VOICE_SPEED = voice_policy.VOICE_SPEED
+REFERENCE_DURATION_SECONDS = voice_policy.REFERENCE_DURATION_SECONDS
+INITIAL_CONDITIONING_POLICY = voice_policy.INITIAL_CONDITIONING_POLICY
+LANGUAGE_GATE = voice_policy.LANGUAGE_GATE
+SEGMENT_POLICY = voice_policy.SEGMENT_POLICY
 _ORIGINAL_INDEX = legacy.index_entries
 
 
