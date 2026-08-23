@@ -1,0 +1,124 @@
+name: Voice Health Snapshot
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/voice-health-snapshot.yml"
+  workflow_run:
+    workflows: ["Publish CosyVoice2-Yue F01 Per Article"]
+    types: [completed]
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: "voice-health-snapshot"
+  cancel-in-progress: true
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Capture latest F01 workflow state and failed logs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNS=$(gh run list --repo "${{ github.repository }}" --workflow cosyvoice-publish.yml --branch main --limit 8 --json databaseId,status,conclusion,headSha,createdAt,updatedAt,event,url)
+          LATEST_ID=$(python -c 'import json,sys; r=json.load(sys.stdin); print(r[0]["databaseId"] if r else "")' <<< "$RUNS")
+          if [ -n "$LATEST_ID" ]; then
+            gh run view "$LATEST_ID" --repo "${{ github.repository }}" --json jobs > /tmp/jobs.json || echo '[]' > /tmp/jobs.json
+            gh run view "$LATEST_ID" --repo "${{ github.repository }}" --log-failed > /tmp/failed.log 2>&1 || true
+          else
+            echo '[]' > /tmp/jobs.json
+            : > /tmp/failed.log
+          fi
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+          runs=json.loads(Path('/tmp/runs.json').read_text()) if Path('/tmp/runs.json').exists() else []
+          jobs=json.loads(Path('/tmp/jobs.json').read_text()) if Path('/tmp/jobs.json').exists() else {}
+          log=Path('/tmp/failed.log').read_text(errors='replace') if Path('/tmp/failed.log').exists() else ''
+          lines=log.splitlines()
+          payload={
+              'checkedAt': datetime.now(timezone.utc).isoformat(),
+              'latestRunId': runs[0].get('databaseId') if runs else None,
+              'latestStatus': runs[0].get('status') if runs else None,
+              'latestConclusion': runs[0].get('conclusion') if runs else None,
+              'latestHeadSha': runs[0].get('headSha') if runs else None,
+              'runs': runs,
+              'jobs': jobs.get('jobs', jobs if isinstance(jobs,list) else []),
+              'failedLogTail': lines[-160:],
+          }
+          Path('/tmp/voice-health.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+        # Save RUNS separately for Python without shell-escaping JSON.
+      - name: Rebuild snapshot payload safely
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run list --repo "${{ github.repository }}" --workflow cosyvoice-publish.yml --branch main --limit 8 --json databaseId,status,conclusion,headSha,createdAt,updatedAt,event,url > /tmp/runs.json
+          LATEST_ID=$(python -c 'import json; r=json.load(open("/tmp/runs.json")); print(r[0]["databaseId"] if r else "")')
+          if [ -n "$LATEST_ID" ]; then
+            gh run view "$LATEST_ID" --repo "${{ github.repository }}" --json jobs > /tmp/jobs.json || echo '{"jobs":[]}' > /tmp/jobs.json
+            gh run view "$LATEST_ID" --repo "${{ github.repository }}" --log-failed > /tmp/failed.log 2>&1 || true
+          else
+            echo '{"jobs":[]}' > /tmp/jobs.json
+            : > /tmp/failed.log
+          fi
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+          runs=json.load(open('/tmp/runs.json',encoding='utf-8'))
+          jobs=json.load(open('/tmp/jobs.json',encoding='utf-8'))
+          lines=Path('/tmp/failed.log').read_text(errors='replace').splitlines()
+          payload={
+              'checkedAt': datetime.now(timezone.utc).isoformat(),
+              'latestRunId': runs[0].get('databaseId') if runs else None,
+              'latestStatus': runs[0].get('status') if runs else None,
+              'latestConclusion': runs[0].get('conclusion') if runs else None,
+              'latestHeadSha': runs[0].get('headSha') if runs else None,
+              'runs': runs,
+              'jobs': jobs.get('jobs', []),
+              'failedLogTail': lines[-160:],
+          }
+          Path('/tmp/voice-health.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+
+      - name: Publish snapshot to voice-status branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code origin refs/heads/voice-status >/dev/null 2>&1; then
+            git fetch origin voice-status
+            git checkout -B voice-status origin/voice-status
+          else
+            git checkout -b voice-status
+          fi
+          mkdir -p data
+          cp /tmp/voice-health.json data/voice-health.json
+          git add data/voice-health.json
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Update F01 voice health snapshot"
+          git push origin HEAD:voice-status
