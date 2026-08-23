@@ -50,7 +50,7 @@ jobs:
       matrix:
         slot: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     steps:
-      - name: Checkout canonical v6 production code
+      - name: Checkout canonical production code
         uses: actions/checkout@v4
         with:
           ref: main
@@ -95,7 +95,7 @@ jobs:
           git clone --depth 1 --recursive https://github.com/ASLP-lab/WenetSpeech-Yue.git /tmp/WenetSpeech-Yue
           test -f /tmp/WenetSpeech-Yue/CosyVoice2-Yue/cosyvoice/cli/cosyvoice.py
 
-      - name: Prebuild verified draft voices with v6 safety gates
+      - name: Prebuild verified draft voices with current policy
         env:
           SLOT: ${{ matrix.slot }}
           GH_TOKEN: ${{ github.token }}
@@ -114,7 +114,7 @@ jobs:
           ROOT="$PWD"
 
           for cycle in $(seq 1 5); do
-            echo "=== F01 v6 prepublish slot ${SLOT} cycle ${cycle}/5 ==="
+            echo "=== F01 current-policy prepublish slot ${SLOT} cycle ${cycle}/5 ==="
             git fetch origin prepublish-news
             git show origin/prepublish-news:data/prepublish.json > data/prepublish.json
             if git cat-file -e origin/prepublish-news:data/prepublish-tts-manifest.json 2>/dev/null; then
@@ -124,7 +124,7 @@ jobs:
             fi
             rm -rf artifacts/cosyvoice-prepublish
 
-            COSY_SHARD_INDEX="${SLOT}" python scripts/generate_cosyvoice_prepublish_shard.py
+            COSY_SHARD_INDEX="${SLOT}" python scripts/generate_cosyvoice_prepublish_v10.py
             SHARD="artifacts/cosyvoice-prepublish/shard-${SLOT}.json"
             test -f "$SHARD"
 
@@ -134,7 +134,7 @@ jobs:
           sys.exit(0 if len(data.get('entries') or {}) == 0 else 1)
           PY
             then
-              echo "Prepublish slot ${SLOT} has no more verified draft v6 work."
+              echo "Prepublish slot ${SLOT} has no more verified draft current-policy work."
               exit 0
             fi
 
@@ -160,31 +160,7 @@ jobs:
                 rm -f data/prepublish-tts-manifest.json
               fi
 
-              python scripts/publish_cosyvoice_prepublish.py "/tmp/prepublish-shard-${SLOT}.json"
-              python - <<'PY'
-          import json
-          from pathlib import Path
-          p=Path('data/prepublish-tts-manifest.json')
-          d=json.loads(p.read_text(encoding='utf-8'))
-          policy='f01-news-anchor-v6-single-inference-hktrad'
-          articles={}
-          for k,e in (d.get('articles') or {}).items():
-              if (e.get('prosodyPolicy')==policy and e.get('languageGate')=='residual-latin-zero'
-                  and e.get('segmentPolicy')=='single-inference-per-article'
-                  and int(e.get('segmentCount') or 0)==1):
-                  articles[k]=e
-          d['articles']=articles
-          d['prosodyPolicy']=policy
-          d['languageGate']='residual-latin-zero'
-          d['segmentPolicy']='single-inference-per-article'
-          d['instructionPolicy']='none-reference-only'
-          total=int(d.get('collectedStoryCount') or len(articles))
-          d['articleCount']=len(articles)
-          d['availableArticleCount']=len(articles)
-          d['pendingArticleCount']=max(0,total-len(articles))
-          d['coverageComplete']=len(articles)==total
-          p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-          PY
+              python scripts/publish_cosyvoice_prepublish_v10.py "/tmp/prepublish-shard-${SLOT}.json"
 
               rm -rf /tmp/prepublish-publish
               git worktree add --detach /tmp/prepublish-publish origin/prepublish-news
@@ -198,10 +174,10 @@ jobs:
                 if git diff --cached --quiet; then
                   exit 0
                 fi
-                git commit -m "Prebuild v6 F01 voice slot ${SLOT} cycle ${cycle}"
+                git commit -m "Prebuild current-policy F01 voice slot ${SLOT} cycle ${cycle}"
                 git push origin HEAD:prepublish-news
               ); then
-                echo "COSYVOICE_PREPUBLISH_V6_PUSH_PASS slot=${SLOT} cycle=${cycle}"
+                echo "COSYVOICE_PREPUBLISH_CURRENT_PUSH_PASS slot=${SLOT} cycle=${cycle}"
                 published=true
                 break
               fi
@@ -211,7 +187,7 @@ jobs:
 
             git worktree remove --force /tmp/prepublish-publish >/dev/null 2>&1 || true
             if [ "$published" != "true" ]; then
-              echo "Could not publish prebuilt v6 F01 manifest after retries." >&2
+              echo "Could not publish prebuilt current-policy F01 manifest after retries." >&2
               exit 1
             fi
           done
