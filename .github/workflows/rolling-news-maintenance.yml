@@ -60,29 +60,37 @@ jobs:
           fi
           echo "Rolling staging: lastSearchAt=${LAST_SEARCH_AT:-missing}; age=${AGE_SECONDS}s"
 
-          gh run list --repo "${{ github.repository }}" --workflow rolling-news-search.yml --branch main --limit 12 --json status,conclusion,databaseId,createdAt,updatedAt,event > /tmp/rolling-runs.json
+          gh run list --repo "${{ github.repository }}" --workflow rolling-news-search.yml --branch main --limit 20 --json status,conclusion,databaseId,createdAt,updatedAt,event > /tmp/rolling-runs.json
           python - <<'PY' > /tmp/rolling-active.env
           import json
           from datetime import datetime, timezone
+
           runs=json.load(open('/tmp/rolling-runs.json',encoding='utf-8'))
           now=datetime.now(timezone.utc)
-          active=[r for r in runs if r.get('status') != 'completed']
-          ages=[]
-          for r in active:
+
+          def age_seconds(run):
               try:
-                  t=datetime.fromisoformat(str(r.get('createdAt') or '').replace('Z','+00:00'))
-                  ages.append(max(0,int((now-t).total_seconds())))
+                  t=datetime.fromisoformat(str(run.get('createdAt') or '').replace('Z','+00:00'))
+                  return max(0,int((now-t).total_seconds()))
               except Exception:
-                  pass
-          print(f"ACTIVE_COUNT={len(active)}")
-          print(f"ACTIVE_OLDEST_AGE_SECONDS={max(ages) if ages else 0}")
-          print("ACTIVE_IDS=" + ','.join(str(r.get('databaseId')) for r in active if r.get('databaseId')))
+                  return 0
+
+          queued_statuses={'queued','requested','waiting','pending'}
+          queued=[r for r in runs if r.get('status') in queued_statuses]
+          running=[r for r in runs if r.get('status') == 'in_progress']
+
+          print(f"QUEUED_COUNT={len(queued)}")
+          print(f"RUNNING_COUNT={len(running)}")
+          print(f"QUEUED_OLDEST_AGE_SECONDS={max((age_seconds(r) for r in queued), default=0)}")
+          print(f"RUNNING_OLDEST_AGE_SECONDS={max((age_seconds(r) for r in running), default=0)}")
+          print("QUEUED_IDS=" + ','.join(str(r.get('databaseId')) for r in queued if r.get('databaseId')))
+          print("RUNNING_IDS=" + ','.join(str(r.get('databaseId')) for r in running if r.get('databaseId')))
           PY
           source /tmp/rolling-active.env
-          echo "Rolling runs: active/queued=${ACTIVE_COUNT}; oldest=${ACTIVE_OLDEST_AGE_SECONDS}s; ids=${ACTIVE_IDS:-none}"
+          echo "Rolling runs: queued=${QUEUED_COUNT} (${QUEUED_OLDEST_AGE_SECONDS}s); running=${RUNNING_COUNT} (${RUNNING_OLDEST_AGE_SECONDS}s)"
 
           STALE_SECONDS=1200
-          ACTIVE_GRACE_SECONDS=900
+          RUNNING_STALE_SECONDS=900
           echo "restart=false" >> "$GITHUB_OUTPUT"
           echo "cancel_ids=" >> "$GITHUB_OUTPUT"
 
@@ -91,14 +99,23 @@ jobs:
             exit 0
           fi
 
-          if [ "$ACTIVE_COUNT" -gt 0 ]; then
-            if [ "$ACTIVE_OLDEST_AGE_SECONDS" -lt "$ACTIVE_GRACE_SECONDS" ]; then
-              echo "reason=collector-active-within-grace" >> "$GITHUB_OUTPUT"
+          # A queued run is valid recovery work. Never cancel/requeue it merely
+          # because runners are congested; doing that can starve the collector.
+          if [ "$QUEUED_COUNT" -gt 0 ]; then
+            echo "reason=collector-queued-awaiting-runner" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Let a running collector finish normally. Only replace a genuinely
+          # stale in-progress run that has exceeded its normal execution grace.
+          if [ "$RUNNING_COUNT" -gt 0 ]; then
+            if [ "$RUNNING_OLDEST_AGE_SECONDS" -lt "$RUNNING_STALE_SECONDS" ]; then
+              echo "reason=collector-running-within-grace" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "restart=true" >> "$GITHUB_OUTPUT"
-            echo "cancel_ids=${ACTIVE_IDS}" >> "$GITHUB_OUTPUT"
-            echo "reason=collector-active-but-staging-stale" >> "$GITHUB_OUTPUT"
+            echo "cancel_ids=${RUNNING_IDS}" >> "$GITHUB_OUTPUT"
+            echo "reason=collector-running-but-staging-stale" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -113,7 +130,7 @@ jobs:
             echo "reason=no-search-progress-20min" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Cancel stale rolling-search run
+      - name: Cancel stale in-progress rolling-search run
         if: steps.inspect.outputs.cancel_ids != ''
         env:
           GH_TOKEN: ${{ github.token }}
@@ -124,7 +141,7 @@ jobs:
           IFS=',' read -ra RUN_IDS <<< "$IDS"
           for run_id in "${RUN_IDS[@]}"; do
             [ -n "$run_id" ] || continue
-            echo "Cancelling stale rolling-search run ${run_id}"
+            echo "Cancelling stale in-progress rolling-search run ${run_id}"
             gh run cancel "$run_id" --repo "${{ github.repository }}" || true
           done
           sleep 3
