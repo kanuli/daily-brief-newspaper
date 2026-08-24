@@ -6,7 +6,7 @@ on:
     paths:
       - ".github/workflows/pages-maintenance.yml"
       - "assets/js/system-panel.js"
-      - "assets/js/site-tts-v10.js"
+      - "assets/js/site-tts-canto-nano.js"
       - ".github/workflows/pages.yml"
   workflow_run:
     workflows: ["Deploy Daily Brief to GitHub Pages"]
@@ -62,10 +62,7 @@ jobs:
           local_tts=json.loads(Path('/tmp/site/data/tts-manifest.json').read_text(encoding='utf-8'))
 
           def remote_json(name):
-              req=urllib.request.Request(
-                  base+name+'?v='+str(int(time.time()*1000)),
-                  headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-pages-maintenance'},
-              )
+              req=urllib.request.Request(base+name+'?v='+str(int(time.time()*1000)),headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-pages-maintenance'})
               with urllib.request.urlopen(req,timeout=20) as response:
                   return json.loads(response.read().decode('utf-8'))
 
@@ -73,21 +70,17 @@ jobs:
               public_live=remote_json('live.json')
               public_tts=remote_json('tts-manifest.json')
           except Exception as exc:
-              print('snapshot-fetch-error', exc)
-              print('0')
-              raise SystemExit
+              print('snapshot-fetch-error', exc); print('0'); raise SystemExit
 
           live_ok=bool(local_live.get('lastUpdated') and public_live.get('lastUpdated')==local_live.get('lastUpdated'))
           voice_ok=bool(
+              public_tts.get('engine')==local_tts.get('engine') and
+              public_tts.get('assetNamespace')==local_tts.get('assetNamespace') and
               public_tts.get('prosodyPolicy')==local_tts.get('prosodyPolicy') and
               int(public_tts.get('availableArticleCount') or 0)==int(local_tts.get('availableArticleCount') or 0) and
               str(public_tts.get('lastVoicePublishedAt') or '')==str(local_tts.get('lastVoicePublishedAt') or '')
           )
-          print(
-              'snapshot live', public_live.get('lastUpdated'), '/', local_live.get('lastUpdated'),
-              'voice', public_tts.get('prosodyPolicy'), public_tts.get('availableArticleCount'), public_tts.get('lastVoicePublishedAt'),
-              '/', local_tts.get('prosodyPolicy'), local_tts.get('availableArticleCount'), local_tts.get('lastVoicePublishedAt')
-          )
+          print('snapshot live', public_live.get('lastUpdated'), '/', local_live.get('lastUpdated'), 'voice', public_tts.get('engine'), public_tts.get('assetNamespace'), public_tts.get('availableArticleCount'), '/', local_tts.get('engine'), local_tts.get('assetNamespace'), local_tts.get('availableArticleCount'))
           print('1' if live_ok and voice_ok else '0')
           PY
           )
@@ -101,26 +94,19 @@ jobs:
           RUNTIME_OK=$(python - <<'PY'
           import hashlib, pathlib, time, urllib.request
           base='https://kanuli.github.io/daily-brief-newspaper/'
-          paths=['assets/js/system-panel.js','assets/js/site-tts-v10.js']
+          paths=['assets/js/system-panel.js','assets/js/site-tts-canto-nano.js']
           ok=True
           for rel in paths:
               local=pathlib.Path('/tmp/site')/rel
-              if not local.is_file():
-                  print('missing-local', rel)
-                  ok=False
-                  continue
+              if not local.is_file(): print('missing-local', rel); ok=False; continue
               expected=hashlib.sha256(local.read_bytes()).hexdigest()
               try:
                   req=urllib.request.Request(base+rel+'?v='+str(int(time.time()*1000)),headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-pages-maintenance'})
-                  with urllib.request.urlopen(req,timeout=20) as response:
-                      actual=hashlib.sha256(response.read()).hexdigest()
+                  with urllib.request.urlopen(req,timeout=20) as response: actual=hashlib.sha256(response.read()).hexdigest()
               except Exception as exc:
-                  print('runtime-fetch-error', rel, exc)
-                  ok=False
-                  continue
+                  print('runtime-fetch-error', rel, exc); ok=False; continue
               print('runtime', rel, 'expected', expected, 'public', actual)
-              if actual != expected:
-                  ok=False
+              if actual != expected: ok=False
           print('1' if ok else '0')
           PY
           )
@@ -130,7 +116,7 @@ jobs:
             echo "reason=public-runtime-behind-main" >> "$GITHUB_OUTPUT"
           else
             echo "restart=false" >> "$GITHUB_OUTPUT"
-            echo "reason=public-live-voice-runtime-current" >> "$GITHUB_OUTPUT"
+            echo "reason=public-live-canto-nano-voice-runtime-current" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Restart Pages deployment
