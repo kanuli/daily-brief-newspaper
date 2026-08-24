@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import hashlib, json, os, time, urllib.request
+          import hashlib, json, os, re, time, urllib.request
           from datetime import datetime, timezone
           from pathlib import Path
 
@@ -149,15 +149,20 @@ jobs:
                   }
           runtime_match=all(item.get('ok') for item in runtime_checks.values())
 
-          # Regression gates: v10 must use the same-repository manifest, require
-          # policy-namespaced audio URLs and only refresh article controls when
-          # article nodes are inserted. This prevents stale audio and DOM loops.
+          # Regression gates follow the current voice policy instead of a
+          # hard-coded version. Require same-origin manifest loading, the current
+          # policy namespace and the article-only mutation refresh guard.
           tts_local=Path('assets/js/site-tts-v10.js').read_text(encoding='utf-8')
+          policy_local=Path('scripts/cosyvoice_policy.py').read_text(encoding='utf-8')
+          ns_match=re.search(r'^ASSET_NAMESPACE\s*=\s*["\']([^"\']+)["\']', policy_local, re.M)
+          current_namespace=ns_match.group(1) if ns_match else ''
+          namespace_line=f'const REQUIRED_AUDIO_NAMESPACE = "-{current_namespace}-";'
           tts_guard_ok=bool(
+              current_namespace and
               'function containsArticle(node)' in tts_local and
               'mutation.addedNodes' in tts_local and
               'const MANIFEST_URL = "data/tts-manifest.json";' in tts_local and
-              'const REQUIRED_AUDIO_NAMESPACE = "-v10-";' in tts_local and
+              namespace_line in tts_local and
               'new MutationObserver(() => refreshButtons())' not in tts_local
           )
 
@@ -182,6 +187,7 @@ jobs:
               'runtimeMatch': runtime_match,
               'runtimeChecks': runtime_checks,
               'ttsHangRegressionGuard': tts_guard_ok,
+              'voiceAssetNamespace': current_namespace,
               'match': overall,
               'error': error,
           }
