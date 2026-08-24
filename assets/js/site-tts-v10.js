@@ -5,14 +5,15 @@
   const STOP_TEXT = "■ 停止朗讀";
   const PENDING_TEXT = "⏳ F01 音訊準備中";
   const MANIFEST_URL = "data/tts-manifest.json";
-  const REQUIRED_POLICY = "f01-news-anchor-v10-cache-isolated-semantic-pauses-approved-10s-hktrad";
+  const REQUIRED_POLICY = "f01-news-anchor-v11-hk-anchor-paced-approved-10s-hktrad";
   const REQUIRED_LANGUAGE_GATE = "residual-latin-zero";
   const REQUIRED_SEGMENT_POLICY = "single-inference-per-article";
   const REQUIRED_CONDITIONING_POLICY = "approved-reference-bistream";
-  const REQUIRED_PACING_POLICY = "hk-tv-news-semantic-pauses-v1";
+  const REQUIRED_PACING_POLICY = "hk-tv-news-semantic-pauses-v2";
   const REQUIRED_TEMPO_POLICY = "model-speed-only-no-post-stretch";
   const REQUIRED_REFERENCE_SECONDS = 10;
-  const REQUIRED_AUDIO_NAMESPACE = "-v10-";
+  const REQUIRED_AUDIO_NAMESPACE = "-v11-";
+  const REQUIRED_SPEED = 0.92;
   const REFRESH_MS = 15000;
 
   let manifest = null;
@@ -34,6 +35,7 @@
       entry?.pacingPolicy === REQUIRED_PACING_POLICY &&
       entry?.tempoPolicy === REQUIRED_TEMPO_POLICY &&
       Number(entry?.referenceDurationSeconds) === REQUIRED_REFERENCE_SECONDS &&
+      Number(entry?.speed) === REQUIRED_SPEED &&
       Number(entry?.segmentCount) === 1
     );
   }
@@ -49,7 +51,8 @@
       data?.initialConditioningPolicy === REQUIRED_CONDITIONING_POLICY &&
       data?.pacingPolicy === REQUIRED_PACING_POLICY &&
       data?.tempoPolicy === REQUIRED_TEMPO_POLICY &&
-      Number(data?.referenceDurationSeconds) === REQUIRED_REFERENCE_SECONDS
+      Number(data?.referenceDurationSeconds) === REQUIRED_REFERENCE_SECONDS &&
+      Number(data?.speed) === REQUIRED_SPEED
     );
   }
 
@@ -64,7 +67,7 @@
       const panel = document.createElement("div");
       panel.id = "site-tts-player";
       panel.dataset.open = "false";
-      panel.innerHTML = '<div class="site-tts-player-row"><div class="site-tts-status" id="site-tts-status">CosyVoice2-Yue · F01 女聲 · v10</div><button type="button" class="site-tts-stop" id="site-tts-stop">■ 停止</button></div><audio class="site-tts-audio" id="site-tts-audio" controls preload="metadata" playsinline></audio>';
+      panel.innerHTML = '<div class="site-tts-player-row"><div class="site-tts-status" id="site-tts-status">CosyVoice2-Yue · F01 女聲 · v11</div><button type="button" class="site-tts-stop" id="site-tts-stop">■ 停止</button></div><audio class="site-tts-audio" id="site-tts-audio" controls preload="metadata" playsinline></audio>';
       document.body.appendChild(panel);
       $("#site-tts-stop")?.addEventListener("click", stopAll);
       $("#site-tts-audio")?.addEventListener("ended", finishActive);
@@ -135,9 +138,9 @@
       button.dataset.speaking = "true";
       button.textContent = STOP_TEXT;
     }
-    setStatus("使用中：F01 女聲 · v10 香港新聞主播節奏");
+    setStatus("使用中：F01 女聲 · v11 香港新聞主播節奏");
     const result = audio.play();
-    result?.catch?.((error) => { console.warn("F01 v10 playback rejected", error); finishActive(); });
+    result?.catch?.((error) => { console.warn("F01 v11 playback rejected", error); finishActive(); });
     return true;
   }
 
@@ -163,12 +166,12 @@
     if (validEntry(entry)) {
       button.disabled = false;
       button.textContent = BUTTON_TEXT;
-      button.title = "F01女聲 · 10秒核准聲線 · v10獨立音訊URL · 新聞主播語義停頓";
+      button.title = "F01女聲 · v11 · 0.92原生語速 · 香港新聞主播語義停頓";
       button.onclick = () => play(entry, button);
     } else {
       button.disabled = true;
       button.textContent = PENDING_TEXT;
-      button.title = "只播放具有v10獨立URL、並通過目前聲線與節奏政策的F01音訊。";
+      button.title = "只播放具有v11獨立URL、0.92原生語速並通過目前節奏政策的F01音訊。";
     }
   }
 
@@ -197,7 +200,7 @@
       const fresh = await response.json();
       manifest = validManifest(fresh) ? fresh : null;
     } catch (error) {
-      console.warn("F01 v10 manifest unavailable", error);
+      console.warn("F01 v11 manifest unavailable", error);
       manifest = null;
     }
     refreshButtons();
