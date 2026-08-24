@@ -62,7 +62,24 @@
     study.addEventListener("click", (event) => { const button = event.target.closest(".vocab-play"); if (button) playF3(button); });
   }
 
-  async function loadDailyVocab(date) { if (!date) return; try { const res = await fetch(`data/vocab/${date}.json`, { cache: "no-store" }); if (!res.ok) throw new Error(`Vocab HTTP ${res.status}`); renderDailyVocab(await res.json()); } catch (err) { console.warn("Daily vocab unavailable", err); } }
+  async function loadDailyVocab(date) {
+    const urls = date ? [`data/vocab/${date}.json`, "data/vocab/latest.json"] : ["data/vocab/latest.json"];
+    let lastError = null;
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) throw new Error(`Vocab HTTP ${res.status}`);
+        const vocab = await res.json();
+        if (!Array.isArray(vocab.words) || !vocab.words.length) throw new Error("Vocab payload is empty");
+        renderDailyVocab(vocab);
+        if (url.endsWith("latest.json") && date && vocab.date !== date) console.warn(`Daily vocab fallback used: requested ${date}, serving ${vocab.date || "latest"}`);
+        return;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    console.warn("Daily vocab unavailable", lastError);
+  }
   async function init() { normalizeFinanceLabels(); try { const data = await getEditionData(); await loadDailyVocab(data.date || document.body.dataset.edition); setTimeout(normalizeFinanceLabels, 400); setTimeout(normalizeFinanceLabels, 1200); } catch (err) { console.warn("Daily extras unavailable", err); } }
   window.addEventListener("pagehide", stopVocabAudio, { once: true }); init();
 })();
