@@ -77,7 +77,7 @@
 
   function loadSiteTTS() {
     if (document.body.dataset.page === "archive") return;
-    inject("assets/js/site-tts-v10.js?v=20260824-2031-v11paced", "data-site-tts");
+    inject("assets/js/site-tts-v10.js?v=20260824-2124-v12officialf01", "data-site-tts");
   }
 
   function loadVoiceProductionStatus() {
@@ -93,15 +93,12 @@
     const played = window.SiteTTS?.playLeadFromUserGesture?.() || false;
     if (played) {
       button.textContent = "🔊 廣東話朗讀";
-      button.title = "使用 CosyVoice2-Yue F01 女聲播放目前頭條";
+      button.title = "使用 CosyVoice2-Yue 官方 F01 女聲播放目前頭條";
       return;
     }
     button.textContent = "⏳ F01 音訊準備中";
     button.disabled = true;
-    window.setTimeout(() => {
-      button.textContent = "🔊 廣東話朗讀";
-      button.disabled = false;
-    }, 2500);
+    window.setTimeout(() => { button.textContent = "🔊 廣東話朗讀"; button.disabled = false; }, 2500);
   }
 
   function mountVoiceLauncher() {
@@ -110,7 +107,7 @@
     voiceButton.id = "main-site-voice-button";
     voiceButton.type = "button";
     voiceButton.textContent = "🔊 廣東話朗讀";
-    voiceButton.setAttribute("aria-label", "播放 CosyVoice2-Yue F01 廣東話頭條朗讀");
+    voiceButton.setAttribute("aria-label", "播放 CosyVoice2-Yue 官方 F01 廣東話頭條朗讀");
     voiceButton.addEventListener("click", () => playMainLeadFromClick(voiceButton));
     document.body.appendChild(voiceButton);
   }
@@ -124,7 +121,7 @@
     button.innerHTML = '<span class="system-status-dot" aria-hidden="true"></span><span class="system-status-label">SYSTEM</span>';
     const panel = document.createElement("aside");
     panel.id = "system-status-panel"; panel.className = "system-status-panel"; panel.hidden = true;
-    panel.innerHTML = `<div class="system-panel-head"><div><strong>System Status</strong><span>Maintenance & Monitoring</span></div><button type="button" class="system-panel-close" aria-label="關閉">×</button></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Website</strong><small>Static safe mode · publication layers monitored independently</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>Daily / Live / Stocks</strong><small>News Pipeline below separates background discovery, verified draft, main Live and public Pages</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>Cantonese Voice</strong><small>CosyVoice2-Yue · approved F01 female anchor · v11 · native speed 0.92 · HK news-anchor semantic pacing</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>GitHub Pages / Discord</strong><small>Pages deployment has automatic main/public convergence repair</small></div></div><div class="system-panel-links"><a href="https://github.com/kanuli/daily-brief-newspaper/actions" target="_blank" rel="noopener noreferrer">GitHub Actions ↗</a><a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">Repository ↗</a></div>`;
+    panel.innerHTML = `<div class="system-panel-head"><div><strong>System Status</strong><span>Maintenance & Monitoring</span></div><button type="button" class="system-panel-close" aria-label="關閉">×</button></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Website</strong><small>Static safe mode · publication layers monitored independently</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>Daily / Live / Stocks</strong><small>News Pipeline below separates background discovery, verified draft, main Live and public Pages</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>Cantonese Voice</strong><small>CosyVoice2-Yue · ASLP-lab official F01 neutral female · v12 · original 8s reference · native speed 1.0 · HK news-anchor semantic pacing</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>GitHub Pages / Discord</strong><small>Pages deployment has automatic main/public convergence repair</small></div></div><div class="system-panel-links"><a href="https://github.com/kanuli/daily-brief-newspaper/actions" target="_blank" rel="noopener noreferrer">GitHub Actions ↗</a><a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">Repository ↗</a></div>`;
     function setOpen(open) { panel.hidden = !open; button.setAttribute("aria-expanded", String(open)); }
     button.addEventListener("click", () => setOpen(panel.hidden));
     panel.querySelector(".system-panel-close")?.addEventListener("click", () => setOpen(false));
