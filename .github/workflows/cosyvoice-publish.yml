@@ -33,12 +33,12 @@ on:
 permissions:
   contents: write
 
-# v10 has its own concurrency namespace so a legacy v7/v8/v9 worker that is
-# stuck in the historical group cannot block the current-policy pool. Healthy
-# v10 workers are never cancelled by ordinary news/data pushes; progress-based
-# maintenance is responsible for recycling a genuinely stalled v10 pool.
+# Every audible policy revision gets a fresh worker namespace. A v10 pool can
+# finish or time out independently but cannot block v11. Healthy v11 workers are
+# not cancelled by ordinary news/data pushes; the progress watchdog handles a
+# genuinely stalled pool.
 concurrency:
-  group: "cosyvoice2-yue-f01-v10-current-news"
+  group: "cosyvoice2-yue-f01-v11-current-news"
   cancel-in-progress: false
 
 env:
@@ -178,7 +178,7 @@ jobs:
           COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
           COSY_ARTICLE_MAX_TEXT_CHARS: "260"
           COSY_MAX_SEGMENT_CHARS: "320"
-          COSY_VOICE_SPEED: "1.0"
+          COSY_VOICE_SPEED: "0.92"
           COSY_SHARD_COUNT: "10"
           COSY_SHARD_ONE_ARTICLE: "1"
           COSY_SHARD_STABLE_SLOT: "1"
@@ -190,7 +190,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           for cycle in $(seq 1 12); do
-            echo "=== F01 stable-newsreader slot ${SLOT} cycle ${cycle}/12 ==="
+            echo "=== F01 v11 HK-anchor slot ${SLOT} cycle ${cycle}/12 ==="
             git fetch origin main
             git reset --hard origin/main
             rm -rf artifacts/cosyvoice-shards
@@ -231,7 +231,7 @@ jobs:
               fi
               git commit -m "Publish natural F01 voice slot ${SLOT} cycle ${cycle}"
               if git push origin HEAD:main; then
-                echo "COSYVOICE_ANCHOR_ONE_ARTICLE_PUSH_PASS slot=${SLOT} cycle=${cycle}"
+                echo "COSYVOICE_V11_ONE_ARTICLE_PUSH_PASS slot=${SLOT} cycle=${cycle}"
                 published=true
                 break
               fi
