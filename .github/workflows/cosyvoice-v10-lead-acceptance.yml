@@ -76,7 +76,7 @@ jobs:
           COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
           COSY_ARTICLE_MAX_TEXT_CHARS: "260"
           COSY_MAX_SEGMENT_CHARS: "320"
-          COSY_VOICE_SPEED: "0.92"
+          COSY_VOICE_SPEED: "1.0"
           COSY_SHARD_COUNT: "1"
           COSY_SHARD_INDEX: "0"
           COSY_SHARD_ONE_ARTICLE: "1"
@@ -101,11 +101,19 @@ jobs:
               raise SystemExit(f"acceptance audio is not current namespace: {entry.get('audio')}")
           if entry.get('prosodyPolicy') != policy.POLICY:
               raise SystemExit(f"wrong policy: {entry.get('prosodyPolicy')}")
+          if entry.get('referencePolicy') != policy.REFERENCE_POLICY:
+              raise SystemExit(f"wrong reference policy: {entry.get('referencePolicy')}")
+          if entry.get('referenceAsset') != policy.REFERENCE_ASSET:
+              raise SystemExit(f"wrong reference asset: {entry.get('referenceAsset')}")
+          if float(entry.get('referenceStartSeconds') or 0) != float(policy.REFERENCE_START_SECONDS):
+              raise SystemExit(f"wrong reference start: {entry.get('referenceStartSeconds')}")
+          if float(entry.get('referenceDurationSeconds') or 0) != float(policy.REFERENCE_DURATION_SECONDS):
+              raise SystemExit(f"wrong reference duration: {entry.get('referenceDurationSeconds')}")
           if entry.get('pacingPolicy') != policy.PACING_POLICY:
               raise SystemExit(f"wrong pacing policy: {entry.get('pacingPolicy')}")
           if float(entry.get('speed') or 0) != float(policy.VOICE_SPEED):
               raise SystemExit(f"wrong speed: {entry.get('speed')}")
-          print('CURRENT_LEAD_GENERATED', entry.get('articleId'), entry.get('audio'), 'duration', entry.get('durationSeconds'))
+          print('CURRENT_LEAD_GENERATED', entry.get('articleId'), entry.get('audio'), 'reference', entry.get('referenceAsset'), 'duration', entry.get('durationSeconds'))
           PY
 
       - name: Upload and publish acceptance voice
@@ -138,9 +146,9 @@ jobs:
               echo "Current lead acceptance voice already present."
               exit 0
             fi
-            git commit -m "Publish current v11 lead acceptance F01 voice"
+            git commit -m "Publish current v12 official F01 lead acceptance voice"
             if git push origin HEAD:main; then
-              echo "CURRENT_V11_LEAD_ACCEPTANCE_PUBLISHED"
+              echo "CURRENT_V12_OFFICIAL_F01_LEAD_ACCEPTANCE_PUBLISHED"
               exit 0
             fi
             sleep $((attempt * 2))
