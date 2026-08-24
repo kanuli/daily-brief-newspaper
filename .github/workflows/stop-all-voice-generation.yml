@@ -1,5 +1,7 @@
 name: Stop All Voice Generation
 
+# Immediate production pause switch. Updating this file intentionally retriggers
+# the stopper so already-running voice jobs are cancelled as well as disabled.
 on:
   push:
     branches: ["main"]
@@ -117,7 +119,7 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json, os
+          import json
           from datetime import datetime, timezone
           from pathlib import Path
           remaining=[]
