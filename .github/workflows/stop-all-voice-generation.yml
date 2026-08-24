@@ -1,0 +1,158 @@
+name: Stop All Voice Generation
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/stop-all-voice-generation.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: "stop-all-voice-generation"
+  cancel-in-progress: false
+
+jobs:
+  stop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Disable voice generators and maintenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY}"
+          workflows=(
+            "cosyvoice-publish.yml"
+            "cosyvoice-prepublish.yml"
+            "cosyvoice-v10-lead-acceptance.yml"
+            "cosyvoice-maintenance.yml"
+            "cosyvoice-policy-cutover.yml"
+            "canto-nano-test.yml"
+          )
+          for wf in "${workflows[@]}"; do
+            echo "Disabling ${wf}"
+            gh workflow disable "$wf" --repo "$repo" || true
+          done
+
+      - name: Cancel every queued or running voice job
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY}"
+          workflows=(
+            "cosyvoice-publish.yml"
+            "cosyvoice-prepublish.yml"
+            "cosyvoice-v10-lead-acceptance.yml"
+            "cosyvoice-maintenance.yml"
+            "cosyvoice-policy-cutover.yml"
+            "canto-nano-test.yml"
+          )
+          for wf in "${workflows[@]}"; do
+            gh run list --repo "$repo" --workflow "$wf" --limit 100 \
+              --json databaseId,status \
+              --jq '.[] | select(.status=="queued" or .status=="in_progress" or .status=="waiting" or .status=="pending" or .status=="requested") | .databaseId' \
+              | while read -r run_id; do
+                  [ -n "$run_id" ] || continue
+                  echo "Cancelling ${wf} run ${run_id}"
+                  gh run cancel "$run_id" --repo "$repo" || true
+                done
+          done
+
+      - name: Verify voice jobs have stopped
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY}"
+          workflows=(
+            "cosyvoice-publish.yml"
+            "cosyvoice-prepublish.yml"
+            "cosyvoice-v10-lead-acceptance.yml"
+            "cosyvoice-maintenance.yml"
+            "cosyvoice-policy-cutover.yml"
+            "canto-nano-test.yml"
+          )
+          remaining="[]"
+          for attempt in $(seq 1 12); do
+            remaining="[]"
+            for wf in "${workflows[@]}"; do
+              rows=$(gh run list --repo "$repo" --workflow "$wf" --limit 100 \
+                --json databaseId,status,workflowName \
+                --jq '[.[] | select(.status=="queued" or .status=="in_progress" or .status=="waiting" or .status=="pending" or .status=="requested")]')
+              remaining=$(jq -cn --argjson a "$remaining" --argjson b "$rows" '$a + $b')
+            done
+            count=$(jq 'length' <<<"$remaining")
+            echo "VOICE_STOP_CHECK attempt=${attempt} remaining=${count}"
+            if [ "$count" -eq 0 ]; then
+              break
+            fi
+            sleep 5
+          done
+          printf '%s\n' "$remaining" > /tmp/voice-active-remaining.json
+          if [ "$(jq 'length' /tmp/voice-active-remaining.json)" -ne 0 ]; then
+            cat /tmp/voice-active-remaining.json
+            exit 1
+          fi
+
+      - name: Publish stop-state evidence
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          remaining=[]
+          p=Path('/tmp/voice-active-remaining.json')
+          if p.is_file():
+              remaining=json.loads(p.read_text())
+          payload={
+              'checkedAt': datetime.now(timezone.utc).isoformat(),
+              'paused': True,
+              'disabledWorkflows': [
+                  'cosyvoice-publish.yml',
+                  'cosyvoice-prepublish.yml',
+                  'cosyvoice-v10-lead-acceptance.yml',
+                  'cosyvoice-maintenance.yml',
+                  'cosyvoice-policy-cutover.yml',
+                  'canto-nano-test.yml',
+              ],
+              'activeVoiceRunsRemaining': remaining,
+              'activeVoiceRunCount': len(remaining),
+          }
+          Path('data/voice-generation-stop.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/voice-generation-stop.json
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Record voice generation paused state"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then
+              exit 0
+            fi
+            git rebase --abort >/dev/null 2>&1 || true
+            sleep $((attempt * 2))
+          done
+          exit 1
