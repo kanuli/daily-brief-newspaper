@@ -5,6 +5,7 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/pages-probe.yml"
+      - "assets/js/site-tts-canto-nano.js"
   workflow_run:
     workflows: ["Deploy Daily Brief to GitHub Pages"]
     types: [completed]
@@ -35,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import hashlib, json, os, re, time, urllib.request
+          import hashlib, json, os, time, urllib.request
           from datetime import datetime, timezone
           from pathlib import Path
 
@@ -48,21 +49,18 @@ jobs:
               'finance.html','stocks.html','technology.html','manga-anime.html',
               'manchester-united.html','football.html','archive.html'
           ]
-          runtime_files=['assets/js/site-tts-v14.js','assets/js/system-panel.js','assets/js/live-article.js']
-          known_error_markers=[
-              'Error 500 (Server Error)', 'That’s an error', "That's an error",
-              'There was an error. Please try again later.'
-          ]
+          runtime_files=['assets/js/site-tts-canto-nano.js','assets/js/system-panel.js','assets/js/live-article.js']
+          known_error_markers=['Error 500 (Server Error)', 'That’s an error', "That's an error", 'There was an error. Please try again later.']
 
           local_live=json.load(open('data/live.json',encoding='utf-8'))
           local_stocks=json.load(open('data/stocks-latest.json',encoding='utf-8'))
+          local_tts=json.load(open('data/tts-manifest.json',encoding='utf-8'))
           expected_live=local_live.get('lastUpdated')
           expected_stocks=local_stocks.get('generatedAt')
 
           def request_bytes(url):
               sep='&' if '?' in url else '?'
-              req=urllib.request.Request(url+sep+'v='+str(int(time.time()*1000)),headers={
-                  'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-pages-probe'})
+              req=urllib.request.Request(url+sep+'v='+str(int(time.time()*1000)),headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-pages-probe'})
               with urllib.request.urlopen(req,timeout=15) as response:
                   body=response.read()
                   return response.getcode(), response.headers.get_content_type(), body
@@ -74,21 +72,29 @@ jobs:
 
           def sha256(data): return hashlib.sha256(data).hexdigest()
 
-          remote_live=remote_desk=remote_stocks=None
+          remote_live=remote_desk=remote_stocks=remote_tts=None
           error=None
           for _ in range(12):
               try:
                   remote_live=fetch_json('live.json')
                   remote_desk=fetch_json('desk-latest.json')
                   remote_stocks=fetch_json('stocks-latest.json')
+                  remote_tts=fetch_json('tts-manifest.json')
                   live_match=bool(remote_live.get('lastUpdated')==expected_live and (remote_live.get('items') or []))
                   desk_match=bool(remote_desk.get('generatedAt')==expected_live)
                   stock_match=bool(remote_stocks.get('generatedAt')==expected_stocks)
-                  if live_match and desk_match and stock_match:
+                  voice_match=bool(
+                      remote_tts.get('engine')==local_tts.get('engine') and
+                      remote_tts.get('assetNamespace')==local_tts.get('assetNamespace') and
+                      remote_tts.get('prosodyPolicy')==local_tts.get('prosodyPolicy') and
+                      int(remote_tts.get('availableArticleCount') or 0)==int(local_tts.get('availableArticleCount') or 0) and
+                      str(remote_tts.get('lastVoicePublishedAt') or '')==str(local_tts.get('lastVoicePublishedAt') or '')
+                  )
+                  if live_match and desk_match and stock_match and voice_match:
                       error=None; break
-                  error=(f"live={remote_live.get('lastUpdated')} expected={expected_live}; "
-                         f"desk={remote_desk.get('generatedAt')} expected={expected_live}; "
-                         f"stocks={remote_stocks.get('generatedAt')} expected={expected_stocks}")
+                  error=(f"live={remote_live.get('lastUpdated')} expected={expected_live}; desk={remote_desk.get('generatedAt')} expected={expected_live}; "
+                         f"stocks={remote_stocks.get('generatedAt')} expected={expected_stocks}; voice={remote_tts.get('engine')}/{remote_tts.get('assetNamespace')}/{remote_tts.get('availableArticleCount')} "
+                         f"expected={local_tts.get('engine')}/{local_tts.get('assetNamespace')}/{local_tts.get('availableArticleCount')}")
               except Exception as exc:
                   error=str(exc)
               time.sleep(5)
@@ -96,6 +102,7 @@ jobs:
           live_match=bool(isinstance(remote_live,dict) and remote_live.get('lastUpdated')==expected_live and (remote_live.get('items') or []))
           desk_match=bool(isinstance(remote_desk,dict) and remote_desk.get('generatedAt')==expected_live)
           stock_match=bool(isinstance(remote_stocks,dict) and remote_stocks.get('generatedAt')==expected_stocks)
+          voice_match=bool(isinstance(remote_tts,dict) and remote_tts.get('engine')==local_tts.get('engine') and remote_tts.get('assetNamespace')==local_tts.get('assetNamespace') and remote_tts.get('prosodyPolicy')==local_tts.get('prosodyPolicy') and int(remote_tts.get('availableArticleCount') or 0)==int(local_tts.get('availableArticleCount') or 0) and str(remote_tts.get('lastVoicePublishedAt') or '')==str(local_tts.get('lastVoicePublishedAt') or ''))
 
           page_checks={}
           for page in core_pages:
@@ -118,22 +125,19 @@ jobs:
                   runtime_checks[path]={'ok':False,'localSha256':sha256(local),'error':str(exc)}
           runtime_match=all(item.get('ok') for item in runtime_checks.values())
 
-          tts_local=Path('assets/js/site-tts-v14.js').read_text(encoding='utf-8')
-          policy_local=Path('scripts/cosyvoice_policy.py').read_text(encoding='utf-8')
-          ns_match=re.search(r'^ASSET_NAMESPACE\s*=\s*["\']([^"\']+)["\']', policy_local, re.M)
-          current_namespace=ns_match.group(1) if ns_match else ''
-          namespace_line=f'const NAMESPACE = "-{current_namespace}-";'
+          tts_local=Path('assets/js/site-tts-canto-nano.js').read_text(encoding='utf-8')
+          current_namespace=str(local_tts.get('assetNamespace') or '')
           tts_guard_ok=bool(
-              current_namespace and
-              'function containsArticle(node)' in tts_local and
-              'addedNodes' in tts_local and
+              current_namespace=='cnf1' and
               'const MANIFEST_URL = "data/tts-manifest.json";' in tts_local and
-              namespace_line in tts_local and
-              'semantic-sentence-reference-locked' in tts_local and
-              'new MutationObserver(() => refreshButtons())' not in tts_local
+              'const NAMESPACE = "-cnf1-";' in tts_local and
+              'runtime-ref-audio-voice-clone-verified' in tts_local and
+              'femalePromptCodesSha256 !== e.defaultPromptCodesSha256' in tts_local and
+              'semantic-completeness-breathing-audience-processing' in tts_local and
+              'new MutationObserver' in tts_local
           )
 
-          overall=bool(live_match and desk_match and stock_match and all_pages_ok and runtime_match and tts_guard_ok)
+          overall=bool(live_match and desk_match and stock_match and voice_match and all_pages_ok and runtime_match and tts_guard_ok)
           payload={
               'checkedAt': datetime.now(timezone.utc).isoformat(), 'publicBaseUrl': root,
               'mainLastUpdated': expected_live,
@@ -146,6 +150,9 @@ jobs:
               'mainStocksGeneratedAt': expected_stocks,
               'publicStocksGeneratedAt': remote_stocks.get('generatedAt') if isinstance(remote_stocks,dict) else None,
               'liveMatch': live_match, 'deskMatch': desk_match, 'stockMatch': stock_match,
+              'voiceManifestMatch': voice_match,
+              'voiceEngine': local_tts.get('engine'),
+              'voiceAvailableArticleCount': int(local_tts.get('availableArticleCount') or 0),
               'allCorePagesOk': all_pages_ok, 'pageChecks': page_checks,
               'runtimeMatch': runtime_match, 'runtimeChecks': runtime_checks,
               'ttsHangRegressionGuard': tts_guard_ok,
