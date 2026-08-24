@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: "cosyvoice-current-lead-acceptance"
+  group: "cosyvoice-current-lead-acceptance-v14"
   cancel-in-progress: true
 
 env:
@@ -99,21 +99,31 @@ jobs:
               raise SystemExit(f"acceptance article is not current lead: got={entry.get('articleId')} expected={expected}")
           if f'-{policy.ASSET_NAMESPACE}-' not in str(entry.get('audio') or ''):
               raise SystemExit(f"acceptance audio is not current namespace: {entry.get('audio')}")
-          if entry.get('prosodyPolicy') != policy.POLICY:
-              raise SystemExit(f"wrong policy: {entry.get('prosodyPolicy')}")
-          if entry.get('referencePolicy') != policy.REFERENCE_POLICY:
-              raise SystemExit(f"wrong reference policy: {entry.get('referencePolicy')}")
-          if entry.get('referenceAsset') != policy.REFERENCE_ASSET:
-              raise SystemExit(f"wrong reference asset: {entry.get('referenceAsset')}")
+          checks={
+              'prosodyPolicy': policy.POLICY,
+              'referencePolicy': policy.REFERENCE_POLICY,
+              'referenceAsset': policy.REFERENCE_ASSET,
+              'pacingPolicy': policy.PACING_POLICY,
+              'segmentPolicy': policy.SEGMENT_POLICY,
+              'inferenceMode': policy.INFERENCE_MODE,
+          }
+          for key,value in checks.items():
+              if entry.get(key) != value:
+                  raise SystemExit(f"wrong {key}: {entry.get(key)} expected={value}")
+          if entry.get('instructionPolicy') != 'instruct2-cantonese-control-not-spoken':
+              raise SystemExit(f"wrong instruction policy: {entry.get('instructionPolicy')}")
           if float(entry.get('referenceStartSeconds') or 0) != float(policy.REFERENCE_START_SECONDS):
               raise SystemExit(f"wrong reference start: {entry.get('referenceStartSeconds')}")
           if float(entry.get('referenceDurationSeconds') or 0) != float(policy.REFERENCE_DURATION_SECONDS):
               raise SystemExit(f"wrong reference duration: {entry.get('referenceDurationSeconds')}")
-          if entry.get('pacingPolicy') != policy.PACING_POLICY:
-              raise SystemExit(f"wrong pacing policy: {entry.get('pacingPolicy')}")
           if float(entry.get('speed') or 0) != float(policy.VOICE_SPEED):
               raise SystemExit(f"wrong speed: {entry.get('speed')}")
-          print('CURRENT_LEAD_GENERATED', entry.get('articleId'), entry.get('audio'), 'reference', entry.get('referenceAsset'), 'duration', entry.get('durationSeconds'))
+          segments=int(entry.get('segmentCount') or 0)
+          if segments < 2:
+              raise SystemExit(f"v14 acceptance requires multiple semantic units, got {segments}")
+          if int(entry.get('semanticUnitCount') or 0) != segments:
+              raise SystemExit('semantic unit count mismatch')
+          print('CURRENT_V14_LEAD_GENERATED', entry.get('articleId'), entry.get('audio'), 'segments', segments, 'duration', entry.get('durationSeconds'))
           PY
 
       - name: Upload and publish acceptance voice
@@ -143,12 +153,12 @@ jobs:
             python scripts/publish_cosyvoice_article_v10.py /tmp/current-lead-shard.json
             git add data/tts-manifest.json
             if git diff --cached --quiet; then
-              echo "Current lead acceptance voice already present."
+              echo "Current v14 lead acceptance voice already present."
               exit 0
             fi
-            git commit -m "Publish current v12 official F01 lead acceptance voice"
+            git commit -m "Publish current v14 semantic-unit Cantonese lead voice"
             if git push origin HEAD:main; then
-              echo "CURRENT_V12_OFFICIAL_F01_LEAD_ACCEPTANCE_PUBLISHED"
+              echo "CURRENT_V14_LEAD_ACCEPTANCE_PUBLISHED"
               exit 0
             fi
             sleep $((attempt * 2))
