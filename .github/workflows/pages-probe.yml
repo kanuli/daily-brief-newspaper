@@ -48,7 +48,7 @@ jobs:
               'finance.html','stocks.html','technology.html','manga-anime.html',
               'manchester-united.html','football.html','archive.html'
           ]
-          runtime_files=['assets/js/site-tts-v13.js','assets/js/system-panel.js','assets/js/live-article.js']
+          runtime_files=['assets/js/site-tts-v14.js','assets/js/system-panel.js','assets/js/live-article.js']
           known_error_markers=[
               'Error 500 (Server Error)', 'That’s an error', "That's an error",
               'There was an error. Please try again later.'
@@ -118,7 +118,7 @@ jobs:
                   runtime_checks[path]={'ok':False,'localSha256':sha256(local),'error':str(exc)}
           runtime_match=all(item.get('ok') for item in runtime_checks.values())
 
-          tts_local=Path('assets/js/site-tts-v13.js').read_text(encoding='utf-8')
+          tts_local=Path('assets/js/site-tts-v14.js').read_text(encoding='utf-8')
           policy_local=Path('scripts/cosyvoice_policy.py').read_text(encoding='utf-8')
           ns_match=re.search(r'^ASSET_NAMESPACE\s*=\s*["\']([^"\']+)["\']', policy_local, re.M)
           current_namespace=ns_match.group(1) if ns_match else ''
@@ -129,6 +129,7 @@ jobs:
               'addedNodes' in tts_local and
               'const MANIFEST_URL = "data/tts-manifest.json";' in tts_local and
               namespace_line in tts_local and
+              'semantic-sentence-reference-locked' in tts_local and
               'new MutationObserver(() => refreshButtons())' not in tts_local
           )
 
