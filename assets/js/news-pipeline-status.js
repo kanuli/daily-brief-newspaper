@@ -87,6 +87,8 @@
     const mainIso = clean(main?.lastUpdated);
     const mainMs = Date.parse(mainIso || "");
     const targetMs = Date.parse(draftTargetIso || "");
+    const draftSupersededByMain = draftVerified && Number.isFinite(targetMs) && Number.isFinite(mainMs) && mainMs >= targetMs;
+    const draftHealthyForCurrentMain = draftFresh || draftSupersededByMain || !draft;
     const dueFailover = draftFresh && Number.isFinite(targetMs) && Date.now() >= targetMs + LIVE_FAILOVER_GRACE_MS;
     const mainBehindDraft = dueFailover && (!Number.isFinite(mainMs) || mainMs < targetMs);
 
@@ -95,7 +97,7 @@
     const pagesMatch = !!(pages?.match && mainIso && publicIso === mainIso);
 
     let level = "ok";
-    let summary = "Discovery + verified draft + main Live + public Pages healthy";
+    let summary = "Discovery + main Live + public Pages healthy";
 
     if (!staging || !main || !pages) {
       level = "warn";
@@ -104,7 +106,7 @@
     if (!searchFresh) {
       level = "fail";
       summary = "Rolling discovery stale · collector auto maintenance repairing";
-    } else if (!draftFresh) {
+    } else if (!draftHealthyForCurrentMain) {
       level = "warn";
       summary = "Background discovery healthy · next verified Live draft missing/stale";
     } else if (mainBehindDraft) {
@@ -123,8 +125,8 @@
       ? `Search ${formatHKT(searchIso)}${searchFresh ? " ✓" : " ⚠"}`
       : "Search unavailable";
     const draftText = draft
-      ? `Draft ${formatHKT(draftTargetIso)}${draftFresh ? " ✓" : " ⚠"}`
-      : "Draft unavailable";
+      ? `Draft ${formatHKT(draftTargetIso)}${draftFresh ? " ✓" : draftSupersededByMain ? " · standby (superseded)" : " ⚠"}`
+      : "Draft standby unavailable";
     const mainText = main
       ? `Main ${clean(main.windowLabel || main.lastUpdatedLabel || formatHKT(mainIso))}`
       : "Main unavailable";
