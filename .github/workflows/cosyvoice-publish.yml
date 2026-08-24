@@ -33,13 +33,13 @@ on:
 permissions:
   contents: write
 
-# News collection/publication has priority over background voice synthesis.
-# A newer v11 run replaces unfinished work from the previous v11 run; every WAV
-# already published to the release/manifest remains reusable. Limit the worker
-# pool so Actions always retains headroom for rolling discovery and maintenance.
+# v12 uses an independent concurrency namespace, so the obsolete generated-news
+# reference pools cannot block the official raw-F01 migration. Keep healthy v12
+# workers alive across ordinary news pushes; progress maintenance recycles only
+# a pool that genuinely stops publishing valid current-policy WAVs.
 concurrency:
-  group: "cosyvoice2-yue-f01-v11-current-news"
-  cancel-in-progress: true
+  group: "cosyvoice2-yue-f01-v12-current-news"
+  cancel-in-progress: false
 
 env:
   F01_RELEASE_TAG: f01-voice-cache
@@ -178,7 +178,7 @@ jobs:
           COSY_MODEL_DIR: /tmp/Cosyvoice2-Yue
           COSY_ARTICLE_MAX_TEXT_CHARS: "260"
           COSY_MAX_SEGMENT_CHARS: "320"
-          COSY_VOICE_SPEED: "0.92"
+          COSY_VOICE_SPEED: "1.0"
           COSY_SHARD_COUNT: "10"
           COSY_SHARD_ONE_ARTICLE: "1"
           COSY_SHARD_STABLE_SLOT: "1"
@@ -190,7 +190,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           for cycle in $(seq 1 12); do
-            echo "=== F01 v11 HK-anchor slot ${SLOT} cycle ${cycle}/12 ==="
+            echo "=== F01 v12 official-neutral slot ${SLOT} cycle ${cycle}/12 ==="
             git fetch origin main
             git reset --hard origin/main
             rm -rf artifacts/cosyvoice-shards
@@ -231,7 +231,7 @@ jobs:
               fi
               git commit -m "Publish natural F01 voice slot ${SLOT} cycle ${cycle}"
               if git push origin HEAD:main; then
-                echo "COSYVOICE_V11_ONE_ARTICLE_PUSH_PASS slot=${SLOT} cycle=${cycle}"
+                echo "COSYVOICE_V12_ONE_ARTICLE_PUSH_PASS slot=${SLOT} cycle=${cycle}"
                 published=true
                 break
               fi
