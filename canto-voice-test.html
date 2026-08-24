@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#111111">
-  <title>廣東話 Voice Test · canto-tts-nano</title>
+  <title>廣東話 Female Voice Test · canto-tts-nano</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Noto+Serif+TC:wght@700;900&display=swap" rel="stylesheet">
@@ -21,24 +21,24 @@
   <div class="sheet">
     <header>
       <div class="kicker">INDEPENDENT VOICE LAB</div>
-      <h1>廣東話 Voice Test</h1>
-      <div class="sub"><strong>canto-tts-nano-v1</strong> · 香港廣東話專向 ONNX TTS · 此頁只供試聽，完全不會更改現時新聞 production voice。</div>
+      <h1>廣東話 Female Voice Test</h1>
+      <div class="sub"><strong>canto-tts-nano-v1</strong> · 香港廣東話專向 ONNX TTS · <strong>年輕女聲 voice clone</strong> · 此頁只供試聽，完全不會更改現時新聞 production voice。</div>
     </header>
-    <div class="notice">請先只判斷三件事：① 是否全程廣東話；② 聲線是否可以接受；③ 長句及數字讀法是否自然。呢個模型目前只有一把 baked default voice，所以暫時唔比較男女聲選擇。</div>
+    <div class="notice">今次3段全部重新生成：canto-tts-nano保持 Cantonese-only phoneme pipeline，但speaker改用你之前接受嘅年輕女聲reference作runtime voice cloning。請重點判斷：① 女聲是否合適；② 是否全程廣東話；③ 長句及數字讀法是否自然。</div>
     <main id="samples">
       <section class="sample" data-audio="audio/canto-nano-test/sample-short.wav">
-        <h2>Test 1 · 短句</h2><p class="text">大家好，呢度係香港廣東話新聞語音測試。</p><div class="meta">目的：先確認基本粵語發音</div><audio controls preload="metadata" src="audio/canto-nano-test/sample-short.wav"></audio><div class="pending">正在檢查測試音訊…</div>
+        <h2>Test 1 · Female · 短句</h2><p class="text">大家好，呢度係香港廣東話新聞語音測試。</p><div class="meta">目的：確認女聲身份及基本粵語發音</div><audio controls preload="metadata" src="audio/canto-nano-test/sample-short.wav?v=female-20260825"></audio><div class="pending">正在檢查女聲測試音訊…</div>
       </section>
       <section class="sample" data-audio="audio/canto-nano-test/sample-news.wav">
-        <h2>Test 2 · 一般新聞句</h2><p class="text">香港天文台今日下午表示，本港部分地區錄得超過三十毫米雨量，提醒市民外出時留意天氣變化。</p><div class="meta">目的：新聞語氣、完整廣東話、自然停頓</div><audio controls preload="metadata" src="audio/canto-nano-test/sample-news.wav"></audio><div class="pending">正在檢查測試音訊…</div>
+        <h2>Test 2 · Female · 一般新聞句</h2><p class="text">香港天文台今日下午表示，本港部分地區錄得超過三十毫米雨量，提醒市民外出時留意天氣變化。</p><div class="meta">目的：女聲新聞語氣、完整廣東話、自然停頓</div><audio controls preload="metadata" src="audio/canto-nano-test/sample-news.wav?v=female-20260825"></audio><div class="pending">正在檢查女聲測試音訊…</div>
       </section>
       <section class="sample" data-audio="audio/canto-nano-test/sample-numbers.wav">
-        <h2>Test 3 · 長句／數字</h2><p class="text">加拿大政府宣布，九月八日起對部分美國商品實施對等關稅措施，市場正關注下一輪貿易談判會否重啟，以及相關措施對消費者物價嘅影響。</p><div class="meta">目的：較長新聞句、日期、語言穩定性</div><audio controls preload="metadata" src="audio/canto-nano-test/sample-numbers.wav"></audio><div class="pending">正在檢查測試音訊…</div>
+        <h2>Test 3 · Female · 長句／數字</h2><p class="text">加拿大政府宣布，九月八日起對部分美國商品實施對等關稅措施，市場正關注下一輪貿易談判會否重啟，以及相關措施對消費者物價嘅影響。</p><div class="meta">目的：女聲較長新聞句、日期、語言穩定性</div><audio controls preload="metadata" src="audio/canto-nano-test/sample-numbers.wav?v=female-20260825"></audio><div class="pending">正在檢查女聲測試音訊…</div>
       </section>
-      <div id="page-status" class="status wait">測試音訊生成中／檢查中…</div>
+      <div id="page-status" class="status wait">女聲測試音訊重新生成中／檢查中…</div>
       <a class="back" href="index.html">← 返回每日晨報</a>
     </main>
-    <footer>Model: typangaa/canto-tts-nano · Apache-2.0 · Test only</footer>
+    <footer>Model: typangaa/canto-tts-nano · Speaker: female runtime voice clone · Apache-2.0 · Test only</footer>
   </div>
   <script>
     (async()=>{
@@ -49,13 +49,13 @@
         const note=card.querySelector('.pending');
         try{
           const r=await fetch(url,{method:'HEAD',cache:'no-store'});
-          if(r.ok){ready++;note.textContent='✅ 測試音訊已就緒';note.style.color='#167844';}
+          if(r.ok){ready++;note.textContent='✅ 女聲測試音訊已就緒';note.style.color='#167844';}
           else throw new Error('HTTP '+r.status);
-        }catch(e){note.textContent='⏳ GitHub Actions 正在生成呢段測試音訊';}
+        }catch(e){note.textContent='⏳ GitHub Actions 正在重新生成呢段女聲測試音訊';}
       }
       const s=document.getElementById('page-status');
-      if(ready===cards.length){s.textContent='✅ 3/3 測試音訊已就緒，可以開始試聽。';s.className='status ok';}
-      else{s.textContent=`⏳ ${ready}/3 已就緒；其餘音訊仍在生成。`;s.className='status wait';}
+      if(ready===cards.length){s.textContent='✅ 3/3 女聲測試音訊已就緒，可以開始試聽。';s.className='status ok';}
+      else{s.textContent=`⏳ ${ready}/3 已就緒；其餘女聲音訊仍在重新生成。`;s.className='status wait';}
     })();
   </script>
 </body>
