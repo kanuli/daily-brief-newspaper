@@ -15,10 +15,9 @@ import generate_cosyvoice_lead as voice_base
 import generate_cosyvoice_shard as legacy
 import tts_hktrad_v2 as hktrad
 
-# Install at the core anchor layer as well as in the v10 wrappers. Old workflow
-# processes reset to current main between article cycles, so they also inherit
-# the current policy-salted digest and -v10- asset namespace instead of being
-# able to publish a current-policy manifest entry at a stale legacy URL.
+# Install policy-salted asset identity at the core anchor layer as well as in
+# compatibility wrappers. Any older worker that resets to current main between
+# cycles therefore inherits the current namespace automatically.
 cache_identity.install(legacy.gen)
 
 POLICY = voice_policy.POLICY
@@ -44,7 +43,8 @@ voice_base.normalize_for_tts = _localized_normalize
 
 
 _REPORTING_VERBS = ("表示", "指出", "宣布", "稱", "認為", "警告", "強調", "證實")
-_CONNECTORS = ("同時", "另外", "其後", "不過", "然而", "而", "但", "以及", "並")
+_DISTINCT_CONNECTORS = ("不過", "然而", "但", "同時", "另外", "其後")
+_MICRO_CONNECTORS = ("而", "以及", "並")
 _KEY_DATA_RE = re.compile(
     r"([零一二三四五六七八九十百千萬億兆點]+(?:百分比|美元|港元|英鎊|歐元|日圓|公里|納米|級))"
     r"(?=[^，。！？；：])"
@@ -57,6 +57,7 @@ def _semantic_sentence_pauses(sentence):
     if len(text) < 8:
         return text
 
+    # Long introductory modifiers get a micro-pause before the core statement.
     if "，" not in text[:28]:
         intro = re.match(
             r"((?:在|截至|隨著|由於|根據|按照|受)[^，。！？；]{7,26}?(?:後|前|時|期間|之際|下|中|內|方面))",
@@ -64,26 +65,39 @@ def _semantic_sentence_pauses(sentence):
         )
         if intro:
             cut = intro.end()
-            text = text[:cut] + "，" + text[cut:]
+            text = text[:cut] + voice_policy.MICRO_PAUSE_MARK + text[cut:]
 
+    # Let long subjects land before the reporting verb; otherwise let the verb
+    # breathe before a long object/clause.
     verb_match = re.search("|".join(_REPORTING_VERBS), text)
     if verb_match:
         before = text[:verb_match.start()]
         after = text[verb_match.end():]
         if len(before) >= 12 and not re.search(r"[，；：]", before[-14:]):
-            text = text[:verb_match.start()] + "，" + text[verb_match.start():]
+            text = text[:verb_match.start()] + voice_policy.MICRO_PAUSE_MARK + text[verb_match.start():]
         elif len(after) >= 12 and after[:1] not in "，。！？；：":
             pos = verb_match.end()
-            text = text[:pos] + "，" + text[pos:]
+            text = text[:pos] + voice_policy.MICRO_PAUSE_MARK + text[pos:]
 
-    text = _KEY_DATA_RE.sub(r"\1，", text)
+    # Never split a number from its unit. Pause after the complete data phrase.
+    text = _KEY_DATA_RE.sub(r"\1" + voice_policy.MICRO_PAUSE_MARK, text)
 
-    if len(text) >= 42 and text.count("，") < 2:
-        for connector in _CONNECTORS:
-            idx = text.find(connector, 16)
-            if 16 <= idx <= len(text) - 10 and text[idx - 1:idx] not in "，；：。！？":
-                text = text[:idx] + "，" + text[idx:]
+    # v11: long contrast/transition clauses get a distinct beat, matching the
+    # user's HK-news target more clearly than the old all-comma treatment.
+    if len(text) >= 38 and text.count("，") < 3 and "；" not in text:
+        inserted = False
+        for connector in _DISTINCT_CONNECTORS:
+            idx = text.find(connector, 14)
+            if 14 <= idx <= len(text) - 10 and text[idx - 1:idx] not in "，；：。！？":
+                text = text[:idx] + voice_policy.DISTINCT_PAUSE_MARK + text[idx:]
+                inserted = True
                 break
+        if not inserted and len(text) >= 44:
+            for connector in _MICRO_CONNECTORS:
+                idx = text.find(connector, 16)
+                if 16 <= idx <= len(text) - 10 and text[idx - 1:idx] not in "，；：。！？":
+                    text = text[:idx] + voice_policy.MICRO_PAUSE_MARK + text[idx:]
+                    break
 
     text = re.sub(r"，{2,}", "，", text)
     text = re.sub(r"；{2,}", "；", text)
@@ -205,7 +219,7 @@ def _anchor_script_segments(story):
         text = text[:remaining]
         used += len(text)
         if text and text[-1] not in "。！？!?…":
-            text += "。"
+            text += voice_policy.FULL_PAUSE_MARK
         chunks.append(text)
 
     script = "".join(chunks)
@@ -219,7 +233,7 @@ def _anchor_script_segments(story):
             + ", ".join(residual)
         )
 
-    return [{"role": "news", "text": script, "pause": 0.40}]
+    return [{"role": "news", "text": script, "pause": 0.55}]
 
 
 def _stream_input_pieces(text):
@@ -238,7 +252,8 @@ def _stable_segment_synth(model, prompt, item, index):
         f"segment={index} role={item['role']} chars={len(text)} "
         f"mode={voice_policy.INFERENCE_MODE} input=single-session-bistream "
         f"chunks={len(pieces)} speed={voice_policy.VOICE_SPEED} "
-        f"reference_seconds={REFERENCE_DURATION_SECONDS} pacing={voice_policy.PACING_POLICY}",
+        f"reference_seconds={REFERENCE_DURATION_SECONDS} pacing={voice_policy.PACING_POLICY} "
+        f"target={getattr(voice_policy, 'PACING_TARGET', '')}",
         flush=True,
     )
 
@@ -287,7 +302,7 @@ def _policy_synth(model, prompt, story, path):
 
     speech = torch.cat(audio_parts, dim=1).clamp(-1.0, 1.0)
     duration = speech.shape[1] / model.sample_rate
-    max_reasonable = max(40.0, speech_chars * 0.70)
+    max_reasonable = max(40.0, speech_chars * 0.75)
     if duration > max_reasonable:
         raise RuntimeError(
             f"audio suspiciously long: {story.get('title')} duration={duration:.3f}s limit={max_reasonable:.3f}s"
@@ -315,8 +330,9 @@ def _policy_synth(model, prompt, story, path):
         "languageGate": voice_policy.LANGUAGE_GATE,
         "segmentPolicy": voice_policy.SEGMENT_POLICY,
         "pacingPolicy": voice_policy.PACING_POLICY,
+        "pacingTarget": getattr(voice_policy, "PACING_TARGET", ""),
         "tempoPolicy": voice_policy.TEMPO_POLICY,
-        "pauseMarkup": "punctuation-semantic",
+        "pauseMarkup": "punctuation-semantic-v2",
         "inputTransport": "native-bistream-single-session",
         "streamInputChunkChars": STREAM_INPUT_CHARS,
         "streamInputChunkCounts": input_chunk_counts,
