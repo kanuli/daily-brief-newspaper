@@ -18,9 +18,7 @@
       @media (max-width:620px){.section-nav{display:grid!important;grid-template-columns:repeat(7,minmax(0,1fr))!important;grid-auto-flow:row!important;overflow:visible!important;width:100%!important;flex-wrap:unset!important}.section-nav a{display:flex!important;align-items:center!important;justify-content:center!important;min-width:0!important;padding:7px 2px!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:center!important;font-size:9.5px!important;line-height:1.12!important;border-right:1px solid #444!important;border-bottom:1px solid #444!important}.section-nav a:nth-child(7n){border-right:0!important}.section-nav a:nth-last-child(-n+6){border-bottom:0!important}}
       #main-site-voice-button{position:fixed;right:14px;bottom:72px;z-index:9997;border:2px solid #111;background:#fff;color:#111;padding:10px 13px;border-radius:999px;font:800 12px/1.2 "Noto Sans TC",sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.18);cursor:pointer}
       #main-site-voice-button:hover{background:#111;color:#fff}#main-site-voice-button:disabled{opacity:.6;cursor:wait}
-      #canto-nano-test-button{position:fixed;right:14px;bottom:124px;z-index:9997;border:2px solid #79000e;background:#fffdf7;color:#79000e;padding:9px 12px;border-radius:999px;font:900 11px/1.2 "Noto Sans TC",sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.18);text-decoration:none;white-space:nowrap}
-      #canto-nano-test-button:hover,#canto-nano-test-button:focus-visible{background:#79000e;color:#fff;outline:2px solid #111;outline-offset:2px}
-      @media(max-width:620px){#main-site-voice-button{right:10px;bottom:68px;padding:9px 11px;font-size:11px}#canto-nano-test-button{right:10px;bottom:116px;padding:8px 10px;font-size:10px}}
+      @media(max-width:620px){#main-site-voice-button{right:10px;bottom:68px;padding:9px 11px;font-size:11px}}
     `;
     document.head.appendChild(style);
   }
@@ -115,19 +113,8 @@
     document.body.appendChild(voiceButton);
   }
 
-  function mountCantoNanoTestButton() {
-    if (document.getElementById("canto-nano-test-button")) return;
-    const link = document.createElement("a");
-    link.id = "canto-nano-test-button";
-    link.href = "canto-voice-test.html";
-    link.textContent = "🧪 Cantonese Voice Test";
-    link.setAttribute("aria-label", "開啟 canto-tts-nano 廣東話語音試聽頁");
-    link.title = "試聽現時 canto-tts-nano verified female 聲線";
-    document.body.appendChild(link);
-  }
-
   function mountSystemPanel() {
-    injectNavStyle(); normalizeDeskNav(); removeVoiceLabLinks(); loadDisplayLocalization(); loadArticleEnhancers(); loadSiteTTS(); loadVoiceProductionStatus(); loadNewsPipelineStatus(); mountVoiceLauncher(); mountCantoNanoTestButton();
+    injectNavStyle(); normalizeDeskNav(); removeVoiceLabLinks(); loadDisplayLocalization(); loadArticleEnhancers(); loadSiteTTS(); loadVoiceProductionStatus(); loadNewsPipelineStatus(); mountVoiceLauncher();
     if (document.getElementById("system-status-button")) return;
     const button = document.createElement("button");
     button.id = "system-status-button"; button.className = "system-status-button"; button.type = "button";
