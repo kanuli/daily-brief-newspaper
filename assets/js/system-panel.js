@@ -84,7 +84,7 @@
   }
 
   function loadVoiceProductionStatus() {
-    inject("assets/js/voice-production-status.js?v=20260823-2103-progress", "data-voice-production-status");
+    inject("assets/js/voice-production-status.js?v=20260825-canto-nano-cnf1", "data-voice-production-status");
   }
 
   function loadNewsPipelineStatus() {
