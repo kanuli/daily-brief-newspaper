@@ -150,15 +150,23 @@ jobs:
           from datetime import datetime, timezone
           runs=json.load(open('/tmp/f01-runs.json',encoding='utf-8'))
           now=datetime.now(timezone.utc)
+
+          def created(run):
+              try:
+                  return datetime.fromisoformat(str(run.get('createdAt') or '').replace('Z','+00:00'))
+              except Exception:
+                  return datetime.min.replace(tzinfo=timezone.utc)
+
           active=[r for r in runs if r.get('status') != 'completed']
+          active.sort(key=created, reverse=True)
           running=[r for r in active if r.get('status') == 'in_progress']
           pending=[r for r in active if r.get('status') != 'in_progress']
+          newest_active_id=str(active[0].get('databaseId') or '') if active else ''
           ages=[]
           running_ages=[]
           for r in active:
               try:
-                  t=datetime.fromisoformat(str(r.get('createdAt') or '').replace('Z','+00:00'))
-                  age=max(0,int((now-t).total_seconds()))
+                  age=max(0,int((now-created(r)).total_seconds()))
                   ages.append(age)
                   if r.get('status') == 'in_progress':
                       running_ages.append((age,r))
@@ -167,6 +175,10 @@ jobs:
           ids=','.join(str(r.get('databaseId')) for r in active if r.get('databaseId'))
           running_ids=','.join(str(r.get('databaseId')) for r in running if r.get('databaseId'))
           stale_running_ids=','.join(str(r.get('databaseId')) for age,r in running_ages if age >= 1200 and r.get('databaseId'))
+          superseded_running_ids=','.join(
+              str(r.get('databaseId')) for r in running
+              if r.get('databaseId') and str(r.get('databaseId')) != newest_active_id
+          )
           print(f"ACTIVE_COUNT={len(active)}")
           print(f"RUNNING_COUNT={len(running)}")
           print(f"PENDING_COUNT={len(pending)}")
@@ -174,15 +186,27 @@ jobs:
           print(f"ACTIVE_IDS={ids}")
           print(f"RUNNING_IDS={running_ids}")
           print(f"STALE_RUNNING_IDS={stale_running_ids}")
+          print(f"NEWEST_ACTIVE_ID={newest_active_id}")
+          print(f"SUPERSEDED_RUNNING_IDS={superseded_running_ids}")
           PY
           source /tmp/active-state.env
-          echo "F01 runs active=${ACTIVE_COUNT}; running=${RUNNING_COUNT}; pending=${PENDING_COUNT}; oldest=${ACTIVE_OLDEST_AGE_SECONDS}s; running-ids=${RUNNING_IDS:-none}"
+          echo "F01 runs active=${ACTIVE_COUNT}; running=${RUNNING_COUNT}; pending=${PENDING_COUNT}; oldest=${ACTIVE_OLDEST_AGE_SECONDS}s; newest=${NEWEST_ACTIVE_ID:-none}; running-ids=${RUNNING_IDS:-none}"
 
           PROGRESS_STALE_SECONDS=900
           STARTUP_GRACE_SECONDS=1200
 
           echo "restart=false" >> "$GITHUB_OUTPUT"
           echo "cancel_ids=" >> "$GITHUB_OUTPUT"
+
+          # Never allow multiple historical voice-policy pools to occupy runner
+          # capacity together. Keep only the newest active voice run; published
+          # WAVs are already persisted, so cancelling superseded synthesis loses
+          # only unfinished work and protects the news/publication pipelines.
+          if [ -n "${SUPERSEDED_RUNNING_IDS}" ]; then
+            echo "cancel_ids=${SUPERSEDED_RUNNING_IDS}" >> "$GITHUB_OUTPUT"
+            echo "reason=cancel-superseded-voice-pools-reserve-news-runners" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           POLICY_DRIFT=false
           if [ -n "${CURRENT_POLICY}" ] && [ "${MANIFEST_POLICY}" != "${CURRENT_POLICY}" ]; then
@@ -255,7 +279,7 @@ jobs:
             echo "reason=healthy-no-current-backlog" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Cancel stale F01 worker pool
+      - name: Cancel stale or superseded F01 worker pool
         if: steps.inspect.outputs.cancel_ids != ''
         env:
           GH_TOKEN: ${{ github.token }}
@@ -266,7 +290,7 @@ jobs:
           IFS=',' read -ra RUN_IDS <<< "$IDS"
           for run_id in "${RUN_IDS[@]}"; do
             [ -n "$run_id" ] || continue
-            echo "Cancelling stale F01 run ${run_id}"
+            echo "Cancelling stale/superseded F01 run ${run_id}"
             gh run cancel "$run_id" --repo "${{ github.repository }}" || true
           done
           sleep 5
