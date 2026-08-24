@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepublish manifest publisher for the current F01 policy."""
+"""Prepublish manifest publisher for the current Cantonese voice policy."""
 import json
 from pathlib import Path
 
@@ -16,6 +16,7 @@ LANGUAGE_GATE = voice_policy.LANGUAGE_GATE
 SEGMENT_POLICY = voice_policy.SEGMENT_POLICY
 PACING_POLICY = voice_policy.PACING_POLICY
 TEMPO_POLICY = voice_policy.TEMPO_POLICY
+INFERENCE_MODE = voice_policy.INFERENCE_MODE
 _ORIGINAL_VALID_EXISTING = legacy.valid_existing
 
 
@@ -26,18 +27,25 @@ def _valid_policy_entry(entry, digest=None):
         return False
     try:
         reference_duration = float(entry.get("referenceDurationSeconds") or 0)
+        reference_start = float(entry.get("referenceStartSeconds") or 0)
+        segments = int(entry.get("segmentCount") or 0)
     except (TypeError, ValueError):
         return False
     return (
         entry.get("prosodyPolicy") == POLICY
         and entry.get("referencePolicy") == REFERENCE_POLICY
+        and entry.get("referenceAsset") == REFERENCE_ASSET
         and entry.get("initialConditioningPolicy") == INITIAL_CONDITIONING_POLICY
         and reference_duration == REFERENCE_DURATION_SECONDS
+        and reference_start == REFERENCE_START_SECONDS
         and entry.get("languageGate") == LANGUAGE_GATE
         and entry.get("segmentPolicy") == SEGMENT_POLICY
         and entry.get("pacingPolicy") == PACING_POLICY
         and entry.get("tempoPolicy") == TEMPO_POLICY
-        and int(entry.get("segmentCount") or 0) == 1
+        and entry.get("inferenceMode") == INFERENCE_MODE
+        and entry.get("instructionPolicy") == "instruct2-cantonese-control-not-spoken"
+        and segments >= 1
+        and int(entry.get("semanticUnitCount") or segments) == segments
     )
 
 
@@ -53,14 +61,14 @@ def _stamp_manifest():
         return
     data = json.loads(path.read_text(encoding="utf-8"))
     data.update({
-        "instructionPolicy": "none-reference-only",
+        "instructionPolicy": "instruct2-cantonese-control-not-spoken",
         "referencePolicy": REFERENCE_POLICY,
         "referenceAsset": REFERENCE_ASSET,
         "referenceStartSeconds": REFERENCE_START_SECONDS,
         "referenceDurationSeconds": REFERENCE_DURATION_SECONDS,
         "initialConditioningPolicy": INITIAL_CONDITIONING_POLICY,
         "prosodyPolicy": POLICY,
-        "inferenceMode": voice_policy.INFERENCE_MODE,
+        "inferenceMode": INFERENCE_MODE,
         "speed": voice_policy.VOICE_SPEED,
         "languageGate": LANGUAGE_GATE,
         "segmentPolicy": SEGMENT_POLICY,
