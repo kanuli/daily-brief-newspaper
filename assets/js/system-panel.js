@@ -80,7 +80,7 @@
 
   function loadSiteTTS() {
     if (document.body.dataset.page === "archive") return;
-    inject("assets/js/site-tts-v14.js?v=20260824-2312-semantic-units", "data-site-tts");
+    inject("assets/js/site-tts-canto-nano.js?v=20260825-cnf1", "data-site-tts");
   }
 
   function loadVoiceProductionStatus() {
@@ -96,10 +96,10 @@
     const played = window.SiteTTS?.playLeadFromUserGesture?.() || false;
     if (played) {
       button.textContent = "🔊 廣東話朗讀";
-      button.title = "使用年輕女聲逐個語意單位生成目前頭條";
+      button.title = "使用 canto-tts-nano verified female 朗讀目前頭條";
       return;
     }
-    button.textContent = "⏳ F01 音訊準備中";
+    button.textContent = "⏳ 廣東話女聲準備中";
     button.disabled = true;
     window.setTimeout(() => { button.textContent = "🔊 廣東話朗讀"; button.disabled = false; }, 2500);
   }
@@ -110,7 +110,7 @@
     voiceButton.id = "main-site-voice-button";
     voiceButton.type = "button";
     voiceButton.textContent = "🔊 廣東話朗讀";
-    voiceButton.setAttribute("aria-label", "播放年輕女聲廣東話頭條朗讀");
+    voiceButton.setAttribute("aria-label", "播放 canto-tts-nano 年輕女聲廣東話頭條朗讀");
     voiceButton.addEventListener("click", () => playMainLeadFromClick(voiceButton));
     document.body.appendChild(voiceButton);
   }
@@ -122,7 +122,7 @@
     link.href = "canto-voice-test.html";
     link.textContent = "🧪 Cantonese Voice Test";
     link.setAttribute("aria-label", "開啟 canto-tts-nano 廣東話語音試聽頁");
-    link.title = "獨立試聽 Cantonese-only canto-tts-nano；不影響 production voice";
+    link.title = "試聽現時 canto-tts-nano verified female 聲線";
     document.body.appendChild(link);
   }
 
@@ -135,7 +135,7 @@
     button.innerHTML = '<span class="system-status-dot" aria-hidden="true"></span><span class="system-status-label">SYSTEM</span>';
     const panel = document.createElement("aside");
     panel.id = "system-status-panel"; panel.className = "system-status-panel"; panel.hidden = true;
-    panel.innerHTML = `<div class="system-panel-head"><div><strong>System Status</strong><span>Maintenance & Monitoring</span></div><button type="button" class="system-panel-close" aria-label="關閉">×</button></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Website</strong><small>Static safe mode · publication layers monitored independently</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>Daily / Live / Stocks</strong><small>News Pipeline below separates background discovery, verified draft, main Live and public Pages</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>Cantonese Voice</strong><small>CosyVoice2-Yue · approved young female · v14 · per-semantic-unit Cantonese instruct2 · silence-controlled news pauses</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>GitHub Pages / Discord</strong><small>Pages deployment has automatic main/public convergence repair</small></div></div><div class="system-panel-links"><a href="https://github.com/kanuli/daily-brief-newspaper/actions" target="_blank" rel="noopener noreferrer">GitHub Actions ↗</a><a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">Repository ↗</a></div>`;
+    panel.innerHTML = `<div class="system-panel-head"><div><strong>System Status</strong><span>Maintenance & Monitoring</span></div><button type="button" class="system-panel-close" aria-label="關閉">×</button></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Website</strong><small>Static safe mode · publication layers monitored independently</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>Daily / Live / Stocks</strong><small>News Pipeline below separates background discovery, verified draft, main Live and public Pages</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>Cantonese Voice</strong><small>canto-tts-nano · verified young female reference · Jyutping Cantonese-first · semantic-unit HK news-anchor pauses</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>GitHub Pages / Discord</strong><small>Pages deployment has automatic main/public convergence repair</small></div></div><div class="system-panel-links"><a href="https://github.com/kanuli/daily-brief-newspaper/actions" target="_blank" rel="noopener noreferrer">GitHub Actions ↗</a><a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">Repository ↗</a></div>`;
     function setOpen(open) { panel.hidden = !open; button.setAttribute("aria-expanded", String(open)); }
     button.addEventListener("click", () => setOpen(panel.hidden));
     panel.querySelector(".system-panel-close")?.addEventListener("click", () => setOpen(false));
