@@ -33,11 +33,11 @@ on:
 permissions:
   contents: write
 
-# v13 has its own namespace so the obsolete v12 raw-F01 pool cannot block the
-# approved young-female migration. Healthy v13 workers survive ordinary news
-# pushes; only the progress watchdog should recycle a genuinely stalled pool.
+# v14 mirrors the Japanese semantic-unit architecture: each semantic unit is
+# generated separately with the same approved young-female reference and an
+# explicit Cantonese instruct2 control. Older long-form pools cannot block it.
 concurrency:
-  group: "cosyvoice2-yue-f01-v13-current-news"
+  group: "cosyvoice2-yue-f01-v14-semantic-current-news"
   cancel-in-progress: false
 
 env:
@@ -189,7 +189,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           for cycle in $(seq 1 12); do
-            echo "=== F01 v13 approved-young-female slot ${SLOT} cycle ${cycle}/12 ==="
+            echo "=== F01 v14 semantic-unit Cantonese slot ${SLOT} cycle ${cycle}/12 ==="
             git fetch origin main
             git reset --hard origin/main
             rm -rf artifacts/cosyvoice-shards
@@ -228,9 +228,9 @@ jobs:
                 published=true
                 break
               fi
-              git commit -m "Publish natural F01 voice slot ${SLOT} cycle ${cycle}"
+              git commit -m "Publish semantic-unit F01 voice slot ${SLOT} cycle ${cycle}"
               if git push origin HEAD:main; then
-                echo "COSYVOICE_V13_ONE_ARTICLE_PUSH_PASS slot=${SLOT} cycle=${cycle}"
+                echo "COSYVOICE_V14_ONE_ARTICLE_PUSH_PASS slot=${SLOT} cycle=${cycle}"
                 published=true
                 break
               fi
