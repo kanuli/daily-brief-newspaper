@@ -1,0 +1,53 @@
+name: Disable Legacy CosyVoice Automation
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/disable-legacy-cosyvoice.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  disable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Disable and cancel obsolete F01/CosyVoice workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY}"
+          old=(
+            apply-golden-f01-reference.yml
+            apply-tts-hktrad.yml
+            apply-tts-manifest-source.yml
+            canto-nano-test.yml
+            cosyvoice-capacity-guard.yml
+            cosyvoice-maintenance.yml
+            cosyvoice-policy-cutover.yml
+            cosyvoice-prepublish.yml
+            cosyvoice-publish.yml
+            cosyvoice-retention.yml
+            cosyvoice-smoke.yml
+            cosyvoice-storage-migrate.yml
+            cosyvoice-v10-lead-acceptance.yml
+            protect-golden-f01.yml
+            stop-all-voice-generation.yml
+          )
+          for wf in "${old[@]}"; do
+            echo "Disabling legacy voice workflow: ${wf}"
+            gh workflow disable "$wf" --repo "$repo" >/dev/null 2>&1 || true
+            gh run list --repo "$repo" --workflow "$wf" --limit 100 --json databaseId,status \
+              --jq '.[] | select(.status=="queued" or .status=="in_progress" or .status=="waiting" or .status=="pending" or .status=="requested") | .databaseId' \
+              | while read -r run_id; do
+                  [ -n "$run_id" ] || continue
+                  echo "Cancelling legacy run ${run_id} (${wf})"
+                  gh run cancel "$run_id" --repo "$repo" || true
+                done
+          done
+          echo "LEGACY_COSYVOICE_AUTOMATION_DISABLED"
