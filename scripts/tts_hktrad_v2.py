@@ -124,8 +124,6 @@ OVERRIDES = [
     ("deck", "簡報"),
     ("World", "世界"),
     ("SK", "愛思開"),
-    # Base table previously used a Taiwan-first NVIDIA form; production speech
-    # uses the common Hong Kong form instead.
     ("輝達", "英偉達"),
 
     # Manga / anime
@@ -178,6 +176,21 @@ OVERRIDES = [
     ("Hull", "侯城"),
 
     # General football
+    ("Enzo Maresca", "馬利斯卡"),
+    ("Pep Guardiola", "哥迪奧拿"),
+    ("Josko Gvardiol", "加華度爾"),
+    ("Marc Guéhi", "馬克古希"),
+    ("Marc Guehi", "馬克古希"),
+    ("Etihad", "伊蒂哈德"),
+    ("Maresca", "馬利斯卡"),
+    ("Guardiola", "哥迪奧拿"),
+    ("Gvardiol", "加華度爾"),
+    ("Guehi", "古希"),
+    ("VAR", "視像助理裁判"),
+    ("Enzo", "安素"),
+    ("Pep", "哥迪奧拿"),
+    ("Josko", "約斯高"),
+    ("Marc", "馬克"),
     ("AFC Champions League Elite", "亞洲聯賽冠軍盃精英賽"),
     ("Mamadou Sangaré", "馬馬杜辛加利"),
     ("Mamadou Sangar", "馬馬杜辛加利"),
