@@ -85,7 +85,7 @@
   }
 
   function loadNewsPipelineStatus() {
-    inject("assets/js/news-pipeline-status.js?v=20260823-2103-draft", "data-news-pipeline-status");
+    inject("assets/js/news-pipeline-status.js?v=20260824-2049-recovery", "data-news-pipeline-status");
   }
 
   function playMainLeadFromClick(button) {
