@@ -5,15 +5,17 @@
   const STOP_TEXT = "■ 停止朗讀";
   const PENDING_TEXT = "⏳ F01 音訊準備中";
   const MANIFEST_URL = "data/tts-manifest.json";
-  const REQUIRED_POLICY = "f01-news-anchor-v11-hk-anchor-paced-approved-10s-hktrad";
+  const REQUIRED_POLICY = "f01-news-anchor-v12-official-f01-neutral-hk-pacing-hktrad";
   const REQUIRED_LANGUAGE_GATE = "residual-latin-zero";
   const REQUIRED_SEGMENT_POLICY = "single-inference-per-article";
-  const REQUIRED_CONDITIONING_POLICY = "approved-reference-bistream";
+  const REQUIRED_CONDITIONING_POLICY = "official-f01-neutral-bistream";
   const REQUIRED_PACING_POLICY = "hk-tv-news-semantic-pauses-v2";
   const REQUIRED_TEMPO_POLICY = "model-speed-only-no-post-stretch";
-  const REQUIRED_REFERENCE_SECONDS = 10;
-  const REQUIRED_AUDIO_NAMESPACE = "-v11-";
-  const REQUIRED_SPEED = 0.92;
+  const REQUIRED_REFERENCE_POLICY = "aslp-official-f01-neutral-20054-v1";
+  const REQUIRED_REFERENCE_ASSET = "F01_中立_20054.wav";
+  const REQUIRED_REFERENCE_SECONDS = 8;
+  const REQUIRED_AUDIO_NAMESPACE = "-v12-";
+  const REQUIRED_SPEED = 1.0;
   const REFRESH_MS = 15000;
 
   let manifest = null;
@@ -26,15 +28,17 @@
 
   function validEntry(entry) {
     return !!(
-      entry?.audio &&
-      String(entry.audio).includes(REQUIRED_AUDIO_NAMESPACE) &&
+      entry?.audio && String(entry.audio).includes(REQUIRED_AUDIO_NAMESPACE) &&
       entry?.prosodyPolicy === REQUIRED_POLICY &&
+      entry?.referencePolicy === REQUIRED_REFERENCE_POLICY &&
+      entry?.referenceAsset === REQUIRED_REFERENCE_ASSET &&
       entry?.languageGate === REQUIRED_LANGUAGE_GATE &&
       entry?.segmentPolicy === REQUIRED_SEGMENT_POLICY &&
       entry?.initialConditioningPolicy === REQUIRED_CONDITIONING_POLICY &&
       entry?.pacingPolicy === REQUIRED_PACING_POLICY &&
       entry?.tempoPolicy === REQUIRED_TEMPO_POLICY &&
       Number(entry?.referenceDurationSeconds) === REQUIRED_REFERENCE_SECONDS &&
+      Number(entry?.referenceStartSeconds) === 0 &&
       Number(entry?.speed) === REQUIRED_SPEED &&
       Number(entry?.segmentCount) === 1
     );
@@ -43,15 +47,17 @@
   function validManifest(data) {
     return !!(
       data?.engine === "ASLP-lab/Cosyvoice2-Yue" &&
-      data?.voice === "F01 female reference" &&
-      data?.language === "yue-HK" &&
+      data?.voice === "F01 female reference" && data?.language === "yue-HK" &&
       data?.prosodyPolicy === REQUIRED_POLICY &&
+      data?.referencePolicy === REQUIRED_REFERENCE_POLICY &&
+      data?.referenceAsset === REQUIRED_REFERENCE_ASSET &&
       data?.languageGate === REQUIRED_LANGUAGE_GATE &&
       data?.segmentPolicy === REQUIRED_SEGMENT_POLICY &&
       data?.initialConditioningPolicy === REQUIRED_CONDITIONING_POLICY &&
       data?.pacingPolicy === REQUIRED_PACING_POLICY &&
       data?.tempoPolicy === REQUIRED_TEMPO_POLICY &&
       Number(data?.referenceDurationSeconds) === REQUIRED_REFERENCE_SECONDS &&
+      Number(data?.referenceStartSeconds) === 0 &&
       Number(data?.speed) === REQUIRED_SPEED
     );
   }
@@ -67,7 +73,7 @@
       const panel = document.createElement("div");
       panel.id = "site-tts-player";
       panel.dataset.open = "false";
-      panel.innerHTML = '<div class="site-tts-player-row"><div class="site-tts-status" id="site-tts-status">CosyVoice2-Yue · F01 女聲 · v11</div><button type="button" class="site-tts-stop" id="site-tts-stop">■ 停止</button></div><audio class="site-tts-audio" id="site-tts-audio" controls preload="metadata" playsinline></audio>';
+      panel.innerHTML = '<div class="site-tts-player-row"><div class="site-tts-status" id="site-tts-status">CosyVoice2-Yue · 官方 F01 女聲 · v12</div><button type="button" class="site-tts-stop" id="site-tts-stop">■ 停止</button></div><audio class="site-tts-audio" id="site-tts-audio" controls preload="metadata" playsinline></audio>';
       document.body.appendChild(panel);
       $("#site-tts-stop")?.addEventListener("click", stopAll);
       $("#site-tts-audio")?.addEventListener("ended", finishActive);
@@ -79,19 +85,14 @@
     $("#site-tts-player").dataset.open = open ? "true" : "false";
     $("#site-tts-status").textContent = text;
   }
-
   function resetButton(button) {
     if (!button) return;
     button.dataset.speaking = "false";
     button.textContent = BUTTON_TEXT;
   }
-
   function finishActive() {
-    resetButton(activeButton);
-    activeButton = null;
-    setStatus("朗讀完成。", false);
+    resetButton(activeButton); activeButton = null; setStatus("朗讀完成。", false);
   }
-
   function stopAll() {
     const audio = $("#site-tts-audio");
     if (audio) {
@@ -100,47 +101,30 @@
       audio.removeAttribute("src");
       try { audio.load(); } catch (_) {}
     }
-    resetButton(activeButton);
-    activeButton = null;
-    setStatus("朗讀已停止。", false);
+    resetButton(activeButton); activeButton = null; setStatus("朗讀已停止。", false);
   }
 
-  function articleTitle(article) {
-    return clean($("h1,h2,h3", article)?.textContent);
-  }
-
+  function articleTitle(article) { return clean($("h1,h2,h3", article)?.textContent); }
   function findEntry(article) {
     const title = articleTitle(article);
     if (!title || !manifest?.articles) return null;
     return Object.values(manifest.articles).find((entry) => validEntry(entry) && clean(entry?.title) === title) || null;
   }
-
   function entryUrl(entry) {
     const url = new URL(entry.audio, document.baseURI);
-    const version = `${entry.prosodyPolicy}|${entry.publishedAt || ""}|${entry.contentSha256 || ""}`;
-    url.searchParams.set("voicev", encodeURIComponent(version));
+    url.searchParams.set("voicev", encodeURIComponent(`${entry.prosodyPolicy}|${entry.publishedAt || ""}|${entry.contentSha256 || ""}`));
     return url.href;
   }
-
   function play(entry, button = null) {
     if (!validEntry(entry)) return false;
-    if (activeButton === button && button?.dataset.speaking === "true") {
-      stopAll();
-      return true;
-    }
-    stopAll();
-    ensureUi();
+    if (activeButton === button && button?.dataset.speaking === "true") { stopAll(); return true; }
+    stopAll(); ensureUi();
     const audio = $("#site-tts-audio");
-    audio.src = entryUrl(entry);
-    audio.dataset.ready = "true";
-    activeButton = button;
-    if (button) {
-      button.dataset.speaking = "true";
-      button.textContent = STOP_TEXT;
-    }
-    setStatus("使用中：F01 女聲 · v11 香港新聞主播節奏");
+    audio.src = entryUrl(entry); audio.dataset.ready = "true"; activeButton = button;
+    if (button) { button.dataset.speaking = "true"; button.textContent = STOP_TEXT; }
+    setStatus("使用中：官方 F01 女聲 · v12 香港新聞主播節奏");
     const result = audio.play();
-    result?.catch?.((error) => { console.warn("F01 v11 playback rejected", error); finishActive(); });
+    result?.catch?.((error) => { console.warn("F01 v12 playback rejected", error); finishActive(); });
     return true;
   }
 
@@ -149,63 +133,42 @@
     if (article.closest(".study-desk,[data-no-tts]") || !articleTitle(article)) return;
     let button = $(".site-tts-button", article);
     if (!button) {
-      const wrap = document.createElement("div");
-      wrap.className = "site-tts-controls";
-      button = document.createElement("button");
-      button.type = "button";
-      button.className = "site-tts-button";
+      const wrap = document.createElement("div"); wrap.className = "site-tts-controls";
+      button = document.createElement("button"); button.type = "button"; button.className = "site-tts-button";
       wrap.appendChild(button);
       const heading = $("h1,h2,h3", article);
-      if (heading?.nextSibling) heading.parentNode.insertBefore(wrap, heading.nextSibling);
-      else article.prepend(wrap);
+      if (heading?.nextSibling) heading.parentNode.insertBefore(wrap, heading.nextSibling); else article.prepend(wrap);
     }
     if (button === activeButton && button.dataset.speaking === "true") return;
     const entry = findEntry(article);
-    button.onclick = null;
-    button.dataset.speaking = "false";
+    button.onclick = null; button.dataset.speaking = "false";
     if (validEntry(entry)) {
-      button.disabled = false;
-      button.textContent = BUTTON_TEXT;
-      button.title = "F01女聲 · v11 · 0.92原生語速 · 香港新聞主播語義停頓";
+      button.disabled = false; button.textContent = BUTTON_TEXT;
+      button.title = "ASLP-lab官方F01中立女聲 · v12 · 頭8秒原始reference · 原生語速1.0 · 香港新聞主播語義停頓";
       button.onclick = () => play(entry, button);
     } else {
-      button.disabled = true;
-      button.textContent = PENDING_TEXT;
-      button.title = "只播放具有v11獨立URL、0.92原生語速並通過目前節奏政策的F01音訊。";
+      button.disabled = true; button.textContent = PENDING_TEXT;
+      button.title = "只播放由官方F01中立原始reference重新生成的v12音訊。";
     }
   }
 
   function refreshButtons() { $$("main article").forEach(configure); }
-
-  function containsArticle(node) {
-    return node instanceof Element && (node.matches("article") || !!node.querySelector("article"));
-  }
-
+  function containsArticle(node) { return node instanceof Element && (node.matches("article") || !!node.querySelector("article")); }
   function queueButtonRefresh() {
     if (refreshQueued) return;
     refreshQueued = true;
     const schedule = window.requestAnimationFrame || ((callback) => window.setTimeout(callback, 0));
-    schedule(() => {
-      refreshQueued = false;
-      refreshButtons();
-    });
+    schedule(() => { refreshQueued = false; refreshButtons(); });
   }
-
   async function refreshManifest() {
     try {
-      const url = new URL(MANIFEST_URL, document.baseURI);
-      url.searchParams.set("v", String(Date.now()));
+      const url = new URL(MANIFEST_URL, document.baseURI); url.searchParams.set("v", String(Date.now()));
       const response = await fetch(url.href, { cache: "no-store" });
       if (!response.ok) throw new Error(`manifest HTTP ${response.status}`);
-      const fresh = await response.json();
-      manifest = validManifest(fresh) ? fresh : null;
-    } catch (error) {
-      console.warn("F01 v11 manifest unavailable", error);
-      manifest = null;
-    }
+      const fresh = await response.json(); manifest = validManifest(fresh) ? fresh : null;
+    } catch (error) { console.warn("F01 v12 manifest unavailable", error); manifest = null; }
     refreshButtons();
   }
-
   function leadEntry() {
     if (!manifest?.articles) return null;
     if (manifest.leadId && validEntry(manifest.articles[manifest.leadId])) return manifest.articles[manifest.leadId];
@@ -213,31 +176,15 @@
     return Object.values(manifest.articles).find((entry) => validEntry(entry) && clean(entry?.title) === title) || null;
   }
 
-  window.SiteTTS = {
-    playLeadFromUserGesture() {
-      const entry = leadEntry();
-      return validEntry(entry) ? play(entry, null) : false;
-    },
-    stop: stopAll,
-    isReady() { return true; }
-  };
-
+  window.SiteTTS = { playLeadFromUserGesture() { const entry = leadEntry(); return validEntry(entry) ? play(entry, null) : false; }, stop: stopAll, isReady() { return true; } };
   function boot() {
-    ensureUi();
-    refreshButtons();
-    refreshManifest();
-    if (timer) clearInterval(timer);
-    timer = setInterval(refreshManifest, REFRESH_MS);
+    ensureUi(); refreshButtons(); refreshManifest();
+    if (timer) clearInterval(timer); timer = setInterval(refreshManifest, REFRESH_MS);
     const observer = new MutationObserver((mutations) => {
-      const articleAdded = mutations.some((mutation) => [...mutation.addedNodes].some(containsArticle));
-      if (articleAdded) queueButtonRefresh();
+      if (mutations.some((mutation) => [...mutation.addedNodes].some(containsArticle))) queueButtonRefresh();
     });
     observer.observe(document.body, { childList: true, subtree: true });
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") refreshManifest();
-    });
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refreshManifest(); });
   }
-
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true });
-  else boot();
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true }); else boot();
 })();
