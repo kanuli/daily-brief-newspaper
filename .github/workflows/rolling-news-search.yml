@@ -16,7 +16,10 @@ permissions:
 
 concurrency:
   group: "rolling-news-search-15m"
-  cancel-in-progress: true
+  # Do not cancel a queued collector when GitHub runners are busy. A newer
+  # schedule must wait behind the existing run so discovery can eventually
+  # advance instead of entering a cancel/requeue starvation loop.
+  cancel-in-progress: false
 
 jobs:
   collect:
