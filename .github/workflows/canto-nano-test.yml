@@ -1,4 +1,4 @@
-name: Build Canto TTS Nano Listening Samples
+name: Build Canto TTS Nano Female Listening Samples
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: "canto-tts-nano-listening-test"
+  group: "canto-tts-nano-female-listening-test"
   cancel-in-progress: true
 
 jobs:
@@ -38,17 +38,18 @@ jobs:
           path: ~/.cache/huggingface
           key: canto-tts-nano-v1-hf-cache
 
-      - name: Install canto-tts
+      - name: Install current canto-tts with ONNX voice cloning
         run: |
           python -m pip install --upgrade pip wheel
-          python -m pip install "canto-tts"
+          python -m pip install "git+https://github.com/typangaa/canto-tts.git@main"
+          python -m pip install "soundfile>=0.12" "scipy>=1.11"
 
-      - name: Generate three independent listening samples
+      - name: Generate three female voice-clone listening samples
         env:
           HF_HUB_DISABLE_XET: "1"
         run: python scripts/generate_canto_nano_test.py
 
-      - name: Publish test WAV files to main
+      - name: Publish female test WAV files to main
         shell: bash
         run: |
           set -euo pipefail
@@ -56,14 +57,14 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add audio/canto-nano-test
           if git diff --cached --quiet; then
-            echo "CANTO_NANO_TEST_AUDIO_ALREADY_CURRENT"
+            echo "CANTO_NANO_FEMALE_TEST_AUDIO_ALREADY_CURRENT"
             exit 0
           fi
-          git commit -m "Publish canto-tts-nano listening samples"
+          git commit -m "Publish canto-tts-nano female listening samples"
           for attempt in 1 2 3 4 5 6; do
             git fetch origin main
             if git rebase origin/main && git push origin HEAD:main; then
-              echo "CANTO_NANO_TEST_AUDIO_PUBLISHED"
+              echo "CANTO_NANO_FEMALE_TEST_AUDIO_PUBLISHED"
               exit 0
             fi
             git rebase --abort >/dev/null 2>&1 || true
