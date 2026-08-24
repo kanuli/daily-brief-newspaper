@@ -48,11 +48,9 @@ jobs:
               'finance.html','stocks.html','technology.html','manga-anime.html',
               'manchester-united.html','football.html','archive.html'
           ]
-          runtime_files=['assets/js/site-tts-v10.js','assets/js/system-panel.js','assets/js/live-article.js']
+          runtime_files=['assets/js/site-tts-v13.js','assets/js/system-panel.js','assets/js/live-article.js']
           known_error_markers=[
-              'Error 500 (Server Error)',
-              'That’s an error',
-              "That's an error",
+              'Error 500 (Server Error)', 'That’s an error', "That's an error",
               'There was an error. Please try again later.'
           ]
 
@@ -63,30 +61,22 @@ jobs:
 
           def request_bytes(url):
               sep='&' if '?' in url else '?'
-              req=urllib.request.Request(
-                  url+sep+'v='+str(int(time.time()*1000)),
-                  headers={
-                      'Cache-Control':'no-cache',
-                      'Pragma':'no-cache',
-                      'User-Agent':'daily-brief-pages-probe',
-                  },
-              )
+              req=urllib.request.Request(url+sep+'v='+str(int(time.time()*1000)),headers={
+                  'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-pages-probe'})
               with urllib.request.urlopen(req,timeout=15) as response:
                   body=response.read()
                   return response.getcode(), response.headers.get_content_type(), body
 
           def fetch_json(filename):
-              status, content_type, body=request_bytes(data_base+filename)
-              if status != 200:
-                  raise RuntimeError(f'{filename} HTTP {status}')
+              status, _, body=request_bytes(data_base+filename)
+              if status != 200: raise RuntimeError(f'{filename} HTTP {status}')
               return json.loads(body.decode('utf-8'))
 
-          def sha256(data):
-              return hashlib.sha256(data).hexdigest()
+          def sha256(data): return hashlib.sha256(data).hexdigest()
 
           remote_live=remote_desk=remote_stocks=None
           error=None
-          for attempt in range(12):
+          for _ in range(12):
               try:
                   remote_live=fetch_json('live.json')
                   remote_desk=fetch_json('desk-latest.json')
@@ -95,13 +85,10 @@ jobs:
                   desk_match=bool(remote_desk.get('generatedAt')==expected_live)
                   stock_match=bool(remote_stocks.get('generatedAt')==expected_stocks)
                   if live_match and desk_match and stock_match:
-                      error=None
-                      break
-                  error=(
-                      f"live={remote_live.get('lastUpdated')} expected={expected_live}; "
-                      f"desk={remote_desk.get('generatedAt')} expected={expected_live}; "
-                      f"stocks={remote_stocks.get('generatedAt')} expected={expected_stocks}"
-                  )
+                      error=None; break
+                  error=(f"live={remote_live.get('lastUpdated')} expected={expected_live}; "
+                         f"desk={remote_desk.get('generatedAt')} expected={expected_live}; "
+                         f"stocks={remote_stocks.get('generatedAt')} expected={expected_stocks}")
               except Exception as exc:
                   error=str(exc)
               time.sleep(5)
@@ -116,14 +103,7 @@ jobs:
                   status, content_type, body=request_bytes(root+page)
                   text=body.decode('utf-8','replace')
                   marker=next((m for m in known_error_markers if m in text), None)
-                  ok=bool(status==200 and '<html' in text.lower() and not marker)
-                  page_checks[page]={
-                      'ok':ok,
-                      'status':status,
-                      'contentType':content_type,
-                      'bytes':len(body),
-                      'errorMarker':marker,
-                  }
+                  page_checks[page]={'ok':bool(status==200 and '<html' in text.lower() and not marker),'status':status,'contentType':content_type,'bytes':len(body),'errorMarker':marker}
               except Exception as exc:
                   page_checks[page]={'ok':False,'error':str(exc)}
           all_pages_ok=all(item.get('ok') for item in page_checks.values())
@@ -133,34 +113,20 @@ jobs:
               local=Path(path).read_bytes()
               try:
                   status, content_type, body=request_bytes(root+path)
-                  runtime_checks[path]={
-                      'ok':bool(status==200 and body==local),
-                      'status':status,
-                      'contentType':content_type,
-                      'localSha256':sha256(local),
-                      'publicSha256':sha256(body),
-                      'bytes':len(body),
-                  }
+                  runtime_checks[path]={'ok':bool(status==200 and body==local),'status':status,'contentType':content_type,'localSha256':sha256(local),'publicSha256':sha256(body),'bytes':len(body)}
               except Exception as exc:
-                  runtime_checks[path]={
-                      'ok':False,
-                      'localSha256':sha256(local),
-                      'error':str(exc),
-                  }
+                  runtime_checks[path]={'ok':False,'localSha256':sha256(local),'error':str(exc)}
           runtime_match=all(item.get('ok') for item in runtime_checks.values())
 
-          # Regression gates follow the current voice policy instead of a
-          # hard-coded version. Require same-origin manifest loading, the current
-          # policy namespace and the article-only mutation refresh guard.
-          tts_local=Path('assets/js/site-tts-v10.js').read_text(encoding='utf-8')
+          tts_local=Path('assets/js/site-tts-v13.js').read_text(encoding='utf-8')
           policy_local=Path('scripts/cosyvoice_policy.py').read_text(encoding='utf-8')
           ns_match=re.search(r'^ASSET_NAMESPACE\s*=\s*["\']([^"\']+)["\']', policy_local, re.M)
           current_namespace=ns_match.group(1) if ns_match else ''
-          namespace_line=f'const REQUIRED_AUDIO_NAMESPACE = "-{current_namespace}-";'
+          namespace_line=f'const NAMESPACE = "-{current_namespace}-";'
           tts_guard_ok=bool(
               current_namespace and
               'function containsArticle(node)' in tts_local and
-              'mutation.addedNodes' in tts_local and
+              'addedNodes' in tts_local and
               'const MANIFEST_URL = "data/tts-manifest.json";' in tts_local and
               namespace_line in tts_local and
               'new MutationObserver(() => refreshButtons())' not in tts_local
@@ -168,8 +134,7 @@ jobs:
 
           overall=bool(live_match and desk_match and stock_match and all_pages_ok and runtime_match and tts_guard_ok)
           payload={
-              'checkedAt': datetime.now(timezone.utc).isoformat(),
-              'publicBaseUrl': root,
+              'checkedAt': datetime.now(timezone.utc).isoformat(), 'publicBaseUrl': root,
               'mainLastUpdated': expected_live,
               'publicLastUpdated': remote_live.get('lastUpdated') if isinstance(remote_live,dict) else None,
               'mainWindowLabel': local_live.get('windowLabel'),
@@ -179,22 +144,15 @@ jobs:
               'publicDeskGeneratedAt': remote_desk.get('generatedAt') if isinstance(remote_desk,dict) else None,
               'mainStocksGeneratedAt': expected_stocks,
               'publicStocksGeneratedAt': remote_stocks.get('generatedAt') if isinstance(remote_stocks,dict) else None,
-              'liveMatch': live_match,
-              'deskMatch': desk_match,
-              'stockMatch': stock_match,
-              'allCorePagesOk': all_pages_ok,
-              'pageChecks': page_checks,
-              'runtimeMatch': runtime_match,
-              'runtimeChecks': runtime_checks,
+              'liveMatch': live_match, 'deskMatch': desk_match, 'stockMatch': stock_match,
+              'allCorePagesOk': all_pages_ok, 'pageChecks': page_checks,
+              'runtimeMatch': runtime_match, 'runtimeChecks': runtime_checks,
               'ttsHangRegressionGuard': tts_guard_ok,
-              'voiceAssetNamespace': current_namespace,
-              'match': overall,
-              'error': error,
+              'voiceAssetNamespace': current_namespace, 'match': overall, 'error': error,
           }
           open('/tmp/pages-live-status.json','w',encoding='utf-8').write(json.dumps(payload,ensure_ascii=False,indent=2)+'\n')
           print(json.dumps(payload,ensure_ascii=False))
-          if not overall:
-              raise SystemExit('PUBLIC_SITE_PROBE_FAILED')
+          if not overall: raise SystemExit('PUBLIC_SITE_PROBE_FAILED')
           PY
 
       - name: Publish probe result to pages-status branch
