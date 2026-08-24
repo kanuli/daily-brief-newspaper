@@ -1,7 +1,7 @@
 {
-  "checkedAt": "2026-08-24T11:44:08.446976+00:00",
-  "latestRunId": 32723344439,
-  "latestStatus": "pending",
+  "checkedAt": "2026-08-24T11:52:20.342489+00:00",
+  "latestRunId": 32723372734,
+  "latestStatus": "in_progress",
   "latestConclusion": "",
   "latestHeadSha": "1a6b67ea713ce5e057619ab6fc0cb57e0304c20b",
   "availableArticleCount": 46,
@@ -9,17 +9,27 @@
   "pendingArticleCount": 31,
   "coverageComplete": false,
   "lastVoicePublishedAt": "2026-08-24T11:27:37.321857+00:00",
-  "progressAgeSeconds": 991,
+  "progressAgeSeconds": 1483,
   "prosodyPolicy": "f01-news-anchor-v10-cache-isolated-semantic-pauses-approved-10s-hktrad",
   "runs": [
     {
       "conclusion": "",
+      "createdAt": "2026-08-24T11:44:10Z",
+      "databaseId": 32723372734,
+      "event": "workflow_dispatch",
+      "headSha": "1a6b67ea713ce5e057619ab6fc0cb57e0304c20b",
+      "status": "in_progress",
+      "updatedAt": "2026-08-24T11:52:16Z",
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/32723372734"
+    },
+    {
+      "conclusion": "cancelled",
       "createdAt": "2026-08-24T11:43:49Z",
       "databaseId": 32723344439,
       "event": "workflow_dispatch",
       "headSha": "1a6b67ea713ce5e057619ab6fc0cb57e0304c20b",
-      "status": "pending",
-      "updatedAt": "2026-08-24T11:43:51Z",
+      "status": "completed",
+      "updatedAt": "2026-08-24T11:44:12Z",
       "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/32723344439"
     },
     {
@@ -33,13 +43,13 @@
       "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/32720167564"
     },
     {
-      "conclusion": "",
+      "conclusion": "cancelled",
       "createdAt": "2026-08-24T10:01:34Z",
       "databaseId": 32714635998,
       "event": "push",
       "headSha": "69605529ff368ead0b8decdfb2ae3a8679416ebb",
-      "status": "in_progress",
-      "updatedAt": "2026-08-24T11:44:03Z",
+      "status": "completed",
+      "updatedAt": "2026-08-24T11:52:07Z",
       "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/32714635998"
     },
     {
@@ -81,20 +91,89 @@
       "status": "completed",
       "updatedAt": "2026-08-24T08:23:40Z",
       "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/32705855302"
-    },
-    {
-      "conclusion": "cancelled",
-      "createdAt": "2026-08-24T08:20:45Z",
-      "databaseId": 32705830958,
-      "event": "workflow_dispatch",
-      "headSha": "6c45aa70b192fd887aa7fae76363cfdf1a1e3f54",
-      "status": "completed",
-      "updatedAt": "2026-08-24T08:21:05Z",
-      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/32705830958"
     }
   ],
-  "jobs": [],
+  "jobs": [
+    {
+      "completedAt": "2026-08-24T11:52:13Z",
+      "conclusion": "success",
+      "databaseId": 97421351636,
+      "name": "ensure-release",
+      "startedAt": "2026-08-24T11:52:09Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-08-24T11:52:09Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-08-24T11:52:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-24T11:52:12Z",
+          "conclusion": "success",
+          "name": "Ensure rolling F01 release exists",
+          "number": 2,
+          "startedAt": "2026-08-24T11:52:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-24T11:52:12Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 3,
+          "startedAt": "2026-08-24T11:52:12Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/32723372734/job/97421351636"
+    },
+    {
+      "completedAt": "0001-01-01T00:00:00Z",
+      "conclusion": "",
+      "databaseId": 97421379506,
+      "name": "promote-prebuilt",
+      "startedAt": "2026-08-24T11:52:16Z",
+      "status": "in_progress",
+      "steps": [
+        {
+          "completedAt": "2026-08-24T11:52:17Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-08-24T11:52:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Checkout current public news",
+          "number": 2,
+          "startedAt": "2026-08-24T11:52:17Z",
+          "status": "in_progress"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Promote exact-hash current-policy prebuilt F01 URLs",
+          "number": 3,
+          "startedAt": "0001-01-01T00:00:00Z",
+          "status": "pending"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Post Checkout current public news",
+          "number": 6,
+          "startedAt": "0001-01-01T00:00:00Z",
+          "status": "pending"
+        }
+      ],
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/32723372734/job/97421379506"
+    }
+  ],
   "failedLogTail": [
-    "run 32723344439 is still in progress; logs will be available when it is complete"
+    "run 32723372734 is still in progress; logs will be available when it is complete"
   ]
 }
