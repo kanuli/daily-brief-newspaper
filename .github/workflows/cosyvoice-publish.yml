@@ -33,13 +33,13 @@ on:
 permissions:
   contents: write
 
-# Every audible policy revision gets a fresh worker namespace. A v10 pool can
-# finish or time out independently but cannot block v11. Healthy v11 workers are
-# not cancelled by ordinary news/data pushes; the progress watchdog handles a
-# genuinely stalled pool.
+# News collection/publication has priority over background voice synthesis.
+# A newer v11 run replaces unfinished work from the previous v11 run; every WAV
+# already published to the release/manifest remains reusable. Limit the worker
+# pool so Actions always retains headroom for rolling discovery and maintenance.
 concurrency:
   group: "cosyvoice2-yue-f01-v11-current-news"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   F01_RELEASE_TAG: f01-voice-cache
@@ -120,7 +120,7 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      max-parallel: 10
+      max-parallel: 6
       matrix:
         slot: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     steps:
