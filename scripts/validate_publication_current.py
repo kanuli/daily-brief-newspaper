@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import datetime
 import json
 import pathlib
 import re
@@ -37,9 +38,27 @@ def rich_story(story, label):
     need(measure >= MIN_BODY_MEASURE, f"{label}: body too short ({measure})")
 
 
+def publication_dates_align(latest_date, live_date):
+    """Allow the normal midnight-to-08:00 handoff before Daily Edition rolls.
+
+    During 00:00/06:00/07:00 HKT, Live belongs to the new calendar day while
+    latest.json can legitimately still be the previous day's Daily Edition.
+    Reject stale/backward Live dates and gaps larger than one day.
+    """
+    try:
+        daily = datetime.date.fromisoformat(str(latest_date))
+        live = datetime.date.fromisoformat(str(live_date))
+    except (TypeError, ValueError):
+        return False
+    return live == daily or live == daily + datetime.timedelta(days=1)
+
+
 def validate_live(latest, live):
     need(str(live.get("mode") or "").upper() == "LIVE", "live mode invalid")
-    need(live.get("date") == latest.get("date"), "live date does not match Daily date")
+    need(
+        publication_dates_align(latest.get("date"), live.get("date")),
+        "live date must match Daily date or the immediate overnight handoff date",
+    )
     for key in ("lastUpdated", "lastUpdatedLabel", "windowLabel", "nextUpdateLabel"):
         need(isinstance(live.get(key), str) and live[key].strip(), f"live missing {key}")
     items = live.get("items")
