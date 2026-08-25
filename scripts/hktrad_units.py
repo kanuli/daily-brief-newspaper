@@ -30,7 +30,7 @@ def _four_digits_to_chinese(number):
         if digit:
             if zero_pending and out:
                 out.append("零")
-            # 10..19 is normally read 十、十一... rather than 一十、 一十一.
+            # 10..19 is normally read 十、十一... rather than 一十、一十一.
             if not (pos == 1 and digit == 1 and not out):
                 out.append(_DIGITS[digit])
             out.append(_SMALL_UNITS[pos])
@@ -40,10 +40,11 @@ def _four_digits_to_chinese(number):
     return "".join(out)
 
 
-def _integer_to_chinese(raw):
+def _integer_to_chinese(raw, *, year=False):
     raw = str(raw).lstrip("0") or "0"
-    # News years are read digit by digit: 2026年 -> 二零二六年.
-    if len(raw) == 4 and 1900 <= int(raw) <= 2099:
+    # Calendar years are read digit by digit: 2026年 -> 二零二六年. A plain
+    # quantity such as 2,026人 must remain 二千零二十六人 instead.
+    if year and len(raw) == 4:
         return "".join(_DIGITS[int(char)] for char in raw)
     number = int(raw)
     if number == 0:
@@ -77,10 +78,12 @@ def _integer_to_chinese(raw):
 
 def _number_for_speech(match):
     raw = match.group(1).translate(_FULLWIDTH_DIGITS).replace(",", "")
+    next_char = match.string[match.end():match.end() + 1]
+    is_year = next_char == "年"
     if "." in raw:
         whole, fraction = raw.split(".", 1)
-        return f"{_integer_to_chinese(whole)}點{''.join(_DIGITS[int(char)] for char in fraction)}"
-    return _integer_to_chinese(raw)
+        return f"{_integer_to_chinese(whole, year=False)}點{''.join(_DIGITS[int(char)] for char in fraction)}"
+    return _integer_to_chinese(raw, year=is_year)
 
 
 def normalize_numbers_for_cantonese(text):
