@@ -1,0 +1,31 @@
+name: Publish Daily 2026-08-25
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-daily-20260825.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Daily artifacts
+        run: python scripts/publish_daily_20260825.py
+      - name: Validate site schema
+        run: python scripts/validate_site_data.py
+      - name: Validate Daily v3
+        run: python scripts/validate_daily_v3.py
+      - name: Validate editorial and desk depth
+        run: python scripts/validate_editorial_v2.py
+      - name: Validate Stock News unchanged
+        run: python scripts/validate_stock_news.py
+      - name: Commit Daily publication
+        run: |
+          git config user.name 'daily-brief-bot'
+          git config user.email 'daily-brief-bot@users.noreply.github.com'
+          git add data/2026-08-25.json data/latest.json data/archive.json data/vocab/2026-08-25.json data/topic-more/2026-08-25.json data/desk-latest.json data/live.json editions/2026-08-25.html editions/2026-08-24.html
+          git diff --cached --quiet && exit 0
+          git commit -m 'Publish Daily Edition 2026-08-25'
+          git push
