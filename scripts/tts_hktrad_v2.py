@@ -155,8 +155,8 @@ OVERRIDES = [
     # Manga / anime
     ("Disney Twisted-Wonderland", "迪士尼扭曲仙境"),
     ("Fate/strange Fake", "命運奇異贗品"),
-    ("A-1 Pictures", "A一動畫製作公司"),
-    ("A-一 Pictures", "A一動畫製作公司"),
+    ("A-1 Pictures", "第一動畫製作公司"),
+    ("A-一 Pictures", "第一動畫製作公司"),
     ("TYPE-MOON", "型月"),
     ("Teaser Visual", "預告視覺圖"),
     ("Twisted-Wonderland", "扭曲仙境"),
