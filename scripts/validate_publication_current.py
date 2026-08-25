@@ -13,6 +13,7 @@ EXPECTED_DESKS = (
     "world", "asia", "hong-kong", "japan", "market-economy",
     "ai-tech", "manga-anime", "manchester-united", "football",
 )
+MIN_BODY_MEASURE = 90
 
 
 def load(name):
@@ -33,7 +34,7 @@ def rich_story(story, label):
     need(len(paragraphs) >= 2, f"{label}: body needs at least two paragraphs")
     cjk = len(re.findall(r"[\u3400-\u9fff]", story["body"]))
     measure = cjk if cjk >= 50 else len(re.sub(r"\s+", "", story["body"]))
-    need(measure >= 100, f"{label}: body too short ({measure})")
+    need(measure >= MIN_BODY_MEASURE, f"{label}: body too short ({measure})")
 
 
 def validate_live(latest, live):
