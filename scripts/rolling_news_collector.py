@@ -5,6 +5,10 @@ This is a discovery/staging layer, not a publisher. It collects recent
 candidate headlines for all public desks every 15 minutes, deduplicates them,
 and writes data/search-staging.json. Hourly publishers must independently
 verify, rank, rewrite and source-check candidates before publication.
+
+The collector is deliberately broad. A small Live/headline edition must never
+become a collection cap: staging should maintain a deep, diverse candidate
+reservoir for every Cantonese topic desk.
 """
 
 from __future__ import annotations
@@ -24,68 +28,117 @@ from pathlib import Path
 from typing import Any
 
 HKT = timezone(timedelta(hours=8))
-USER_AGENT = "DailyBriefRollingCollector/1.3 (+https://github.com/kanuli/daily-brief-newspaper)"
-RETENTION_HOURS = 8
-MAX_PER_DESK = 60
-GOOGLE_MIN_BEFORE_FALLBACK = 4
+USER_AGENT = "DailyBriefRollingCollector/1.4 (+https://github.com/kanuli/daily-brief-newspaper)"
+RETENTION_HOURS = 24
+MAX_PER_DESK = 120
+
+# These are discovery-pool floors, never publication targets or caps. If the
+# primary provider returns fewer unique candidates than the floor, broaden via
+# free fallback discovery queries for that desk.
+MIN_DISCOVERY_PER_DESK = {
+    "world": 24,
+    "asia": 24,
+    "hong-kong": 16,
+    "japan": 20,
+    "finance": 20,
+    "stock-news": 12,
+    "ai-tech": 20,
+    "manga-anime": 12,
+    "manchester-united": 10,
+    "football": 24,
+}
 
 FRESHNESS_HOURS = {
-    "world": 8,
-    "asia": 8,
-    "hong-kong": 8,
-    "japan": 8,
-    "finance": 8,
-    "stock-news": 8,
-    "ai-tech": 8,
-    "manga-anime": 48,
-    "manchester-united": 12,
-    "football": 12,
+    "world": 24,
+    "asia": 24,
+    "hong-kong": 24,
+    "japan": 24,
+    "finance": 24,
+    "stock-news": 24,
+    "ai-tech": 24,
+    "manga-anime": 72,
+    "manchester-united": 48,
+    "football": 48,
 }
 
 QUERY_PLAN: dict[str, list[str]] = {
     "world": [
-        '(Europe OR Africa OR "North America" OR "South America" OR Oceania) when:4h',
-        'international breaking politics court disaster public safety when:4h',
+        'Europe politics economy society court disaster security when:6h',
+        'Africa politics economy society conflict disaster health when:8h',
+        '(Canada OR Mexico OR "North America") politics economy society court disaster when:6h',
+        '("South America" OR "Latin America") politics economy society election disaster when:8h',
+        '(Australia OR "New Zealand" OR Oceania) politics economy society disaster when:8h',
+        'international diplomacy conflict climate science public safety when:6h',
     ],
     "asia": [
-        '(Asia OR China OR Korea OR India OR ASEAN OR "Middle East" OR "Central Asia") when:4h',
-        'Asia politics society disaster diplomacy economy technology when:4h',
+        '(China OR Taiwan OR Korea OR Japan) politics economy society diplomacy when:6h',
+        '(ASEAN OR Singapore OR Malaysia OR Thailand OR Vietnam OR Indonesia OR Philippines) when:6h',
+        '(India OR Pakistan OR Bangladesh OR Sri Lanka OR Nepal) politics economy society when:6h',
+        '("Middle East" OR Iran OR Israel OR Gaza OR Gulf OR Saudi OR UAE OR Iraq OR Syria OR Lebanon) when:6h',
+        '("Central Asia" OR Kazakhstan OR Uzbekistan OR Caucasus OR Armenia OR Azerbaijan OR Georgia) when:12h',
+        'Asia technology health disaster climate security when:6h',
     ],
     "hong-kong": [
-        '"Hong Kong" when:4h',
-        '香港 when:4h',
+        '香港 新聞 when:6h',
+        '香港 政府 政策 立法會 法院 警方 when:8h',
+        '香港 交通 房屋 醫療 教育 勞工 when:8h',
+        '香港 經濟 社會 文化 環境 意外 when:8h',
+        '"Hong Kong" politics court transport housing health education society when:8h',
     ],
     "japan": [
-        'Japan when:4h',
-        '日本 when:4h',
+        '日本 ニュース when:6h',
+        '日本 政治 国会 政府 外交 when:8h',
+        '日本 社会 事件 裁判 犯罪 when:8h',
+        '日本 地震 台風 天気 災害 交通 when:8h',
+        '日本 経済 企業 産業 技術 AI when:8h',
+        '日本 医療 教育 人口 労働 when:12h',
+        '日本 文化 観光 生活 when:12h',
     ],
     "finance": [
-        '(markets OR economy OR "central bank" OR rates OR bonds OR currency OR oil) when:4h',
-        '(Wall Street OR Europe markets OR Asia markets OR companies finance) when:4h',
+        '(markets OR stocks OR bonds OR currency OR oil OR gold) when:6h',
+        '(economy OR inflation OR jobs OR GDP OR trade) when:8h',
+        '(Federal Reserve OR ECB OR BOJ OR PBOC OR "central bank") when:8h',
+        '(Wall Street OR Europe markets OR Asia markets) when:6h',
+        '(earnings OR guidance OR merger OR acquisition OR IPO) companies when:8h',
+        '(Treasury yields OR dollar OR yen OR euro OR commodities) when:6h',
     ],
     "stock-news": [
-        '(NVDA OR Nvidia OR AAPL OR Apple OR TSM OR TSMC OR PLTR OR Palantir OR MSFT OR Microsoft OR GOOG OR Alphabet) when:4h',
-        '(EMXC OR EWY OR VT) ETF when:8h',
+        '(NVDA OR Nvidia OR AAPL OR Apple OR TSM OR TSMC) earnings guidance product analyst SEC when:8h',
+        '(PLTR OR Palantir OR MSFT OR Microsoft OR GOOG OR Google OR Alphabet) earnings guidance product analyst SEC when:8h',
+        '(EMXC OR EWY OR VT) ETF market flows holdings when:12h',
+        '(NVDA OR AAPL OR TSM OR PLTR OR MSFT OR GOOG OR EMXC OR EWY OR VT) when:12h',
     ],
     "ai-tech": [
-        '(AI OR "artificial intelligence" OR semiconductor OR cloud OR cybersecurity) when:4h',
-        '(technology OR software OR chips OR consumer tech OR tech regulation) when:4h',
+        '(AI OR "artificial intelligence" OR generative AI OR model) when:6h',
+        '(semiconductor OR chip OR GPU OR foundry) when:6h',
+        '(cloud OR software OR app OR enterprise technology) when:8h',
+        '(cybersecurity OR data breach OR ransomware) when:8h',
+        '(technology regulation OR AI regulation OR antitrust technology) when:8h',
+        '(consumer tech OR smartphone OR computer OR robotics OR quantum) when:8h',
     ],
     "manga-anime": [
-        'anime when:48h',
-        'manga when:48h',
-        'アニメ when:48h',
-        '漫画 when:48h',
+        'アニメ 新作 放送 延期 制作 when:72h',
+        '漫画 出版 連載 休載 when:72h',
+        'anime film box office studio streaming when:72h',
+        'manga publisher creator serialization when:72h',
+        '声優 アニメ 映画 イベント when:72h',
     ],
     "manchester-united": [
-        '"Manchester United" when:6h',
-        '"Man Utd" transfer injury match club when:12h',
+        '"Manchester United" when:12h',
+        '"Manchester United" transfer injury contract when:24h',
+        '"Manchester United" match fixture manager training when:24h',
+        '"Man Utd" player team news when:24h',
     ],
     "football": [
-        '(football OR soccer) (Premier League OR EFL OR "La Liga" OR "Serie A" OR Bundesliga OR "Ligue 1") when:4h',
-        'football transfer injury suspension manager club when:4h',
-        '(UEFA OR "Champions League" OR "Europa League" OR international football) when:6h',
-        '("J League" OR J-League OR "Hong Kong Premier League" OR HKFA OR "AFC Champions League") when:8h',
+        '(Premier League OR EFL OR Championship) football when:6h',
+        '("La Liga" OR "Serie A" OR Bundesliga OR "Ligue 1") football when:8h',
+        '(UEFA OR "Champions League" OR "Europa League" OR "Conference League") football when:8h',
+        '(FIFA OR international football OR national team) match qualifier tournament when:8h',
+        'football transfer injury suspension manager contract when:6h',
+        '("J League" OR J-League OR J1 OR J2) football when:12h',
+        '("Hong Kong Premier League" OR HKFA OR 港超 OR 香港足球) when:12h',
+        '("AFC Champions League" OR AFC football OR Asian football) when:12h',
+        'women football soccer league international when:12h',
     ],
 }
 
@@ -101,9 +154,9 @@ FOOTBALL_FALSE_POSITIVE = re.compile(
 )
 
 FOOTBALL_POSITIVE = re.compile(
-    r"football|soccer|premier league|\bEFL\b|la liga|serie a|bundesliga|ligue 1|"
-    r"\bUEFA\b|\bFIFA\b|champions league|europa league|conference league|j[- ]?league|"
-    r"hong kong premier league|\bHKPL\b|\bHKFA\b|afc champions league|"
+    r"football|soccer|premier league|\bEFL\b|championship|la liga|serie a|bundesliga|ligue 1|"
+    r"\bUEFA\b|\bFIFA\b|champions league|europa league|conference league|j[- ]?league|\bJ1\b|\bJ2\b|"
+    r"hong kong premier league|\bHKPL\b|\bHKFA\b|港超|香港足球|afc champions league|"
     r"arsenal|chelsea|liverpool|tottenham|manchester united|man utd|man united|manchester city|"
     r"newcastle|aston villa|everton|brighton|west ham|fulham|brentford|hull city|wrexham|watford|"
     r"sunderland|ipswich|afc wimbledon|barcelona|real madrid|atletico|juventus|inter milan|ac milan|"
@@ -222,7 +275,7 @@ def bing_url(query: str) -> str:
 def rss_items(payload: bytes, provider: str, desk: str, query: str, discovered: datetime) -> list[dict[str, Any]]:
     root = ET.fromstring(payload)
     out: list[dict[str, Any]] = []
-    for item in root.findall(".//item")[:30]:
+    for item in root.findall(".//item")[:40]:
         title = clean_text(item.findtext("title"))
         link = clean_text(item.findtext("link"))
         if not title or not link:
@@ -286,6 +339,20 @@ def retained_candidates(existing: dict[str, Any], now: datetime) -> dict[str, di
     return desks
 
 
+def merge_items(
+    desk: str,
+    items: list[dict[str, Any]],
+    merged: dict[str, dict[str, dict[str, Any]]],
+    discovered_this_run: set[str],
+) -> None:
+    for item in items:
+        discovered_this_run.add(item["id"])
+        old = merged[desk].get(item["id"])
+        if old:
+            item["firstSeenAt"] = old.get("firstSeenAt") or item["firstSeenAt"]
+        merged[desk][item["id"]] = item
+
+
 def collect(existing: dict[str, Any]) -> dict[str, Any]:
     started = now_utc()
     merged = retained_candidates(existing, started)
@@ -294,35 +361,44 @@ def collect(existing: dict[str, Any]) -> dict[str, Any]:
 
     for desk, queries in QUERY_PLAN.items():
         discovered_this_run: set[str] = set()
-        query_audit[desk] = {"queries": len(queries), "googleItems": 0, "bingFallbackItems": 0}
+        floor = MIN_DISCOVERY_PER_DESK[desk]
+        query_audit[desk] = {
+            "queries": len(queries),
+            "googleItems": 0,
+            "bingFallbackQueries": 0,
+            "bingFallbackItems": 0,
+            "discoveryFloor": floor,
+        }
+
         for query in queries:
             try:
                 items = rss_items(http_get(google_url(query, desk)), "Google News RSS", desk, query, started)
                 query_audit[desk]["googleItems"] += len(items)
-                for item in items:
-                    discovered_this_run.add(item["id"])
-                    old = merged[desk].get(item["id"])
-                    if old:
-                        item["firstSeenAt"] = old.get("firstSeenAt") or item["firstSeenAt"]
-                    merged[desk][item["id"]] = item
+                merge_items(desk, items, merged, discovered_this_run)
             except Exception as exc:
                 errors.append({"desk": desk, "provider": "Google News RSS", "query": query, "error": str(exc)[:240]})
 
-        if len(discovered_this_run) < GOOGLE_MIN_BEFORE_FALLBACK:
-            fallback_query = queries[0]
-            try:
-                items = rss_items(http_get(bing_url(fallback_query)), "Bing News RSS", desk, fallback_query, started)
-                query_audit[desk]["bingFallbackItems"] += len(items)
-                for item in items:
-                    old = merged[desk].get(item["id"])
-                    if old:
-                        item["firstSeenAt"] = old.get("firstSeenAt") or item["firstSeenAt"]
-                    merged[desk][item["id"]] = item
-            except Exception as exc:
-                errors.append({"desk": desk, "provider": "Bing News RSS", "query": fallback_query, "error": str(exc)[:240]})
+        # If the primary provider leaves a desk shallow, broaden across multiple
+        # fallback queries rather than trying only one generic query. Stop once
+        # the per-desk discovery floor is reached.
+        if len(discovered_this_run) < floor:
+            for query in queries:
+                if len(discovered_this_run) >= floor:
+                    break
+                try:
+                    items = rss_items(http_get(bing_url(query)), "Bing News RSS", desk, query, started)
+                    query_audit[desk]["bingFallbackQueries"] += 1
+                    query_audit[desk]["bingFallbackItems"] += len(items)
+                    merge_items(desk, items, merged, discovered_this_run)
+                except Exception as exc:
+                    errors.append({"desk": desk, "provider": "Bing News RSS", "query": query, "error": str(exc)[:240]})
+
+        query_audit[desk]["uniqueDiscoveredThisRun"] = len(discovered_this_run)
+        query_audit[desk]["floorMetThisRun"] = int(len(discovered_this_run) >= floor)
 
     desks_out: dict[str, list[dict[str, Any]]] = {}
     counts: dict[str, int] = {}
+    underfilled: dict[str, dict[str, int]] = {}
     for desk, by_id in merged.items():
         items = list(by_id.values())
         items.sort(
@@ -333,10 +409,13 @@ def collect(existing: dict[str, Any]) -> dict[str, Any]:
         items = items[:MAX_PER_DESK]
         desks_out[desk] = items
         counts[desk] = len(items)
+        floor = MIN_DISCOVERY_PER_DESK[desk]
+        if len(items) < floor:
+            underfilled[desk] = {"count": len(items), "floor": floor}
 
     finished = now_utc()
     return {
-        "version": 1,
+        "version": 2,
         "mode": "ROLLING_NEWS_DISCOVERY_STAGING",
         "discoveryOnly": True,
         "verificationRequiredBeforePublish": True,
@@ -347,12 +426,18 @@ def collect(existing: dict[str, Any]) -> dict[str, Any]:
         "lastSearchStartedAt": iso(started),
         "lastSearchAt": iso(finished),
         "retentionHours": RETENTION_HOURS,
+        "maxCandidatesPerDesk": MAX_PER_DESK,
+        "discoveryFloors": MIN_DISCOVERY_PER_DESK,
         "desks": desks_out,
         "candidateCounts": counts,
+        "underfilledDesks": underfilled,
         "queryAudit": query_audit,
         "errors": errors[:100],
         "notes": [
             "Staging is discovery only; candidates are not published without independent verification.",
+            "Discovery floors are breadth-health thresholds, never publication quotas or caps.",
+            "All ten Cantonese desks use multi-angle queries; shallow primary discovery triggers multiple free fallback queries until the desk floor is reached or queries are exhausted.",
+            "A short Live edition or homepage topFive must never reduce the depth of collection staging or public topic desks.",
             "Football is researched as the full worldwide football news desk; results are one normal candidate type among transfers, injuries, fixtures, club, league and international developments.",
             "Football staging requires positive football relevance and filters American-football/baseball/F1 noise; Manchester United and Stock News use desk-specific relevance filters.",
             "Candidates with an explicit publication time older than the desk freshness limit are discarded before staging.",
@@ -372,9 +457,13 @@ def main() -> int:
     args.output.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     total = sum(data["candidateCounts"].values())
-    print(f"ROLLING_NEWS_SEARCH_PASS total_candidates={total} errors={len(data['errors'])}")
+    print(
+        f"ROLLING_NEWS_SEARCH_PASS total_candidates={total} "
+        f"underfilled_desks={len(data['underfilledDesks'])} errors={len(data['errors'])}"
+    )
     for desk, count in data["candidateCounts"].items():
-        print(f"  {desk}: {count}")
+        floor = data["discoveryFloors"][desk]
+        print(f"  {desk}: {count} (floor={floor})")
     return 0 if total > 0 else 2
 
 
