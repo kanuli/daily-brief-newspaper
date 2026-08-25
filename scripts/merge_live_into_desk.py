@@ -40,7 +40,9 @@ DESK_ALIASES = {
     "market-economy": ["market-economy"],
     "ai-tech": ["ai-tech"],
     "manga-anime": ["manga-anime"],
-    "manchester-united": ["manchester-united"],
+    # Manchester United is a priority desk, but its worthwhile stories are
+    # also part of the all-world Football desk by editorial contract.
+    "manchester-united": ["manchester-united", "football"],
     "football": ["football"],
     "stock-news": [],
 }
@@ -142,14 +144,16 @@ def main():
 
     coverage = live.setdefault("coverage", {})
     depth_met = all(counts[slug] >= minimum for slug, minimum in FLOORS.items())
+    source_gate = bool(coverage.get("sourceGateMet", True))
+    geographic_gate = bool(coverage.get("geographicGateMet", True))
+    football_gate = counts["football"] >= FLOORS["football"] and bool(coverage.get("footballGateMet", True))
+    publication_ready = depth_met and source_gate and geographic_gate and football_gate
     coverage["deskLatestStoryCounts"] = counts
     coverage["deskLatestDepthMet"] = depth_met
     coverage["japanCountVerified"] = counts["japan"]
-    coverage["footballGateMet"] = counts["football"] >= FLOORS["football"]
-    if depth_met and coverage.get("sourceGateMet", True) and coverage.get("geographicGateMet", True):
-        coverage["status"] = "COMPLETE"
-    else:
-        coverage["status"] = "INCOMPLETE"
+    coverage["footballGateMet"] = football_gate
+    coverage["publishingGateMet"] = publication_ready
+    coverage["status"] = "COMPLETE" if publication_ready else "INCOMPLETE"
 
     DESK.write_text(json.dumps(desk, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     LIVE.write_text(json.dumps(live, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
