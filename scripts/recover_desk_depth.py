@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Backfill rolling topic desks with verified, current, distinct stories.
 
-This script never edits Live editorial items. It only promotes vetted recovery
-stories into data/desk-latest.json when a topic desk is below its hard floor.
+This script never edits Live editorial items. It only removes same-event rewrites
+from data/desk-latest.json and promotes vetted recovery stories when a topic desk
+is below its hard floor.
 """
 import json
 from pathlib import Path
@@ -20,6 +21,29 @@ FLOORS = {
     "manga-anime": 4,
     "manchester-united": 4,
     "football": 10,
+}
+
+# Known editorial rewrites of the same underlying event. Topic-page depth is
+# measured by actual events, not by changing an article ID or headline.
+EVENT_GROUPS = {
+    "asia-us-korea-drills-20260825": "asia-us-korea-policy-20260824",
+    "asia-us-allies-kim-20260824-2300": "asia-us-korea-policy-20260824",
+    "hk-northern-metropolis-land-20260825": "hk-northern-metropolis-20260824",
+    "hk-northern-metropolis-jv-20260824-2300": "hk-northern-metropolis-20260824",
+    "finance-us-markets-iran-20260824-2300": "markets-iran-20260824",
+    "finance-markets-iran-20260824-2200": "markets-iran-20260824",
+    "finance-global-markets-iran-20260824-1800": "markets-iran-20260824",
+    "anime-fate-strange-fake-season-20260824-1500": "fate-strange-fake-series-20260822",
+    "anime-fate-strange-fake-new-series-20260824-1300": "fate-strange-fake-series-20260822",
+    "anime-fate-strange-fake-series-20260824-1000": "fate-strange-fake-series-20260822",
+    "anime-fate-strange-fake-new-series-20260824-0900": "fate-strange-fake-series-20260822",
+    "mu-hull-fallout-20260825": "mu-hull-20260822",
+    "mu-opening-weekend-review-20260824-2300": "mu-hull-20260822",
+    "mu-hull-analysis-20260824-2000": "mu-hull-20260822",
+    "mu-hull-analysis-20260824-1800": "mu-hull-20260822",
+    "football-premier-league-opening-20260824-2300": "pl-opening-roundup-20260823",
+    "football-opening-weekend-20260824-2200": "pl-opening-roundup-20260823",
+    "football-premier-league-opening-20260824-2000": "pl-opening-roundup-20260823",
 }
 
 RECOVERY = {
@@ -107,7 +131,7 @@ RECOVERY = {
             "timeLabel": "8月25日12:00 HKT後核實",
             "sources": [
                 {"name": "テレビ朝日", "url": "https://news.tv-asahi.co.jp/news_society/articles/900197837.html"},
-                {"name": "気象庁", "url": "https://www.data.jma.go.jp/yoho/data/jishin/met/kishoushien_Kagoshima_Aira-shi.html"}
+                {"name": "気象庁", "url": "https://www.jma.go.jp/"}
             ]
         },
         {
@@ -132,6 +156,92 @@ RECOVERY = {
             ]
         }
     ],
+    "market-economy": [
+        {
+            "id": "finance-bitcoin-80000-20260825-depth",
+            "desk": "market-economy",
+            "deskSlugs": ["market-economy"],
+            "section": "財經／全球市場｜加密資產",
+            "status": "LATEST",
+            "title": "比特幣升穿8萬美元創三個月高位，美元走弱與貨幣貶值憂慮推動資金流入",
+            "dek": "美國長債回購與美元偏軟令部分資金轉向替代資產，加密市場風險胃納回升。",
+            "summary": "路透社報道，比特幣周二升穿8萬美元並觸及三個月高位，美元走弱及投資者對貨幣購買力的憂慮成為主要推力。",
+            "body": "比特幣周二升穿8萬美元，升至約三個月高位。路透社報道，美元近期偏弱，加上市場關注美國財政部增加長債回購等政策訊號，部分投資者把資金轉向黃金及加密資產等替代投資。\n\n加密資產仍屬高波動市場，升勢亦可能受槓桿、資金流及政策消息放大。今輪突破的重要性在於比特幣重新站上8萬美元心理關口，而非代表風險已下降。",
+            "context": "美元、長債利率與市場對法定貨幣購買力的看法，近期同時影響黃金與加密資產需求。",
+            "why": "比特幣突破重要價格關口，反映跨資產資金配置正在變化，並可能影響科技與高風險資產情緒。",
+            "watchNext": "留意美元、美國長債孳息、加密資產資金流及比特幣能否守住8萬美元。",
+            "sourceName": "Reuters",
+            "sourceUrl": "https://www.reuters.com/business/finance/bitcoin-rises-above-80000-soft-dollar-debasement-fears-boost-momentum-2026-08-25/",
+            "timeLabel": "8月25日16:00 HKT前核實",
+            "sources": [
+                {"name": "Reuters", "url": "https://www.reuters.com/business/finance/bitcoin-rises-above-80000-soft-dollar-debasement-fears-boost-momentum-2026-08-25/"}
+            ]
+        }
+    ],
+    "manchester-united": [
+        {
+            "id": "mu-wheatley-lincoln-loan-20260825-depth",
+            "desk": "manchester-united",
+            "deskSlugs": ["manchester-united"],
+            "section": "Manchester United｜外借／青訓",
+            "status": "LATEST",
+            "title": "曼聯20歲前鋒韋特利外借林肯城一季，升上英冠累積比賽經驗",
+            "dek": "曼聯確認青訓前鋒韋特利以一季外借形式加盟林肯城。",
+            "summary": "曼聯20歲前鋒韋特利被外借到林肯城一季，繼續在一隊層級累積上陣時間。",
+            "body": "曼聯官方確認，20歲青訓前鋒韋特利以一季外借形式加盟林肯城。英國廣播公司報道，他此前已為曼聯一隊上陣4次，亦曾先後外借到華素爾、諾咸頓及巴拉福特。\n\n林肯城今季升上英冠，韋特利因此可在更高級別聯賽爭取穩定比賽時間。對曼聯青訓而言，今次安排屬獨立於一隊侯城賽後檢討的球員發展動向。",
+            "context": "曼聯持續透過外借安排讓年輕球員取得成年隊比賽經驗。",
+            "why": "外借目的地及上陣時間會直接影響韋特利的發展，以及曼聯未來前線青訓深度。",
+            "watchNext": "留意韋特利在林肯城的註冊、首次上陣及正選競爭。",
+            "sourceName": "Manchester United",
+            "sourceUrl": "https://www.manutd.com/en/news/ethan-wheatley-heads-out-on-loan",
+            "timeLabel": "8月25日16:00 HKT前核實",
+            "sources": [
+                {"name": "Manchester United", "url": "https://www.manutd.com/en/news/ethan-wheatley-heads-out-on-loan"},
+                {"name": "BBC Sport", "url": "https://sports.yahoo.com/article/lincoln-sign-man-utd-forward-131824483.html"}
+            ]
+        },
+        {
+            "id": "mu-ipswich-preview-20260825-depth",
+            "desk": "manchester-united",
+            "deskSlugs": ["manchester-united"],
+            "section": "Manchester United｜賽前／英超",
+            "status": "LATEST",
+            "title": "曼聯周日主場迎戰葉士域治，侯城失利後尋求新季聯賽首勝",
+            "dek": "奧脫福將迎來今季首場聯賽主場賽事，球隊需要回應首輪0：2失利。",
+            "summary": "曼聯官方已發布對葉士域治的賽前資訊，兩隊將於8月30日在奧脫福交手。",
+            "body": "曼聯官方已發布下一輪英超賽前資訊，球隊將於8月30日在奧脫福迎戰葉士域治。曼聯首輪作客侯城以0：2落敗，因此今仗是球隊爭取新季首場聯賽勝利及修正開季問題的第一個主場機會。\n\n賽前焦點包括正選調整、死球防守及前場效率。這是新的賽程與部署事件，不應與侯城一役的多篇賽後分析重複計算。",
+            "context": "英超第二輪是曼聯在首輪失利後的直接回應窗口。",
+            "why": "主場賽事的部署與結果會影響開季壓力、正選競爭及後續轉會判斷。",
+            "watchNext": "留意球隊官方傷兵更新、卡域克賽前記者會及正選陣容。",
+            "sourceName": "Manchester United",
+            "sourceUrl": "https://www.manutd.com/en/news/detail/match-preview-united-v-ipswich-town-30-august",
+            "timeLabel": "8月25日16:00 HKT前核實",
+            "sources": [
+                {"name": "Manchester United", "url": "https://www.manutd.com/en/news/detail/match-preview-united-v-ipswich-town-30-august"},
+                {"name": "Goal", "url": "https://www.goal.com/en/match/manchester-united-v-ipswich-town/"}
+            ]
+        },
+        {
+            "id": "mu-devaney-hibernian-loan-20260825-depth",
+            "desk": "manchester-united",
+            "deskSlugs": ["manchester-united"],
+            "section": "Manchester United｜外借／青訓",
+            "status": "LATEST",
+            "title": "曼聯青訓球員迪雲尼外借喜百年，青年球員外借安排繼續推進",
+            "dek": "曼聯官方公布迪雲尼加盟蘇格蘭球會喜百年，為另一項獨立青訓發展安排。",
+            "summary": "曼聯確認青訓球員迪雲尼外借加盟喜百年，讓他在成年隊環境累積經驗。",
+            "body": "曼聯官方公布，青訓球員迪雲尼已外借加盟蘇格蘭球會喜百年。這項安排與韋特利轉往林肯城屬不同球員、不同球會的獨立外借事件。\n\n曼聯近年持續透過外借讓青訓球員接觸成年隊比賽環境。對迪雲尼而言，實際上陣時間及在蘇格蘭聯賽的適應情況，會成為球會評估下一階段發展的重要依據。",
+            "context": "青訓外借是曼聯球員發展路徑的重要部分。",
+            "why": "正式外借會改變球員今季的訓練與比賽環境，屬可獨立追蹤的球會動向。",
+            "watchNext": "留意迪雲尼的註冊、首次上陣及喜百年的使用方式。",
+            "sourceName": "Manchester United",
+            "sourceUrl": "https://www.manutd.com/en/news/detail/loan-news-jacob-devaney-joins-hibernian",
+            "timeLabel": "8月25日16:00 HKT前核實",
+            "sources": [
+                {"name": "Manchester United", "url": "https://www.manutd.com/en/news/detail/loan-news-jacob-devaney-joins-hibernian"}
+            ]
+        }
+    ],
     "football": [
         {
             "id": "football-juventus-frosinone-20260825-depth",
@@ -153,34 +263,102 @@ RECOVERY = {
                 {"name": "Juventus", "url": "https://www.juventus.com/en/news/articles/bremer-header-secures-victory-over-frosinone-23-08-26?appview=true"},
                 {"name": "Reuters", "url": "https://www.reuters.com/sports/soccer/juve-boss-spalletti-demands-more-kolo-muani-2026-08-24/"}
             ]
+        },
+        {
+            "id": "football-fifa-ceferin-20260825-depth",
+            "desk": "football",
+            "deskSlugs": ["football"],
+            "section": "Football｜國際足協／管治",
+            "status": "LATEST",
+            "title": "歐洲足協主席施費連排除競逐國際足協會長，預料恩芬天奴仍會遇上挑戰者",
+            "dek": "國際足協下一輪領導層競逐開始升溫，歐洲與全球足協的管治分歧持續。",
+            "summary": "路透社報道，歐洲足協主席施費連表示不會競逐國際足協會長，但預料現任會長恩芬天奴連任時仍會面對其他挑戰者。",
+            "body": "歐洲足協主席施費連表示，他不會參選國際足協會長。路透社報道，他同時預期現任會長恩芬天奴若尋求連任，仍可能面對其他候選人，顯示國際足球管治層的政治角力未有消失。\n\n報道亦提到國際足協近年的商業及管治安排持續受到部分歐洲足協質疑。這屬全球足球行政與權力分配的重要發展，與單場賽果或轉會完全不同。",
+            "context": "國際足協與歐洲足協在賽程、商業權益及管治議題上長期存在張力。",
+            "why": "國際足協領導層競逐會影響全球賽事、商業分配及會員協會政策。",
+            "watchNext": "留意正式候選人名單、恩芬天奴是否確認連任及各洲足協立場。",
+            "sourceName": "Reuters",
+            "sourceUrl": "https://www.reuters.com/sports/soccer/uefas-ceferin-rules-out-fifa-presidency-infantino-pitches-poorer-associations-2026-08-24/",
+            "timeLabel": "8月25日16:00 HKT前核實",
+            "sources": [
+                {"name": "Reuters", "url": "https://www.reuters.com/sports/soccer/uefas-ceferin-rules-out-fifa-presidency-infantino-pitches-poorer-associations-2026-08-24/"}
+            ]
+        },
+        {
+            "id": "football-sunderland-ahoka-20260825-depth",
+            "desk": "football",
+            "deskSlugs": ["football"],
+            "section": "Football｜英超／轉會",
+            "status": "LATEST",
+            "title": "新特蘭簽入20歲中場阿荷卡，升班後繼續補強一隊陣容",
+            "dek": "阿荷卡由皇家安特衛普加盟，報道指轉會費約1,000萬歐元。",
+            "summary": "新特蘭完成簽入20歲剛果民主共和國中場阿荷卡，為球隊今夏另一項正式補強。",
+            "body": "新特蘭已完成簽入20歲中場阿荷卡。英國廣播公司報道，球員由比利時皇家安特衛普加盟，轉會費約1,000萬歐元，並簽下一份長期合約。\n\n新特蘭升上英超後持續增加陣容深度，今次是已完成的正式交易，而不是轉會傳聞。阿荷卡的中場適應、註冊及實際上陣會成為下一步焦點。",
+            "context": "升班球隊通常需要在轉會窗關閉前提高英超級別的陣容深度。",
+            "why": "正式完成的轉會直接改變新特蘭一隊人腳及英超中場配置。",
+            "watchNext": "留意阿荷卡的註冊、首次上陣及新特蘭關窗前是否再有補強。",
+            "sourceName": "BBC Sport",
+            "sourceUrl": "https://sports.yahoo.com/article/sunderland-sign-ahoka-royal-antwerp-143111818.html",
+            "timeLabel": "8月25日16:00 HKT前核實",
+            "sources": [
+                {"name": "BBC Sport", "url": "https://sports.yahoo.com/article/sunderland-sign-ahoka-royal-antwerp-143111818.html"},
+                {"name": "Stats Perform", "url": "https://www.soccernews.com/sunderland-sign-ahoka-from-royal-antwerp/"}
+            ]
         }
     ]
 }
 
 
-def key(story):
-    return (str(story.get("id") or "").strip(), str(story.get("title") or "").strip())
+def event_key(story):
+    story_id = str(story.get("id") or "").strip()
+    if story_id in EVENT_GROUPS:
+        return EVENT_GROUPS[story_id]
+    if story_id:
+        return story_id
+    return "title:" + str(story.get("title") or "").strip().casefold()
+
+
+def dedupe_events(stories):
+    out = []
+    seen = set()
+    for story in stories:
+        marker = event_key(story)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        out.append(story)
+    return out
 
 
 def main():
     data = json.loads(DESK_PATH.read_text(encoding="utf-8"))
     desks = data.setdefault("desks", {})
+
     for slug, minimum in FLOORS.items():
-        current = desks.setdefault(slug, [])
-        seen_ids = {str(s.get("id") or "") for s in current}
-        seen_titles = {str(s.get("title") or "") for s in current}
-        if len({str(s.get("id") or s.get("title") or i) for i, s in enumerate(current)}) >= minimum:
-            continue
-        for story in RECOVERY.get(slug, []):
-            if story["id"] in seen_ids or story["title"] in seen_titles:
-                continue
-            current.append(story)
-            seen_ids.add(story["id"])
-            seen_titles.add(story["title"])
-            if len({str(s.get("id") or s.get("title") or i) for i, s in enumerate(current)}) >= minimum:
-                break
+        current = dedupe_events(desks.setdefault(slug, []))
+        desks[slug] = current
+        seen_events = {event_key(story) for story in current}
+        seen_titles = {str(story.get("title") or "").strip() for story in current}
+
+        if len(seen_events) < minimum:
+            for story in RECOVERY.get(slug, []):
+                marker = event_key(story)
+                title = str(story.get("title") or "").strip()
+                if marker in seen_events or title in seen_titles:
+                    continue
+                current.append(story)
+                seen_events.add(marker)
+                seen_titles.add(title)
+                if len(seen_events) >= minimum:
+                    break
+
+        if len(seen_events) < minimum:
+            print(f"DESK_DEPTH_UNRESOLVED slug={slug} unique={len(seen_events)} floor={minimum}")
+        else:
+            print(f"DESK_DEPTH_PASS slug={slug} unique={len(seen_events)} floor={minimum}")
+
     DESK_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("DESK DEPTH RECOVERY CANDIDATES APPLIED")
+    print("DESK DEPTH UNIQUE-EVENT RECOVERY APPLIED")
 
 
 if __name__ == "__main__":
