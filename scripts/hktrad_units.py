@@ -12,10 +12,18 @@ _DIGITS = "零一二三四五六七八九"
 _SMALL_UNITS = ("", "十", "百", "千")
 _BIG_UNITS = ("", "萬", "億", "兆")
 _FULLWIDTH_DIGITS = str.maketrans("０１２３４５６７８９．，", "0123456789.,")
-# Do not start in the middle of identifiers/decimals/grouped values. This keeps
-# codes such as M5.9 and A66 intact unless an explicit newsroom override exists.
+
+# A comma between grouped thousands is formatting, never a speech pause.
+# Remove it before any punctuation-based TTS segmentation.  The lookahead is
+# deliberately strict: only a 3-digit group is consumed, so a real sentence
+# comma such as "2800,美元" remains punctuation.
+_THOUSANDS_SEPARATOR_RE = re.compile(r"(?<=[0-9]),(?=[0-9]{3}(?:[^0-9]|$))")
+
+# Do not start in the middle of identifiers/decimals.  Grouped values use
+# explicit 3-digit groups; this prevents a trailing sentence comma from being
+# swallowed as if it were part of the number.
 _NUMBER_RE = re.compile(
-    r"(?<![A-Za-z0-9０-９.,，．])([0-9０-９][0-9０-９,，]*(?:[.．][0-9０-９]+)?)(?![A-Za-z0-9０-９])"
+    r"(?<![A-Za-z0-9.,])([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)(?![A-Za-z0-9])"
 )
 
 
@@ -79,7 +87,7 @@ def _integer_to_chinese(raw, *, year=False):
 
 
 def _number_for_speech(match):
-    raw = match.group(1).translate(_FULLWIDTH_DIGITS).replace(",", "")
+    raw = match.group(1).replace(",", "")
     next_char = match.string[match.end():match.end() + 1]
     is_year = next_char == "年"
     if "." in raw:
@@ -91,10 +99,13 @@ def _number_for_speech(match):
 def normalize_numbers_for_cantonese(text):
     """Normalize numbers before punctuation-based TTS segmentation.
 
-    Thousands separators are formatting, not pauses. Converting the full number
-    here guarantees e.g. 2,800億 -> 二千八百億 before the segmenter sees it.
+    Thousands separators are formatting, not pauses.  Full-width punctuation is
+    normalized first, then grouping commas are stripped before number-to-Chinese
+    conversion.  For example, 2,800億 -> 二千八百億 as one uninterrupted number.
     """
-    return _NUMBER_RE.sub(_number_for_speech, str(text or ""))
+    out = str(text or "").translate(_FULLWIDTH_DIGITS)
+    out = _THOUSANDS_SEPARATOR_RE.sub("", out)
+    return _NUMBER_RE.sub(_number_for_speech, out)
 
 
 def localize_units(text):
@@ -108,6 +119,6 @@ def localize_units(text):
             out,
             flags=re.IGNORECASE,
         )
-    # This still runs before canto_nano_prod.units() splits punctuation, so a
+    # This runs before canto_nano_prod.units() splits punctuation, so a
     # thousands comma can never become an artificial pause.
     return normalize_numbers_for_cantonese(out)
