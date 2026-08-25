@@ -7,6 +7,7 @@ on:
       - "data/live.json"
       - "scripts/merge_live_into_desk.py"
       - "scripts/recover_desk_depth.py"
+      - "scripts/recover_desk_depth_watchdog.py"
       - "scripts/validate_publication_current.py"
       - ".github/workflows/merge-live-into-desk.yml"
   schedule:
@@ -42,7 +43,7 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            python scripts/recover_desk_depth.py
+            python scripts/recover_desk_depth_watchdog.py
             python scripts/merge_live_into_desk.py
             python scripts/validate_publication_current.py
             python scripts/audit_tts_language.py
