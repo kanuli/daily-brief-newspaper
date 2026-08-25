@@ -9,7 +9,6 @@ DATA = ROOT / "data"
 LIVE = DATA / "live.json"
 DESK = DATA / "desk-latest.json"
 
-# Public topic-page floors. These are minimums, never display caps.
 FLOORS = {
     "world": 8,
     "asia": 8,
@@ -21,8 +20,6 @@ FLOORS = {
     "manchester-united": 4,
     "football": 10,
 }
-# Keep enough rolling inventory for high-volume desks. Live/topFive limits must
-# never truncate the retained topic pages.
 CAPS = {
     "world": 24,
     "asia": 24,
@@ -52,7 +49,7 @@ REQUIRED = (
     "sourceName", "sourceUrl", "timeLabel",
 )
 FORBIDDEN = re.compile(
-    r"本輪|本報|incremental|duplicate|重複刊登|coverage\s*(?:check|test)|"
+    r"本輪|本報訊|incremental|duplicate|重複刊登|coverage\s*(?:check|test)|"
     r"collection\s*(?:design|test)|這次重新檢查|之後每一輪|每一輪Football|"
     r"固定檢查HKFA|不應由全球搜尋排名決定",
     re.I,
