@@ -6,6 +6,7 @@ on:
     paths:
       - "data/live.json"
       - "scripts/merge_live_into_desk.py"
+      - "scripts/recover_desk_depth.py"
       - ".github/workflows/merge-live-into-desk.yml"
   schedule:
     - cron: "*/5 * * * *"
@@ -40,6 +41,7 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
+            python scripts/recover_desk_depth.py
             python scripts/merge_live_into_desk.py
             python scripts/validate_publication_current.py
             python scripts/audit_tts_language.py
