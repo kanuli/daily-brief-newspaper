@@ -12,8 +12,10 @@ _DIGITS = "零一二三四五六七八九"
 _SMALL_UNITS = ("", "十", "百", "千")
 _BIG_UNITS = ("", "萬", "億", "兆")
 _FULLWIDTH_DIGITS = str.maketrans("０１２３４５６７８９．，", "0123456789.,")
+# Do not start in the middle of identifiers/decimals/grouped values. This keeps
+# codes such as M5.9 and A66 intact unless an explicit newsroom override exists.
 _NUMBER_RE = re.compile(
-    r"(?<![A-Za-z0-9０-９])([0-9０-９][0-9０-９,，]*(?:[.．][0-9０-９]+)?)(?![A-Za-z0-9０-９])"
+    r"(?<![A-Za-z0-9０-９.,，．])([0-9０-９][0-9０-９,，]*(?:[.．][0-9０-９]+)?)(?![A-Za-z0-9０-９])"
 )
 
 
@@ -96,9 +98,9 @@ def normalize_numbers_for_cantonese(text):
 
 
 def localize_units(text):
-    # Number normalization must happen before canto_nano_prod.units() splits on
-    # commas; otherwise 2,800億 is incorrectly synthesized as two units.
-    out = normalize_numbers_for_cantonese(text)
+    out = str(text or "")
+    # Resolve attached technical units first so 2nm becomes 2納米, then convert
+    # the number. Identifier-like tokens such as 4DX remain untouched.
     for source, target in sorted(UNIT_REPLACEMENTS, key=lambda item: len(item[0]), reverse=True):
         out = re.sub(
             r"(?<![A-Za-z])" + re.escape(source) + r"(?![A-Za-z])",
@@ -106,4 +108,6 @@ def localize_units(text):
             out,
             flags=re.IGNORECASE,
         )
-    return out
+    # This still runs before canto_nano_prod.units() splits punctuation, so a
+    # thousands comma can never become an artificial pause.
+    return normalize_numbers_for_cantonese(out)
