@@ -37,7 +37,7 @@ def rich_story(story, label):
 
 
 def validate_live(latest, live):
-    need(live.get("mode") == "live", "live mode invalid")
+    need(str(live.get("mode") or "").upper() == "LIVE", "live mode invalid")
     need(live.get("date") == latest.get("date"), "live date does not match Daily date")
     for key in ("lastUpdated", "lastUpdatedLabel", "windowLabel", "nextUpdateLabel"):
         need(isinstance(live.get(key), str) and live[key].strip(), f"live missing {key}")
