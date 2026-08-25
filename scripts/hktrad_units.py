@@ -28,7 +28,7 @@ _NUMBER_RE = re.compile(
 
 
 def _four_digits_to_chinese(number):
-    """Read one 0..9999 group using Cantonese-compatible Chinese numerals."""
+    """Read one 0..9999 group using natural Cantonese speech numerals."""
     number = int(number)
     if number == 0:
         return ""
@@ -42,7 +42,10 @@ def _four_digits_to_chinese(number):
                 out.append("零")
             # 10..19 is normally read 十、十一... rather than 一十、一十一.
             if not (pos == 1 and digit == 1 and not out):
-                out.append(_DIGITS[digit])
+                # Spoken Hong Kong Cantonese normally says 兩千 for a quantity
+                # such as 2,800.  This also makes the thousands unit explicit to
+                # the acoustic model instead of risking a clipped "二…八百".
+                out.append("兩" if pos == 3 and digit == 2 else _DIGITS[digit])
             out.append(_SMALL_UNITS[pos])
             zero_pending = False
         elif out and number:
@@ -53,7 +56,7 @@ def _four_digits_to_chinese(number):
 def _integer_to_chinese(raw, *, year=False):
     raw = str(raw).lstrip("0") or "0"
     # Calendar years are read digit by digit: 2026年 -> 二零二六年. A plain
-    # quantity such as 2,026人 must remain 二千零二十六人 instead.
+    # quantity such as 2,026人 is a quantity rather than a calendar year.
     if year and len(raw) == 4:
         return "".join(_DIGITS[int(char)] for char in raw)
     number = int(raw)
@@ -101,7 +104,7 @@ def normalize_numbers_for_cantonese(text):
 
     Thousands separators are formatting, not pauses.  Full-width punctuation is
     normalized first, then grouping commas are stripped before number-to-Chinese
-    conversion.  For example, 2,800億 -> 二千八百億 as one uninterrupted number.
+    conversion.  For example, 2,800億 -> 兩千八百億 as one uninterrupted number.
     """
     out = str(text or "").translate(_FULLWIDTH_DIGITS)
     out = _THOUSANDS_SEPARATOR_RE.sub("", out)
