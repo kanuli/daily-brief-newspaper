@@ -59,7 +59,8 @@
     }
     if (!$("#site-tts-player")) {
       const panel = document.createElement("div");
-      panel.id = "site-tts-player"; panel.dataset.open = "false";
+      panel.id = "site-tts-player";
+      panel.dataset.open = "false";
       panel.innerHTML = '<div class="site-tts-player-row"><div class="site-tts-status" id="site-tts-status">canto-tts-nano · verified female · HK news pacing</div><button type="button" class="site-tts-stop" id="site-tts-stop">■ 停止</button></div><audio class="site-tts-audio" id="site-tts-audio" controls preload="metadata" playsinline></audio>';
       document.body.appendChild(panel);
       $("#site-tts-stop")?.addEventListener("click", stopAll);
@@ -67,21 +68,70 @@
     }
   }
 
-  function status(text, open = true) { ensureUi(); $("#site-tts-player").dataset.open = open ? "true" : "false"; $("#site-tts-status").textContent = text; }
-  function resetButton(b) { if (!b) return; b.dataset.speaking = "false"; b.textContent = READY; }
+  function status(text, open = true) {
+    ensureUi();
+    $("#site-tts-player").dataset.open = open ? "true" : "false";
+    $("#site-tts-status").textContent = text;
+  }
+  function resetButton(b) {
+    if (!b) return;
+    b.dataset.speaking = "false";
+    b.textContent = READY;
+  }
   function finish() { resetButton(activeButton); activeButton = null; status("朗讀完成。", false); }
   function stopAll() {
     const a = $("#site-tts-audio");
-    if (a) { try { a.pause(); } catch (_) {} try { a.currentTime = 0; } catch (_) {} a.removeAttribute("src"); a.dataset.ready = "false"; try { a.load(); } catch (_) {} }
+    if (a) {
+      try { a.pause(); } catch (_) {}
+      try { a.currentTime = 0; } catch (_) {}
+      a.removeAttribute("src"); a.dataset.ready = "false";
+      try { a.load(); } catch (_) {}
+    }
     resetButton(activeButton); activeButton = null; status("朗讀已停止。", false);
   }
 
   function titleOf(article) { return clean($("h1,h2,h3", article)?.textContent); }
-  function findEntry(article) {
-    const title = titleOf(article);
-    if (!title || !manifest?.articles) return null;
-    return Object.values(manifest.articles).find((e) => validEntry(e) && clean(e.title) === title) || null;
+  function cjkKey(value) {
+    return clean(value).normalize("NFKC").toLowerCase()
+      .replace(/[a-z][a-z0-9+./:&'’_-]*/gi, "")
+      .replace(/[^\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}0-9]/gu, "");
   }
+  function bigrams(value) {
+    const s = cjkKey(value), out = new Set();
+    for (let i = 0; i < s.length - 1; i++) out.add(s.slice(i, i + 2));
+    return out;
+  }
+  function similarity(a, b) {
+    const ca = clean(a), cb = clean(b);
+    if (!ca || !cb) return 0;
+    if (ca === cb) return 1;
+    const ak = cjkKey(ca), bk = cjkKey(cb);
+    if (!ak || !bk) return 0;
+    if (ak === bk) return 1;
+    if (Math.min(ak.length, bk.length) >= 6 && (ak.includes(bk) || bk.includes(ak))) return 0.98;
+    const A = bigrams(ak), B = bigrams(bk);
+    if (!A.size || !B.size) return 0;
+    let hit = 0; A.forEach((x) => { if (B.has(x)) hit += 1; });
+    return hit / Math.min(A.size, B.size);
+  }
+  function findEntry(article) {
+    if (!manifest?.articles) return null;
+    const explicitId = clean(article.dataset.articleId || article.getAttribute("data-article-id") || "");
+    if (explicitId && validEntry(manifest.articles[explicitId])) return manifest.articles[explicitId];
+    const title = titleOf(article);
+    if (!title) return null;
+    const entries = Object.values(manifest.articles).filter(validEntry);
+    const exact = entries.find((e) => clean(e.title) === title);
+    if (exact) return exact;
+    const ranked = entries.map((entry) => ({ entry, score: similarity(entry.title, title) }))
+      .filter((x) => x.score >= 0.82)
+      .sort((a, b) => b.score - a.score);
+    if (!ranked.length) return null;
+    if (ranked[0].score >= 0.95) return ranked[0].entry;
+    if (ranked.length === 1 || ranked[0].score - ranked[1].score >= 0.12) return ranked[0].entry;
+    return null;
+  }
+
   function audioUrl(entry) {
     const url = new URL(entry.audio, document.baseURI);
     url.searchParams.set("voicev", encodeURIComponent(`${entry.prosodyPolicy}|${entry.publishedAt || ""}|${entry.contentSha256 || ""}`));
@@ -91,7 +141,8 @@
     if (!validEntry(entry)) return false;
     if (activeButton === button && button?.dataset.speaking === "true") { stopAll(); return true; }
     stopAll(); ensureUi();
-    const audio = $("#site-tts-audio"); audio.src = audioUrl(entry); audio.dataset.ready = "true"; activeButton = button;
+    const audio = $("#site-tts-audio");
+    audio.src = audioUrl(entry); audio.dataset.ready = "true"; activeButton = button;
     if (button) { button.dataset.speaking = "true"; button.textContent = STOP; }
     status("使用中：canto-tts-nano 年輕女聲 · 香港新聞主播節奏");
     audio.play()?.catch?.((error) => { console.warn("canto nano playback rejected", error); finish(); });
@@ -109,25 +160,33 @@
       if (heading?.nextSibling) heading.parentNode.insertBefore(wrap, heading.nextSibling); else article.prepend(wrap);
     }
     if (button === activeButton && button.dataset.speaking === "true") return;
-    const entry = findEntry(article); button.onclick = null; button.dataset.speaking = "false";
+    const entry = findEntry(article);
+    button.onclick = null; button.dataset.speaking = "false";
     if (validEntry(entry)) {
-      button.disabled = false; button.textContent = READY;
+      button.disabled = false; button.textContent = READY; button.dataset.ttsState = "ready";
       button.title = "canto-tts-nano verified female · Jyutping Cantonese · semantic news-anchor pauses";
       button.onclick = () => play(entry, button);
     } else {
-      button.disabled = true; button.textContent = PENDING;
-      button.title = "只播放新 canto-tts-nano verified female production audio。";
+      button.disabled = true; button.textContent = PENDING; button.dataset.ttsState = "pending";
+      button.title = "目前頁面未能把這則新聞對應到最新 canto-tts-nano 女聲音檔；系統會自動重新檢查。";
     }
   }
 
   function refreshButtons() { $$("main article").forEach(configure); }
-  function queueRefresh() { if (refreshQueued) return; refreshQueued = true; (window.requestAnimationFrame || ((cb) => setTimeout(cb, 0)))(() => { refreshQueued = false; refreshButtons(); }); }
+  function queueRefresh() {
+    if (refreshQueued) return;
+    refreshQueued = true;
+    (window.requestAnimationFrame || ((cb) => setTimeout(cb, 0)))(() => { refreshQueued = false; refreshButtons(); });
+  }
   async function refreshManifest() {
     try {
       const url = new URL(MANIFEST_URL, document.baseURI); url.searchParams.set("v", String(Date.now()));
-      const response = await fetch(url.href, { cache: "no-store" }); if (!response.ok) throw new Error(`manifest HTTP ${response.status}`);
+      const response = await fetch(url.href, { cache: "no-store" });
+      if (!response.ok) throw new Error(`manifest HTTP ${response.status}`);
       const fresh = await response.json(); manifest = validManifest(fresh) ? fresh : null;
-    } catch (error) { console.warn("canto nano manifest unavailable", error); manifest = null; }
+    } catch (error) {
+      console.warn("canto nano manifest unavailable", error); manifest = null;
+    }
     refreshButtons();
   }
   function leadEntry() {
@@ -136,7 +195,11 @@
     return Object.values(manifest.articles).find((e) => validEntry(e) && clean(e.title) === clean(manifest.leadTitle)) || null;
   }
 
-  window.SiteTTS = { playLeadFromUserGesture() { const e = leadEntry(); return validEntry(e) ? play(e) : false; }, stop: stopAll, isReady() { return true; } };
+  window.SiteTTS = {
+    playLeadFromUserGesture() { const e = leadEntry(); return validEntry(e) ? play(e) : false; },
+    stop: stopAll,
+    isReady() { return true; }
+  };
   function boot() {
     ensureUi(); refreshButtons(); refreshManifest();
     if (timer) clearInterval(timer); timer = setInterval(refreshManifest, REFRESH_MS);
