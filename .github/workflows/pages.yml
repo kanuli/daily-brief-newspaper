@@ -95,11 +95,11 @@ jobs:
                       raise SystemExit(f'Daily baseline desk mismatch {slug}: reported={counts.get(slug)} actual={actual} minimum={minimum}')
               print('PUBLIC_AVAILABILITY_GATE_OK DAILY_BASELINE', live.get('lastUpdated'), 'japan', counts.get('japan'), 'next', live.get('nextUpdateLabel'))
           else:
-              if mode != 'LIVE' or not items:
+              if mode not in {'LIVE','HOURLY_LIVE'} or not items:
                   raise SystemExit('Hourly Live publication must be non-empty')
               if desk.get('generatedAt') != live.get('lastUpdated'):
                   raise SystemExit(f"Rolling Desk behind Live: desk={desk.get('generatedAt')} live={live.get('lastUpdated')}")
-              print('PUBLIC_AVAILABILITY_GATE_OK LIVE', live.get('windowLabel'), 'items', len(items), 'desk', desk.get('generatedAt'), 'next', live.get('nextUpdateLabel'))
+              print('PUBLIC_AVAILABILITY_GATE_OK', mode, live.get('windowLabel'), 'items', len(items), 'desk', desk.get('generatedAt'), 'next', live.get('nextUpdateLabel'))
           PY
 
       - name: Editorial QA — Daily v3
