@@ -50,7 +50,11 @@
     const reservoir = Number(data.discoveryCandidateCount || 0);
 
     if(status === 'COLLECTION_FAILURE'){
-      host.innerHTML = `<p class="notice"><strong>⚠️ Stock News 搜集異常：</strong>最近一次檢查沒有取得 fresh candidate。這會被視為 collection failure，而不是「市場沒有新聞」。現有稿件仍保留為最近已核實內容。</p>`;
+      host.innerHTML = `<p class="notice"><strong>⚠️ Stock News 搜集失敗：</strong>最近一次檢查沒有取得 fresh candidate。這會被視為 collection failure，而不是「市場沒有新聞」。現有稿件仍保留為最近已核實內容。</p>`;
+      return;
+    }
+    if(status === 'INCOMPLETE'){
+      host.innerHTML = `<p class="notice"><strong>⚠️ Stock News 搜集未達完整度：</strong>本輪找到 ${discovered} 則 fresh discovery candidate，但未達 Stock Desk 的 breadth floor。系統會保留最近已核實稿件；這一輪不會標記為完整搜集。</p>`;
       return;
     }
 
