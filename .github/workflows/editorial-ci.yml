@@ -38,9 +38,14 @@ jobs:
           python -m py_compile scripts/test_stock_news_pipeline.py
           python -m py_compile scripts/promote_verified_live_draft.py
           python -m py_compile scripts/promote_verified_stock_draft.py
+          python -m py_compile scripts/editor_in_chief.py
+          python -m py_compile scripts/test_editor_in_chief.py
 
       - name: Stock verification regression tests
         run: python scripts/test_stock_news_pipeline.py
+
+      - name: Editor-in-Chief regression tests
+        run: python scripts/test_editor_in_chief.py
 
       - name: Validate newsroom JavaScript
         run: |
