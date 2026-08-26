@@ -130,7 +130,7 @@ jobs:
           stock_match=bool(isinstance(remote_stocks,dict) and remote_stocks.get('generatedAt')==expected_stocks)
           voice_match=bool(isinstance(remote_tts,dict) and remote_tts.get('engine')==local_tts.get('engine') and remote_tts.get('assetNamespace')==local_tts.get('assetNamespace') and remote_tts.get('prosodyPolicy')==local_tts.get('prosodyPolicy') and int(remote_tts.get('availableArticleCount') or 0)==int(local_tts.get('availableArticleCount') or 0) and str(remote_tts.get('lastVoicePublishedAt') or '')==str(local_tts.get('lastVoicePublishedAt') or ''))
 
-          # Editorial freshness is separate from repository/public equality.  Equal stale
+          # Editorial freshness is separate from repository/public equality. Equal stale
           # snapshots must never be reported as healthy.
           hour,minute=now_hkt.hour,now_hkt.minute
           live_age=age_minutes(remote_live.get('lastUpdated')) if isinstance(remote_live,dict) else None
@@ -149,10 +149,11 @@ jobs:
               live_fresh=True
 
           stock_window=(hour==0 or 6<=hour<=23)
+          stock_collection_status=str((remote_stocks or {}).get('collectionStatus','')).upper()
           if hour==6 and minute<15:
               stock_fresh=True
           elif stock_window:
-              stock_fresh=bool(stock_check_age is not None and stock_check_age<=95 and str((remote_stocks or {}).get('collectionStatus','')).upper()!='COLLECTION_FAILURE')
+              stock_fresh=bool(stock_check_age is not None and stock_check_age<=95 and stock_collection_status=='COMPLETE')
           else:
               stock_fresh=True
 
