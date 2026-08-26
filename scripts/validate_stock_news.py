@@ -13,7 +13,7 @@ REQUIRED = [
     "body", "context", "why", "watchNext", "sourceName", "sourceUrl", "timeLabel"
 ]
 VALID_IMPACTS = {"↑", "↓", "↔"}
-VALID_COLLECTION_STATUS = {"COMPLETE", "COLLECTION_FAILURE"}
+VALID_COLLECTION_STATUS = {"COMPLETE", "INCOMPLETE", "COLLECTION_FAILURE"}
 
 
 def require(cond, msg):
@@ -50,7 +50,7 @@ def main():
     require(valid_timestamp(data.get("generatedAt")), "generatedAt must be a timezone-aware ISO timestamp")
     require(text(data.get("lastUpdatedLabel")), "lastUpdatedLabel is required")
 
-    # lastCheckedAt is deliberately distinct from generatedAt.  It is optional for
+    # lastCheckedAt is deliberately distinct from generatedAt. It is optional for
     # legacy snapshots, but once the heartbeat exists its contract is validated.
     if data.get("lastCheckedAt") is not None:
         require(valid_timestamp(data.get("lastCheckedAt")), "lastCheckedAt must be a timezone-aware ISO timestamp")
