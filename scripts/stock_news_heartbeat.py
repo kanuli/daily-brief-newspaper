@@ -3,7 +3,7 @@
 
 The rolling discovery branch proves that the tracked-stock desk was searched.
 This script records that check separately from ``generatedAt`` (the timestamp of
-the most recent verified story publication).  A check heartbeat never promotes
+the most recent verified story publication). A check heartbeat never promotes
 raw discovery candidates and never rewrites verified copy.
 """
 from __future__ import annotations
@@ -63,15 +63,23 @@ def main() -> int:
     unique_this_run = int(audit.get("uniqueDiscoveredThisRun") or 0)
     reservoir_count = int(counts.get("stock-news") or 0)
     floor_met = bool(audit.get("floorMetThisRun"))
+    is_underfilled = "stock-news" in underfilled
+
+    if unique_this_run <= 0:
+        collection_status = "COLLECTION_FAILURE"
+    elif not floor_met or is_underfilled:
+        collection_status = "INCOMPLETE"
+    else:
+        collection_status = "COMPLETE"
 
     stocks["lastCheckedAt"] = checked.isoformat()
     stocks["lastCheckedLabel"] = format_hkt(checked)
-    stocks["collectionStatus"] = "COMPLETE" if unique_this_run > 0 else "COLLECTION_FAILURE"
+    stocks["collectionStatus"] = collection_status
     stocks["collectionSource"] = "rolling-news-search"
     stocks["discoveryCandidateCount"] = reservoir_count
     stocks["discoveredThisCheck"] = unique_this_run
     stocks["discoveryFloorMet"] = floor_met
-    stocks["discoveryUnderfilled"] = "stock-news" in underfilled
+    stocks["discoveryUnderfilled"] = is_underfilled
     stocks["verifiedContentUpdatedAt"] = stocks.get("generatedAt")
     stocks["freshnessContract"] = {
         "lastCheckedAt": "hourly newsroom/search heartbeat; does not imply a new verified story",
@@ -82,6 +90,7 @@ def main() -> int:
     print(
         "STOCK_HEARTBEAT_UPDATED",
         f"checked={checked.isoformat()}",
+        f"status={collection_status}",
         f"discovered={unique_this_run}",
         f"reservoir={reservoir_count}",
         f"floor_met={floor_met}",
