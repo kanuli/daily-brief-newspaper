@@ -1,0 +1,209 @@
+name: Editor-in-Chief Auto Maintenance
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/editor-in-chief-maintenance.yml"
+      - "scripts/editor_in_chief.py"
+      - "scripts/test_editor_in_chief.py"
+      - "data/latest.json"
+      - "data/live.json"
+      - "data/desk-latest.json"
+      - "data/stocks-latest.json"
+      - "data/tts-manifest.json"
+  schedule:
+    # Runs at :35 every hour. HKT and UTC use the same minute value.
+    # This is intentionally after the xx:15 newsroom/Discord publication slot.
+    - cron: "35 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: "editor-in-chief-auto-maintenance"
+  cancel-in-progress: true
+
+jobs:
+  supervise:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch independent newsroom evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f /tmp/pages-live-status.json /tmp/search-staging.json /tmp/previous-editor-status.json
+
+          git fetch -q --depth=1 origin pages-status || true
+          git show FETCH_HEAD:data/pages-live-status.json > /tmp/pages-live-status.json 2>/dev/null || true
+
+          git fetch -q --depth=1 origin news-staging || true
+          git show FETCH_HEAD:data/search-staging.json > /tmp/search-staging.json 2>/dev/null || true
+
+          git fetch -q --depth=1 origin editor-status || true
+          git show FETCH_HEAD:data/editor-in-chief-status.json > /tmp/previous-editor-status.json 2>/dev/null || true
+
+      - name: Run Editor-in-Chief newsroom audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(
+            --latest data/latest.json
+            --live data/live.json
+            --desk data/desk-latest.json
+            --stocks data/stocks-latest.json
+            --tts data/tts-manifest.json
+            --output /tmp/editor-in-chief-status.json
+          )
+          [ -s /tmp/pages-live-status.json ] && args+=(--pages-status /tmp/pages-live-status.json)
+          [ -s /tmp/search-staging.json ] && args+=(--staging /tmp/search-staging.json)
+          [ -s /tmp/previous-editor-status.json ] && args+=(--previous-status /tmp/previous-editor-status.json)
+          python scripts/editor_in_chief.py "${args[@]}"
+
+      - name: Run newsroom validators without hiding failures
+        id: validators
+        shell: bash
+        run: |
+          set -u
+          : > /tmp/editor-validator-results.jsonl
+          run_validator() {
+            local name="$1"; shift
+            if "$@"; then
+              printf '{"name":"%s","ok":true}\n' "$name" >> /tmp/editor-validator-results.jsonl
+            else
+              rc=$?
+              printf '{"name":"%s","ok":false,"exitCode":%s}\n' "$name" "$rc" >> /tmp/editor-validator-results.jsonl
+            fi
+          }
+          run_validator daily-v3 python scripts/validate_daily_v3.py
+          run_validator stock-news python scripts/validate_stock_news.py
+          run_validator publication-current python scripts/validate_publication_current.py
+          run_validator editorial-v2 python scripts/validate_editorial_v2.py
+          run_validator tts-language python scripts/audit_tts_language.py
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path('/tmp/editor-in-chief-status.json')
+          data=json.loads(path.read_text(encoding='utf-8'))
+          rows=[json.loads(x) for x in Path('/tmp/editor-validator-results.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
+          data['validatorAudit']=rows
+          failed=[r for r in rows if not r.get('ok')]
+          if failed:
+              data['findings'].append({
+                  'code':'NEWSROOM_VALIDATOR_FAILED',
+                  'severity':'critical',
+                  'area':'editorial',
+                  'message':'One or more existing newsroom validators failed: ' + ', '.join(r['name'] for r in failed),
+                  'repair':None,
+              })
+              data['summary']['criticalCount']=int(data['summary'].get('criticalCount',0))+1
+              data['summary']['unresolvedCriticalCount']=int(data['summary'].get('unresolvedCriticalCount',0))+1
+              data['summary']['findingCount']=int(data['summary'].get('findingCount',0))+1
+              data['status']='EDITORIAL_ATTENTION_REQUIRED'
+          path.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+
+      - name: Dispatch targeted safe repairs
+        id: repair
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > /tmp/editor-repairs.jsonl
+          python - <<'PY' > /tmp/editor-workflows.txt
+          import json
+          data=json.load(open('/tmp/editor-in-chief-status.json',encoding='utf-8'))
+          for row in data.get('repairPlan') or []:
+              wf=str(row.get('workflow') or '').strip()
+              if wf:
+                  print(wf)
+          PY
+
+          while IFS= read -r wf; do
+            [ -n "$wf" ] || continue
+            active=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow "$wf" --limit 10 --json status --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
+            if [ "${active:-0}" -gt 0 ]; then
+              printf '{"workflow":"%s","dispatched":false,"reason":"already-active"}\n' "$wf" >> /tmp/editor-repairs.jsonl
+              continue
+            fi
+            if gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main; then
+              printf '{"workflow":"%s","dispatched":true,"reason":"editor-in-chief-safe-repair"}\n' "$wf" >> /tmp/editor-repairs.jsonl
+            else
+              printf '{"workflow":"%s","dispatched":false,"reason":"dispatch-failed"}\n' "$wf" >> /tmp/editor-repairs.jsonl
+            fi
+          done < /tmp/editor-workflows.txt
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path('/tmp/editor-in-chief-status.json')
+          data=json.loads(path.read_text(encoding='utf-8'))
+          repair_file=Path('/tmp/editor-repairs.jsonl')
+          rows=[json.loads(x) for x in repair_file.read_text(encoding='utf-8').splitlines() if x.strip()] if repair_file.exists() else []
+          data['repairExecution']=rows
+          data['repairsDispatched']=sum(1 for r in rows if r.get('dispatched'))
+          data['repairsSkipped']=sum(1 for r in rows if not r.get('dispatched'))
+          failed=[r for r in rows if r.get('reason')=='dispatch-failed']
+          if failed:
+              data['findings'].append({
+                  'code':'AUTO_REPAIR_DISPATCH_FAILED',
+                  'severity':'critical',
+                  'area':'maintenance',
+                  'message':'Editor-in-Chief could not dispatch: ' + ', '.join(r['workflow'] for r in failed),
+                  'repair':None,
+              })
+              data['summary']['criticalCount']=int(data['summary'].get('criticalCount',0))+1
+              data['summary']['unresolvedCriticalCount']=int(data['summary'].get('unresolvedCriticalCount',0))+1
+              data['summary']['findingCount']=int(data['summary'].get('findingCount',0))+1
+              data['status']='EDITORIAL_ATTENTION_REQUIRED'
+          path.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+
+      - name: Publish Editor-in-Chief status snapshot
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s /tmp/editor-in-chief-status.json
+          rm -rf /tmp/editor-status
+          mkdir -p /tmp/editor-status/data
+          cp /tmp/editor-in-chief-status.json /tmp/editor-status/data/editor-in-chief-status.json
+          cd /tmp/editor-status
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q -b editor-status
+          git add data/editor-in-chief-status.json
+          git commit -q -m "Update Editor-in-Chief newsroom status"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push -q --force origin editor-status
+
+      - name: Final supervisory verdict
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(python -c 'import json; print(json.load(open("/tmp/editor-in-chief-status.json",encoding="utf-8")).get("status","UNKNOWN"))')
+          echo "EDITOR_IN_CHIEF_STATUS=${status}"
+          if [ "$status" = "EDITORIAL_ATTENTION_REQUIRED" ]; then
+            echo "Unresolved editorial/maintenance failures require attention." >&2
+            exit 1
+          fi
