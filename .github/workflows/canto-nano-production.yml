@@ -30,7 +30,9 @@ concurrency:
 env:
   CANTO_RELEASE_TAG: canto-nano-female-cache
   CANTO_PUBLIC_BASE: https://github.com/${{ github.repository }}/releases/download/canto-nano-female-cache
-  CANTO_NANO_ARTICLE_MAX_TEXT_CHARS: "280"
+  # Full-article playback: keep this far above any normal news article so the
+  # generator never slices a sentence or silently publishes truncated audio.
+  CANTO_NANO_ARTICLE_MAX_TEXT_CHARS: "100000"
 
 jobs:
   initialize:
