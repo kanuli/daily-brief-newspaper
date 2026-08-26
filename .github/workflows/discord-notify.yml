@@ -19,7 +19,7 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Send Daily / Live update to Discord
+      - name: Send Daily / material Live update to Discord
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         shell: bash
@@ -145,32 +145,29 @@ jobs:
               slot = coverage.get("scheduledSlot") or current.get("windowLabel") or "Hourly Live"
 
               if not material:
+                  collection_failure = coverage_status in {"COLLECTION_FAILURE", "INCOMPLETE"} or raw_fresh == 0
+                  if not collection_failure:
+                      print(
+                          "Healthy hourly Live check contained no material story change; "
+                          "Discord reader notification suppressed to avoid audit/noise messages."
+                      )
+                      raise SystemExit(0)
+
                   lines = [
-                      f"🔴 **Hourly Live｜{current.get('lastUpdatedLabel', '最新檢查')}**",
+                      f"⚠️ **Live Newsroom Collection Alert｜{current.get('lastUpdatedLabel', '最新檢查')}**",
                       f"時段：{slot}",
                       f"掃描：{orgs} organizations / {searches} fresh searches",
                       f"Raw fresh：{raw_fresh} · Verified：{verified} · Incremental：{incremental} · Daily/重複：{duplicates}",
+                      "",
+                      "本輪原始 fresh candidate 為 0 或 coverage 未完成；這是搜集異常，不會被描述成「世界沒有新聞」。",
                   ]
-
-                  if coverage_status in {"COLLECTION_FAILURE", "INCOMPLETE"} or raw_fresh == 0:
-                      lines += [
-                          "",
-                          "⚠️ **COLLECTION FAILURE / INCOMPLETE**",
-                          "本輪原始 fresh candidate 為 0 或 coverage 未完成；這不是正常的『世界沒有新聞』結果。",
-                      ]
-                  else:
-                      lines += [
-                          "",
-                          "本輪沒有新增卡片，但已找到 fresh candidates；上面列出核實、去重及篩選結果。",
-                      ]
-
                   if second_pass is True:
                       lines.append("Second pass：已執行")
                   if recovery_pass is True:
                       lines.append("Recovery pass：已執行")
-                  lines += ["", f"🔗 完整 Live：{site}live.html"]
+                  lines += ["", f"🔗 網站 Live：{site}live.html"]
                   post("\n".join(lines))
-                  print("Hourly Live zero-increment check sent with candidate audit.")
+                  print("Collection-failure alert sent to Discord.")
                   raise SystemExit(0)
 
               lines = [
