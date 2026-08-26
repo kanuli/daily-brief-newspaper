@@ -20,22 +20,27 @@
 - **Daily Edition**：每日香港時間 08:00 產生完整晨報並固定保存到 Archive。
 - **Hourly Live Update**：香港時間 **06:00–24:00** 每小時檢查一次；**08:00 跳過**，由 Daily Edition 取代。
 - Hourly Live slots：06:00、07:00、09:00、10:00、11:00、12:00、13:00、14:00、15:00、16:00、17:00、18:00、19:00、20:00、21:00、22:00、23:00、24:00／00:00。
-- 01:00–05:00 不執行 Live。
+- 01:00–05:00 不執行 Live publication；rolling discovery 仍維持 24/7。
 - Live 使用 `NEW`、`UPDATED`、`DEVELOPING`，不重寫固定 Daily Edition。
 - 每輪以最新、完整、可信優先於最快完成。
 - `rawFreshCandidateCount == 0` 視為 **collection failure**，不得當正常「沒有新聞」結束；必須擴大來源、搜尋方式與時間窗再查。
 - 每輪按各 Desk source/candidate minimum 做 QA；不足時 recovery，不能用其他 Desk 的來源數補足。
 - 搜尋窗保留 30 分鐘 indexing overlap；Daily baseline只用於去重，不可縮短下一輪 Live 的 scheduled search window。
+- 公開 Live item 必須保存 canonical `desk`、`deskSlugs`、`section`／`sectionLabel`，避免不同頁面以 headline text 猜分類。
 
 ## Stock News Hourly
 
 - `stocks.html` 為獨立股票／ETF新聞專版。
 - `data/stocks-latest.json` 保存 NVDA、AAPL、TSM、PLTR、MSFT、GOOG、EMXC、EWY、VT 最新已核實內容。
-- **06:00–24:00 HKT 每個整點更新，包括 08:00**；Stock News 與一般 Live / Daily 排程獨立。
+- **06:00–24:00 HKT 每小時獨立檢查，包括 08:00**；Stock News 與一般 Live / Daily 排程獨立。
+- `lastCheckedAt` / `lastCheckedLabel` 表示 newsroom 最近一次完成搜集檢查；**不代表有新稿**。
+- `generatedAt` / `lastUpdatedLabel` 只在已核實 Stock News 內容真正改變時更新。沒有新材料通過核實／編輯門檻時，舊稿會保留但不會重新標成「剛更新」。
+- rolling discovery 只作 candidate staging；raw candidate 不得直接升格為 Stock News。新故事仍須通過 verified prepublish gate。
 - 每隻 ticker 保留 1–3 篇仍有閱讀價值的最新已核實新聞。
 - 每篇必須有標題、副題、摘要、100–500字級別正文、背景、為何重要、下一步與來源。
 - EMXC / EWY / VT 必須明確標示 `ETF READ-THROUGH`，不製造「公司新聞」。
 - Pages deploy 前執行 `scripts/validate_stock_news.py`；缺 ticker、空 stories、正文太短、ETF標籤錯誤、impact/schema錯誤等會阻止部署。
+- Pages public probe 同時檢查 repository/public equality **及 editorial freshness**；兩邊同樣 stale 不再算健康。
 
 ## 日語學習：每日 10 個單字
 
@@ -51,8 +56,11 @@ Daily Edition 每天固定提供 **10 個日語單字**：N1、N2、N3、N4、N5
 
 使用 Discord 官方 Webhook，GitHub Actions workflow：`.github/workflows/discord-notify.yml`。
 
-- `data/latest.json` 更新：送出 Daily Notification。
-- `data/live.json` 更新：送出 Hourly Live Update；有 material items 時列出更新，沒有 incremental publish 時亦提供該輪檢查／audit 狀態，而不是靜默跳過。
+- `data/latest.json` 有實質 Daily 新聞內容更新：送出 Daily Notification。
+- `data/live.json` 有 material `NEW` / `UPDATED` / `DEVELOPING` 變化：送出 Hourly Live Update。
+- 健康的 zero-increment hourly audit **不推送給讀者**，避免每小時收到「沒有新增卡片」的系統訊息。
+- 若 coverage 是 `COLLECTION_FAILURE` / `INCOMPLETE` 或 raw fresh candidate 為 0，則可發 newsroom collection alert，清楚說明這是搜集異常，不是「世界沒有新聞」。
+- Discord 只提供本網站 Daily / Live URL，不把原新聞來源 URL 當作主要推送連結。
 - Webhook URL 只存於 GitHub Actions Secret `DISCORD_WEBHOOK_URL`，不可寫入 repository。
 
 ## 成本原則
@@ -70,12 +78,13 @@ Daily Edition 每天固定提供 **10 個日語單字**：N1、N2、N3、N4、N5
 - country-specific news 原則上至少兩個獨立可信來源核實；同一 wire copy 的轉載不算獨立第二來源。
 - 同一主題只要有新數字、新回應、新傷亡、新政策、新司法／外交進展、新 market move、新產品／事故、新轉會狀態或賽果，可列 `UPDATED`，不可過度去重。
 - GitHub Pages deployment 前會執行 Daily schema、editorial depth、Stock News validation；壞 JSON 不應部署到網站。
+- Public Pages probe 必須分開回答「檔案有沒有同步」與「新聞是不是仍然 fresh」。`repository == public` 但兩者都過期時不得顯示綠燈。
 - 新聞圖片目前保持 `image: null`；不使用 AI 生成新聞圖片，也不直接複製 Reuters／Getty／AFP 等受限制圖片。
 
 ## 網站結構
 
 - `index.html` — 今日 Daily + Hourly Live 摘要
-- `live.html` — Hourly Live Update
+- `live.html` — Hourly Live Update；由 `assets/js/live-article.js` 單一 renderer 負責 Live fetch/render，避免重複 renderer race
 - `world.html`, `asia.html`, `hong-kong.html`, `japan.html`, `finance.html`, `stocks.html`, `technology.html`, `manga-anime.html`, `manchester-united.html`, `football.html` — 各獨立 Desk
 - `archive.html` — 歷史日報
 - `editions/` — 每日固定版本
@@ -83,12 +92,14 @@ Daily Edition 每天固定提供 **10 個日語單字**：N1、N2、N3、N4、N5
 - `data/topic-more/` — 各分版額外新聞
 - `data/vocab/` — 每日 10 個 N1–N5 單字
 - `.github/workflows/pages.yml` — GitHub Pages deployment + schema validation
-- `.github/workflows/discord-notify.yml` — Daily / Live → Discord
+- `.github/workflows/discord-notify.yml` — material Daily / Live → Discord
 
 ## 自動化流程
 
 `08:00 Daily Briefing → global research / verification → GitHub Daily edition + vocab → GitHub Pages → Discord`
 
-`06:00–24:00 Hourly Live（08:00除外）→ global fresh research / verification → data/live.json + data/desk-latest.json → GitHub Pages → Discord`
+`24/7 15-minute rolling discovery → news-staging candidate reservoir (discovery only)`
 
-`06:00–24:00 Stock News（包括08:00）→ 9 tickers fresh research / verification → data/stocks-latest.json → GitHub Pages`
+`06:00–24:00 Hourly Live（08:00除外）→ global fresh research / verification → canonical Live schema → data/live.json + data/desk-latest.json → GitHub Pages → material Discord notification`
+
+`06:00–24:00 Stock News（包括08:00）→ hourly discovery heartbeat + independent verification gate → data/stocks-latest.json；lastCheckedAt 與 generatedAt 分開`

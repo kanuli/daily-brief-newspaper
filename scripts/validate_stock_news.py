@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import pathlib
+from datetime import datetime
 from urllib.parse import urlparse
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -12,6 +13,7 @@ REQUIRED = [
     "body", "context", "why", "watchNext", "sourceName", "sourceUrl", "timeLabel"
 ]
 VALID_IMPACTS = {"↑", "↓", "↔"}
+VALID_COLLECTION_STATUS = {"COMPLETE", "INCOMPLETE", "COLLECTION_FAILURE"}
 
 
 def require(cond, msg):
@@ -30,13 +32,36 @@ def valid_http_url(value):
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
+def valid_timestamp(value):
+    if not text(value):
+        return False
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return dt.tzinfo is not None
+    except Exception:
+        return False
+
+
 def main():
     require(PATH.exists(), "data/stocks-latest.json is missing")
     data = json.loads(PATH.read_text(encoding="utf-8"))
     require(data.get("mode") == "TRACKED_STOCK_NEWS", "mode must be TRACKED_STOCK_NEWS")
     require(data.get("tracked") == EXPECTED, f"tracked list must be exactly {EXPECTED}")
-    require(text(data.get("generatedAt")), "generatedAt is required")
+    require(valid_timestamp(data.get("generatedAt")), "generatedAt must be a timezone-aware ISO timestamp")
     require(text(data.get("lastUpdatedLabel")), "lastUpdatedLabel is required")
+
+    # lastCheckedAt is deliberately distinct from generatedAt. It is optional for
+    # legacy snapshots, but once the heartbeat exists its contract is validated.
+    if data.get("lastCheckedAt") is not None:
+        require(valid_timestamp(data.get("lastCheckedAt")), "lastCheckedAt must be a timezone-aware ISO timestamp")
+        require(text(data.get("lastCheckedLabel")), "lastCheckedLabel is required when lastCheckedAt exists")
+        require(str(data.get("collectionStatus") or "").upper() in VALID_COLLECTION_STATUS,
+                f"collectionStatus must be one of {sorted(VALID_COLLECTION_STATUS)}")
+        for field in ("discoveryCandidateCount", "discoveredThisCheck"):
+            require(isinstance(data.get(field), int) and data[field] >= 0,
+                    f"{field} must be a non-negative integer when heartbeat exists")
+        require(isinstance(data.get("discoveryFloorMet"), bool), "discoveryFloorMet must be boolean")
+        require(isinstance(data.get("discoveryUnderfilled"), bool), "discoveryUnderfilled must be boolean")
 
     tickers = data.get("tickers")
     require(isinstance(tickers, dict), "tickers must be an object")
