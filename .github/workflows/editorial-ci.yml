@@ -32,9 +32,15 @@ jobs:
         run: |
           python -m py_compile scripts/build_static_news_fallback.py
           python -m py_compile scripts/merge_live_into_desk.py
+          python -m py_compile scripts/stock_news_rules.py
           python -m py_compile scripts/stock_news_heartbeat.py
+          python -m py_compile scripts/stock_verified_producer.py
+          python -m py_compile scripts/test_stock_news_pipeline.py
           python -m py_compile scripts/promote_verified_live_draft.py
           python -m py_compile scripts/promote_verified_stock_draft.py
+
+      - name: Stock verification regression tests
+        run: python scripts/test_stock_news_pipeline.py
 
       - name: Validate newsroom JavaScript
         run: |
