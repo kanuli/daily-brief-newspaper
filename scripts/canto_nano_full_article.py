@@ -13,6 +13,26 @@ import canto_nano_prod as base
 
 COVERAGE_POLICY = "full-visible-article-no-truncation-v1"
 
+# The Cantonese production model is intentionally protected from raw Latin
+# tokens. Existing Hong Kong/localized names are handled by tts_hktrad first;
+# any uncommon proper name or acronym left over is read deterministically as
+# letters instead of causing the whole article to fail or being deleted.
+LETTER_NAMES = {
+    "A": "欸", "B": "比", "C": "施", "D": "啲", "E": "伊", "F": "艾夫",
+    "G": "芝", "H": "艾治", "I": "艾", "J": "啫", "K": "基", "L": "艾路",
+    "M": "艾姆", "N": "艾恩", "O": "柯", "P": "披", "Q": "翹", "R": "亞",
+    "S": "艾斯", "T": "剔", "U": "優", "V": "維", "W": "打孖優",
+    "X": "艾克斯", "Y": "歪", "Z": "些德",
+}
+LATIN_WORD_RE = re.compile(r"[A-Za-z]+")
+
+
+def pronounce_residual_latin(text: str) -> str:
+    def repl(match: re.Match[str]) -> str:
+        token = match.group(0)
+        return "、".join(LETTER_NAMES[ch.upper()] for ch in token)
+    return LATIN_WORD_RE.sub(repl, text)
+
 
 def full_script(story):
     values = []
@@ -44,6 +64,11 @@ def full_script(story):
     out = []
     for raw in values:
         text = base.hktrad.localize(raw)
+        # Do not throw away an otherwise complete article merely because an
+        # uncommon source/proper name was not in the localization dictionary.
+        # Spell the remaining Latin token so every visible fact is still read.
+        if base.hktrad.residual_latin_tokens(text):
+            text = pronounce_residual_latin(text)
         if text and text[-1] not in "。！？!?":
             text += "。"
         out.append(text)
@@ -57,7 +82,7 @@ def full_script(story):
 
     residual = base.hktrad.residual_latin_tokens(script)
     if residual:
-        raise RuntimeError("residual Latin gate: " + ", ".join(residual))
+        raise RuntimeError("residual Latin gate after spelling fallback: " + ", ".join(residual))
     if len(script) < 8:
         raise RuntimeError("story too short")
     return script
