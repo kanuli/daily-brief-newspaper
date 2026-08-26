@@ -5,6 +5,7 @@ DATA=ROOT/'data'
 MANDATORY_FOOTBALL=list('ABCDEFGHIJK')
 DEPTH_FLOOR={'world':8,'asia':8,'hong-kong':6,'japan':8,'market-economy':8,'ai-tech':6,'manga-anime':4,'manchester-united':4,'football':10}
 SOURCE_MIN={'world':12,'asia':10,'hong-kong':8,'japan':8,'market-economy':10,'ai-tech':10,'manga-anime':4,'manchester-united':4,'football':10}
+MIN_BODY_MEASURE=95
 BASE_META_PATTERNS=[r'今日未找到',r'沒有新聞',r'沒有headline',r'已完成.*檢查',r'本輪已檢查',r'J-?League.*已檢查',r'採全產業掃描',r'coverage check',r'no news found']
 V3_PROCESS_PATTERNS=[r'本輪真正incremental',r'incremental news',r'duplicate',r'重複刊登',r'本報.*版',r'對本報',r'搜集規則',r'collection design',r'coverage test',r'這次重新檢查',r'之後每一輪',r'每一輪Football',r'固定檢查HKFA',r'不應由全球搜尋排名決定',r'讀者應該看到的核心新聞']
 
@@ -26,7 +27,7 @@ def validate_story(story,label,strict=False):
         body=story.get('body','')
         if len([p for p in re.split(r'\n\s*\n',body) if p.strip()])<2: fail(f'{label}: body must contain >=2 paragraphs')
         measure=cjk_len(body) if cjk_len(body)>=50 else compact_len(body)
-        if measure<100: fail(f'{label}: body too short ({measure})')
+        if measure<MIN_BODY_MEASURE: fail(f'{label}: body too short ({measure}; approx-100 floor={MIN_BODY_MEASURE})')
         if measure>1800: fail(f'{label}: body too long ({measure})')
         sources=story.get('sources')
         if not isinstance(sources,list) or not sources: fail(f'{label}: sources must be non-empty array')
