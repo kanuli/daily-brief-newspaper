@@ -1,4 +1,4 @@
-name: Stock News Auto Maintenance
+name: Stock News Hourly Maintenance
 
 on:
   push:
@@ -6,21 +6,24 @@ on:
     paths:
       - ".github/workflows/stock-publication-maintenance.yml"
       - "scripts/promote_verified_stock_draft.py"
+      - "scripts/stock_news_heartbeat.py"
   schedule:
-    - cron: "*/5 * * * *"
+    # HKT 06:00-24:00, five minutes after each hour. GitHub cron is UTC.
+    - cron: "5 22,23 * * *"
+    - cron: "5 0-16 * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: "stock-news-auto-maintenance"
+  group: "stock-news-hourly-maintenance"
   cancel-in-progress: false
 
 jobs:
-  watchdog:
+  maintain:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 7
     steps:
       - name: Checkout current main
         uses: actions/checkout@v4
@@ -28,52 +31,70 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Read latest verified prepublish draft
-        id: draft
+      - name: Read verified draft and latest rolling discovery
+        id: inputs
         shell: bash
         run: |
           set -euo pipefail
           git fetch -q origin prepublish-news:refs/remotes/origin/prepublish-news || true
+          git fetch -q origin news-staging:refs/remotes/origin/news-staging || true
+
           if git show origin/prepublish-news:data/prepublish.json > /tmp/prepublish.json 2>/dev/null; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "draft_available=true" >> "$GITHUB_OUTPUT"
           else
-            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "draft_available=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Promote verified tracked-stock updates
-        if: steps.draft.outputs.available == 'true'
+          if git show origin/news-staging:data/search-staging.json > /tmp/search-staging.json 2>/dev/null; then
+            echo "staging_available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "staging_available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Record truthful hourly Stock News check
+        if: steps.inputs.outputs.staging_available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stock_news_heartbeat.py /tmp/search-staging.json --min-interval-minutes 45
+
+      - name: Promote new verified tracked-stock material when available
+        if: steps.inputs.outputs.draft_available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/promote_verified_stock_draft.py /tmp/prepublish.json
+
+      - name: Validate Stock News contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validate_stock_news.py
+          python scripts/audit_tts_language.py
+
+      - name: Publish check state or verified content change
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- data/stocks-latest.json
 
+          if git diff --cached --quiet; then
+            echo "STOCK_HOURLY_NOOP no newer check state or verified story"
+            exit 0
+          fi
+
+          git commit -m "Refresh Stock News hourly check state"
           for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git reset --hard origin/main
-
-            python scripts/promote_verified_stock_draft.py /tmp/prepublish.json
-            python scripts/validate_stock_news.py
-            python scripts/audit_tts_language.py
-
-            git add -- data/stocks-latest.json
-            if git diff --cached --quiet; then
-              echo "STOCK_AUTO_MAINTENANCE_NOOP current or no verified tracked-stock update"
-              exit 0
-            fi
-
-            DRAFT_ID=$(python -c 'import json; print(json.load(open("/tmp/prepublish.json",encoding="utf-8")).get("draftId", "verified-draft"))')
-            git commit -m "Refresh Stock News from ${DRAFT_ID}"
             if git push origin HEAD:main; then
-              echo "STOCK_AUTO_MAINTENANCE_PASS draft=${DRAFT_ID}"
+              echo "STOCK_HOURLY_MAINTENANCE_PASS"
               exit 0
             fi
+            git fetch origin main
+            git rebase origin/main
             sleep $((attempt * 2))
           done
 
-          echo "Stock News auto maintenance could not push after retries" >&2
+          echo "Stock News hourly maintenance could not push after retries" >&2
           exit 1
-
-      - name: No verified draft available
-        if: steps.draft.outputs.available != 'true'
-        run: echo "Stock News maintenance waiting for verified prepublish draft."
