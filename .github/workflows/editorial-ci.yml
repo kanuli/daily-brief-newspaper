@@ -1,0 +1,98 @@
+name: Editorial CI
+
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "editorial-ci-${{ github.event.pull_request.number || github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout proposed newsroom code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Rebuild Rolling Desk from proposed Live snapshot
+        run: python scripts/merge_live_into_desk.py
+
+      - name: Validate Python syntax for deployment builders
+        run: |
+          python -m py_compile scripts/build_static_news_fallback.py
+          python -m py_compile scripts/merge_live_into_desk.py
+          python -m py_compile scripts/stock_news_heartbeat.py
+          python -m py_compile scripts/promote_verified_live_draft.py
+          python -m py_compile scripts/promote_verified_stock_draft.py
+
+      - name: Validate newsroom JavaScript
+        run: |
+          node --check assets/js/newspaper.js
+          node --check assets/js/live-article.js
+          node --check assets/js/topic.js
+          node --check assets/js/stocks.js
+          node --check assets/js/desk-latest-summary.js
+          node --check assets/js/source-display-upgrade.js
+          node --check assets/js/live-summary-refresh.js
+          node --check assets/js/system-panel.js
+          node --check assets/js/site-tts-canto-nano.js
+
+      - name: Editorial data validation
+        run: |
+          python scripts/validate_daily_v3.py
+          python scripts/validate_stock_news.py
+          python scripts/validate_publication_current.py
+          python scripts/validate_editorial_v2.py
+          python scripts/audit_tts_language.py
+
+      - name: Build static no-JS newspaper
+        run: python scripts/build_static_news_fallback.py
+
+      - name: Verify prerendered pages contain current stories
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          pages=['index.html','live.html','world.html','asia.html','hong-kong.html','japan.html',
+                 'finance.html','stocks.html','technology.html','manga-anime.html','manchester-united.html',
+                 'football.html','archive.html']
+          for page in pages:
+              text=Path(page).read_text(encoding='utf-8')
+              if 'name="daily-brief-prerender"' not in text:
+                  raise SystemExit(f'{page}: missing prerender marker')
+
+          latest=json.load(open('data/latest.json',encoding='utf-8'))
+          articles={a.get('id'):a for a in latest.get('articles',[]) if isinstance(a,dict)}
+          lead=articles.get(latest.get('leadId'))
+          home=Path('index.html').read_text(encoding='utf-8')
+          if not lead or lead.get('title') not in home:
+              raise SystemExit('homepage prerender missing current lead')
+          if '各版最新' not in home or '今小時有甚麼變化' not in home:
+              raise SystemExit('homepage missing Live-vs-Desk editorial hierarchy')
+
+          desk=json.load(open('data/desk-latest.json',encoding='utf-8'))
+          mapping={'world.html':'world','asia.html':'asia','hong-kong.html':'hong-kong','japan.html':'japan',
+                   'finance.html':'market-economy','technology.html':'ai-tech','manga-anime.html':'manga-anime',
+                   'manchester-united.html':'manchester-united','football.html':'football'}
+          for page,slug in mapping.items():
+              stories=((desk.get('desks') or {}).get(slug) or [])
+              if not stories:
+                  raise SystemExit(f'{slug}: no Rolling Desk story available for prerender')
+              if stories[0].get('title') not in Path(page).read_text(encoding='utf-8'):
+                  raise SystemExit(f'{page}: current story not prerendered')
+
+          print('EDITORIAL_PRERENDER_CI_OK pages', len(pages))
+          PY
