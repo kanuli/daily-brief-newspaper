@@ -32,17 +32,19 @@ DESK_SLUGS = {
     "stock-news": [],
     "ai-tech": ["ai-tech"],
     "manga-anime": ["manga-anime"],
-    "manchester-united": ["manchester-united"],
+    "manchester-united": ["manchester-united", "football"],
     "football": ["football"],
 }
-
+CANONICAL_DESK = {
+    "finance": "market-economy",
+}
 SECTIONS = {
     "world": "世界",
     "asia": "亞洲",
     "hong-kong": "香港",
     "japan": "日本",
-    "finance": "財經",
-    "market-economy": "財經",
+    "finance": "財經 / 全球市場",
+    "market-economy": "財經 / 全球市場",
     "stock-news": "Stock News",
     "ai-tech": "AI / 科技",
     "manga-anime": "漫畫 / Anime",
@@ -128,13 +130,16 @@ def build_live(draft, old_live, latest, target, articles):
         item["status"] = status
         counts[status] += 1
 
-        desk = str(item.get("desk") or "")
+        raw_desk = str(item.get("desk") or "")
+        desk = CANONICAL_DESK.get(raw_desk, raw_desk)
+        item["desk"] = desk
         slugs = item.get("deskSlugs")
-        if not isinstance(slugs, list):
-            slugs = DESK_SLUGS.get(desk, [])
+        if not isinstance(slugs, list) or not slugs:
+            slugs = DESK_SLUGS.get(raw_desk, DESK_SLUGS.get(desk, []))
         item["deskSlugs"] = list(dict.fromkeys(str(x) for x in slugs if x))
         if not clean(item.get("section")):
-            item["section"] = SECTIONS.get(desk, "Live")
+            item["section"] = SECTIONS.get(raw_desk, SECTIONS.get(desk, "Live"))
+        item["sectionLabel"] = clean(item.get("sectionLabel")) or item["section"]
         items.append(item)
 
     coverage = copy.deepcopy(old_live.get("coverage") or {})
