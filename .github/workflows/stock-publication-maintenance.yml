@@ -7,6 +7,9 @@ on:
       - ".github/workflows/stock-publication-maintenance.yml"
       - "scripts/promote_verified_stock_draft.py"
       - "scripts/stock_news_heartbeat.py"
+      - "scripts/stock_verified_producer.py"
+      - "scripts/stock_news_rules.py"
+      - "data/stock-verified-seeds.json"
   schedule:
     # HKT 06:00-24:00, five minutes after each hour. GitHub cron is UTC.
     - cron: "5 22,23 * * *"
@@ -23,7 +26,7 @@ concurrency:
 jobs:
   maintain:
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 10
     steps:
       - name: Checkout current main
         uses: actions/checkout@v4
@@ -31,7 +34,7 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Read verified draft and latest rolling discovery
+      - name: Read manual verified draft and latest rolling discovery
         id: inputs
         shell: bash
         run: |
@@ -58,11 +61,33 @@ jobs:
           set -euo pipefail
           python scripts/stock_news_heartbeat.py /tmp/search-staging.json --min-interval-minutes 45
 
-      - name: Promote new verified tracked-stock material when available
+      - name: Build primary-source verified Stock draft
+        if: steps.inputs.outputs.staging_available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stock_verified_producer.py /tmp/search-staging.json --output /tmp/stock-prepublish.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/stock-prepublish.json',encoding='utf-8'))
+          print('PRIMARY_SOURCE_STOCK_DRAFT', d.get('draftId'), 'articles', len(d.get('articles') or []), 'errors', len(d.get('errors') or []))
+          PY
+
+      - name: Promote primary-source verified tracked-stock material
+        if: steps.inputs.outputs.staging_available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/promote_verified_stock_draft.py /tmp/stock-prepublish.json
+
+      - name: Promote newer manual verified tracked-stock material when available
         if: steps.inputs.outputs.draft_available == 'true'
         shell: bash
         run: |
           set -euo pipefail
+          # Manual/editor-generated VERIFIED_DRAFT remains a supported higher-detail
+          # path. The normal max-age/current checks prevent an old generic Live
+          # draft from overwriting the new primary-source producer output.
           python scripts/promote_verified_stock_draft.py /tmp/prepublish.json
 
       - name: Validate Stock News contract
@@ -85,7 +110,7 @@ jobs:
             exit 0
           fi
 
-          git commit -m "Refresh Stock News hourly check state"
+          git commit -m "Refresh Stock News verified content and check state"
           for attempt in 1 2 3 4 5; do
             if git push origin HEAD:main; then
               echo "STOCK_HOURLY_MAINTENANCE_PASS"

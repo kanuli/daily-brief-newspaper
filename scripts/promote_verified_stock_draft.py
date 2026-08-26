@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refresh tracked Stock News from the latest verified prepublish draft."""
+"""Refresh tracked Stock News from the latest verified stock draft."""
 from __future__ import annotations
 
 import argparse
@@ -90,6 +90,13 @@ def main():
         for field in REQUIRED:
             if not clean(source.get(field)):
                 raise SystemExit(f"verified stock draft missing {field}: {source.get('id')}")
+        sources = source.get("sources")
+        if not isinstance(sources, list) or not sources:
+            raise SystemExit(f"verified stock draft missing sources: {source.get('id')}")
+        for index, evidence in enumerate(sources):
+            if not isinstance(evidence, dict) or not clean(evidence.get("name")) or not clean(evidence.get("url")):
+                raise SystemExit(f"verified stock draft invalid sources[{index}]: {source.get('id')}")
+
         ticker = clean(source.get("ticker")).upper()
         if ticker not in tracked or ticker not in tickers:
             continue
@@ -119,14 +126,23 @@ def main():
 
     stocks["generatedAt"] = created.isoformat()
     stocks["lastUpdatedLabel"] = format_hkt(created)
+    stocks["verifiedContentUpdatedAt"] = created.isoformat()
     stocks["verifiedDraftId"] = draft.get("draftId")
-    stocks["publicationSource"] = "verified-prepublish-draft"
+    verification_mode = clean(draft.get("verificationMode"))
+    if verification_mode:
+        stocks["verificationMode"] = verification_mode
+    stocks["publicationSource"] = (
+        "primary-source-auto-verification"
+        if verification_mode.startswith("PRIMARY_SOURCE")
+        else "verified-prepublish-draft"
+    )
     STOCKS_PATH.write_text(json.dumps(stocks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(
         "VERIFIED_STOCK_DRAFT_PROMOTED",
         f"draft={draft.get('draftId')}",
         f"created={created.isoformat()}",
         f"stories={promoted}",
+        f"verification={verification_mode or 'legacy'}",
     )
     return 0
 
