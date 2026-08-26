@@ -46,6 +46,8 @@ jobs:
           node --check assets/js/site-tts-canto-nano.js
           node --check assets/js/live-article.js
           node --check assets/js/stocks.js
+          node --check assets/js/desk-latest-summary.js
+          node --check assets/js/source-display-upgrade.js
 
       - name: Force newest self-healing client on every page
         shell: bash
@@ -113,6 +115,65 @@ jobs:
 
       - name: Editorial QA — hard desk depth and geography
         run: python scripts/validate_editorial_v2.py
+
+      - name: Build resilient static news fallback
+        run: |
+          python -m py_compile scripts/build_static_news_fallback.py
+          python scripts/build_static_news_fallback.py
+
+      - name: Verify no-JS newspaper fallback contains real deployed content
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          latest=json.load(open('data/latest.json',encoding='utf-8'))
+          live=json.load(open('data/live.json',encoding='utf-8'))
+          desk=json.load(open('data/desk-latest.json',encoding='utf-8'))
+          stocks=json.load(open('data/stocks-latest.json',encoding='utf-8'))
+          archive=json.load(open('data/archive.json',encoding='utf-8'))
+
+          pages=['index.html','live.html','world.html','asia.html','hong-kong.html','japan.html',
+                 'finance.html','stocks.html','technology.html','manga-anime.html','manchester-united.html',
+                 'football.html','archive.html']
+          for page in pages:
+              text=Path(page).read_text(encoding='utf-8')
+              if 'name="daily-brief-prerender"' not in text:
+                  raise SystemExit(f'{page}: missing prerender marker')
+
+          articles={a.get('id'):a for a in latest.get('articles',[]) if isinstance(a,dict)}
+          lead=articles.get(latest.get('leadId'))
+          home=Path('index.html').read_text(encoding='utf-8')
+          if not lead or lead.get('title') not in home or '各版最新' not in home:
+              raise SystemExit('index.html prerender missing lead or Desk Latest')
+
+          live_html=Path('live.html').read_text(encoding='utf-8')
+          if live.get('items'):
+              if live['items'][0].get('title') not in live_html:
+                  raise SystemExit('live.html prerender missing first Live item')
+          elif '沒有新增 Live 卡片' not in live_html:
+              raise SystemExit('live.html prerender missing zero-item fallback')
+
+          first_ticker=(stocks.get('tracked') or [None])[0]
+          first_story=((stocks.get('tickers') or {}).get(first_ticker) or {}).get('stories') or []
+          stock_html=Path('stocks.html').read_text(encoding='utf-8')
+          if not first_story or first_story[0].get('title') not in stock_html:
+              raise SystemExit('stocks.html prerender missing first verified story')
+
+          mapping={'world.html':'world','asia.html':'asia','hong-kong.html':'hong-kong','japan.html':'japan',
+                   'finance.html':'market-economy','technology.html':'ai-tech','manga-anime.html':'manga-anime',
+                   'manchester-united.html':'manchester-united','football.html':'football'}
+          for page,slug in mapping.items():
+              stories=((desk.get('desks') or {}).get(slug) or [])
+              if not stories or stories[0].get('title') not in Path(page).read_text(encoding='utf-8'):
+                  raise SystemExit(f'{page}: prerender missing current {slug} story')
+
+          if archive.get('editions'):
+              if archive['editions'][0].get('headline') not in Path('archive.html').read_text(encoding='utf-8'):
+                  raise SystemExit('archive.html prerender missing first edition')
+          print('NO_JS_PRERENDER_VERIFY_OK pages', len(pages))
+          PY
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
