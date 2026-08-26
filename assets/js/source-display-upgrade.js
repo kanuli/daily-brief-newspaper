@@ -23,13 +23,25 @@
     return (node.querySelector("h2, h3")?.textContent || "").trim();
   }
 
+  function currentSourceUrls(node) {
+    return [...node.querySelectorAll(":scope > .article-sources .source-link, :scope > .source-link")]
+      .map((link) => link.getAttribute("href") || "");
+  }
+
   function upgradeNode(node, byTitle) {
     const story = byTitle.get(titleOf(node));
     if (!story) return;
-    const html = markup(story);
-    if (!html) return;
+    const desired = sources(story);
+    if (!desired.length) return;
+
+    const desiredUrls = desired.map((item) => String(item.url || ""));
+    const currentUrls = currentSourceUrls(node);
+    if (desiredUrls.length === currentUrls.length && desiredUrls.every((url, index) => url === currentUrls[index])) {
+      return;
+    }
+
     node.querySelectorAll(":scope > .article-sources, :scope > .source-link").forEach((element) => element.remove());
-    node.insertAdjacentHTML("beforeend", html);
+    node.insertAdjacentHTML("beforeend", markup(story));
   }
 
   function upgradeAll(byTitle) {
@@ -52,6 +64,9 @@
       );
       upgradeAll(byTitle);
 
+      // newspaper.js may replace the deploy-time prerender once its JSON fetch finishes.
+      // Observe briefly, but only mutate when the actual source URL set differs so the
+      // observer never reacts to its own completed upgrade in a loop.
       const roots = [document.querySelector("#lead-story"), document.querySelector("#dynamic-sections")].filter(Boolean);
       const observer = new MutationObserver(() => upgradeAll(byTitle));
       roots.forEach((root) => observer.observe(root, { childList: true, subtree: true }));
