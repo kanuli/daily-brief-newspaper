@@ -29,27 +29,66 @@
     </article>`;
   }
 
+  function hoursSince(value){
+    if(!value) return null;
+    const ts = Date.parse(value);
+    if(!Number.isFinite(ts)) return null;
+    return Math.max(0, (Date.now() - ts) / 3600000);
+  }
+
+  function renderFreshness(data){
+    const checked = document.querySelector('#stock-checked');
+    const updated = document.querySelector('#stock-updated');
+    const host = document.querySelector('#stock-freshness');
+    if(checked) checked.textContent = data.lastCheckedLabel || data.lastCheckedAt || '尚未建立獨立檢查時間';
+    if(updated) updated.textContent = data.lastUpdatedLabel || data.generatedAt || 'N/V';
+    if(!host) return;
+
+    const status = String(data.collectionStatus || '').toUpperCase();
+    const contentAge = hoursSince(data.generatedAt);
+    const discovered = Number(data.discoveredThisCheck || 0);
+    const reservoir = Number(data.discoveryCandidateCount || 0);
+
+    if(status === 'COLLECTION_FAILURE'){
+      host.innerHTML = `<p class="notice"><strong>⚠️ Stock News 搜集異常：</strong>最近一次檢查沒有取得 fresh candidate。這會被視為 collection failure，而不是「市場沒有新聞」。現有稿件仍保留為最近已核實內容。</p>`;
+      return;
+    }
+
+    if(data.lastCheckedAt){
+      const depth = Number.isFinite(reservoir) && reservoir > 0 ? `；rolling candidate reservoir ${reservoir} 則` : '';
+      const fresh = discovered > 0 ? `本輪找到 ${discovered} 則 fresh discovery candidate${depth}` : `本輪已完成搜集${depth}`;
+      const oldCopy = contentAge !== null && contentAge > 24
+        ? ' 現有已核實稿件的內容時間較舊，表示最近檢查未有新的材料通過核實／編輯門檻；舊稿不會被重新標示成新新聞。'
+        : ' 如「最後檢查」較「最近已核實內容更新」新，代表該輪已檢查但沒有需要改寫的已核實新稿。';
+      host.innerHTML = `<p class="notice"><strong>Newsroom freshness：</strong>${esc(fresh)}。${esc(oldCopy)}</p>`;
+      return;
+    }
+
+    host.innerHTML = `<p class="notice"><strong>Newsroom freshness：</strong>目前只保存「最近已核實內容更新」時間；獨立 hourly check timestamp 會由新的 Stock News maintenance 建立。</p>`;
+  }
+
   function render(data){
     const host = document.querySelector('#stock-sections');
     if(!host) return;
     const nav = document.querySelector('#stock-ticker-nav');
     if(nav) nav.innerHTML = ORDER.map(t=>`<a href="#stock-${t.toLowerCase()}">${t}</a>`).join('');
-    const updated = document.querySelector('#stock-updated');
-    if(updated) updated.textContent = data.lastUpdatedLabel || data.generatedAt || '';
+    renderFreshness(data);
     const tickers = data.tickers || {};
     host.innerHTML = ORDER.map(ticker=>{
       const block = tickers[ticker] || {};
       const stories = Array.isArray(block.stories)?block.stories:[];
       return `<section class="stock-section" id="stock-${ticker.toLowerCase()}">
         <div class="stock-section-head"><div><div class="stock-symbol">${ticker}</div><div class="stock-name">${esc(block.name||'')}</div></div><div class="stock-asset-type">${esc(block.assetType||'SECURITY')}</div></div>
-        ${stories.length?stories.map(renderStory).join(''):`<div class="stock-empty">暫未有已核實的新稿；本節會保留最近有效新聞並在下一輪更新。</div>`}
+        ${stories.length?stories.map(renderStory).join(''):`<div class="stock-empty">暫未有已核實的新稿；本節會保留最近有效新聞並在下一輪繼續檢查。</div>`}
       </section>`;
     }).join('');
   }
 
   async function init(){
     try{
-      const res = await fetch('data/stocks-latest.json',{cache:'no-store'});
+      const url = new URL('data/stocks-latest.json', document.baseURI);
+      url.searchParams.set('v', String(Date.now()));
+      const res = await fetch(url.href,{cache:'no-store'});
       if(!res.ok) throw new Error(`HTTP ${res.status}`);
       render(await res.json());
     }catch(err){
