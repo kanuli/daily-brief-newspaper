@@ -8,6 +8,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 LIVE = DATA / "live.json"
 DESK = DATA / "desk-latest.json"
+MIN_BODY_MEASURE = 95
 
 FLOORS = {
     "world": 8,
@@ -40,8 +41,6 @@ DESK_ALIASES = {
     "market-economy": ["market-economy"],
     "ai-tech": ["ai-tech"],
     "manga-anime": ["manga-anime"],
-    # Manchester United is a priority desk, but its worthwhile stories are
-    # also part of the all-world Football desk by editorial contract.
     "manchester-united": ["manchester-united", "football"],
     "football": ["football"],
     "stock-news": [],
@@ -60,6 +59,41 @@ FORBIDDEN = re.compile(
 
 def load(path):
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def body_measure(value):
+    text = str(value or "")
+    cjk = len(re.findall(r"[\u3400-\u9fff]", text))
+    return cjk if cjk >= 50 else len(re.sub(r"\s+", "", text))
+
+
+def normalize_retained_story(story):
+    """Repair only undersized retained copy using facts already stored on the story.
+
+    This never invents new facts: it promotes the story's existing verified context/why
+    into the body when an older reservoir item falls below the approximate-100 floor.
+    """
+    if not isinstance(story, dict):
+        return story
+    body = str(story.get("body") or "").strip()
+    if body_measure(body) >= MIN_BODY_MEASURE:
+        return story
+    additions = []
+    existing = re.sub(r"\s+", "", body)
+    for key in ("context", "why"):
+        text = str(story.get(key) or "").strip()
+        if text and re.sub(r"\s+", "", text) not in existing:
+            additions.append(text)
+            existing += re.sub(r"\s+", "", text)
+        candidate = body + ("\n\n" if body and additions else "") + " ".join(additions)
+        if body_measure(candidate) >= MIN_BODY_MEASURE:
+            break
+    if additions:
+        if "\n\n" in body:
+            story["body"] = body + " " + " ".join(additions)
+        else:
+            story["body"] = body + "\n\n" + " ".join(additions)
+    return story
 
 
 def desk_slugs(item):
@@ -101,7 +135,8 @@ def main():
     desk = load(DESK)
     desks = desk.setdefault("desks", {})
     for slug in FLOORS:
-        desks[slug] = dedupe(desks.setdefault(slug, []))[:CAPS[slug]]
+        retained = [normalize_retained_story(copy.deepcopy(s)) for s in desks.setdefault(slug, [])]
+        desks[slug] = dedupe(retained)[:CAPS[slug]]
 
     for item in live.get("items", []):
         for field in REQUIRED:
@@ -118,7 +153,7 @@ def main():
 
         slugs = desk_slugs(item)
         for slug in slugs:
-            story = copy.deepcopy(item)
+            story = normalize_retained_story(copy.deepcopy(item))
             story["status"] = "LATEST"
             story["deskSlugs"] = list(dict.fromkeys(slugs))
             existing = desks[slug]
@@ -153,7 +188,11 @@ def main():
     coverage["japanCountVerified"] = counts["japan"]
     coverage["footballGateMet"] = football_gate
     coverage["publishingGateMet"] = publication_ready
-    coverage["status"] = "COMPLETE" if publication_ready else "INCOMPLETE"
+    # Preserve the special 08:00 Daily baseline status; hourly Live may become COMPLETE.
+    if str(live.get("mode") or "").upper() == "DAILY_BASELINE":
+        coverage["status"] = "DAILY_BASELINE"
+    else:
+        coverage["status"] = "COMPLETE" if publication_ready else "INCOMPLETE"
 
     DESK.write_text(json.dumps(desk, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     LIVE.write_text(json.dumps(live, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
