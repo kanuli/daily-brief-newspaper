@@ -6,6 +6,10 @@ on:
     paths:
       - ".github/workflows/pages-probe.yml"
       - "assets/js/site-tts-canto-nano.js"
+      - "assets/js/stocks.js"
+      - "data/latest.json"
+      - "data/live.json"
+      - "data/stocks-latest.json"
   workflow_run:
     workflows: ["Deploy Daily Brief to GitHub Pages"]
     types: [completed]
@@ -31,13 +35,13 @@ jobs:
           ref: main
           fetch-depth: 1
 
-      - name: Verify public data, every core page and shared runtime clients
+      - name: Verify public data, freshness, every core page and shared runtime clients
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           import hashlib, json, os, time, urllib.request
-          from datetime import datetime, timezone
+          from datetime import datetime, timedelta, timezone
           from pathlib import Path
 
           repo=os.environ.get('GITHUB_REPOSITORY','kanuli/daily-brief-newspaper')
@@ -49,14 +53,32 @@ jobs:
               'finance.html','stocks.html','technology.html','manga-anime.html',
               'manchester-united.html','football.html','archive.html'
           ]
-          runtime_files=['assets/js/site-tts-canto-nano.js','assets/js/system-panel.js','assets/js/live-article.js']
+          runtime_files=['assets/js/site-tts-canto-nano.js','assets/js/system-panel.js','assets/js/live-article.js','assets/js/stocks.js']
           known_error_markers=['Error 500 (Server Error)', 'That’s an error', "That's an error", 'There was an error. Please try again later.']
+          HKT=timezone(timedelta(hours=8))
+          now=datetime.now(timezone.utc)
+          now_hkt=now.astimezone(HKT)
 
+          local_latest=json.load(open('data/latest.json',encoding='utf-8'))
           local_live=json.load(open('data/live.json',encoding='utf-8'))
           local_stocks=json.load(open('data/stocks-latest.json',encoding='utf-8'))
           local_tts=json.load(open('data/tts-manifest.json',encoding='utf-8'))
           expected_live=local_live.get('lastUpdated')
           expected_stocks=local_stocks.get('generatedAt')
+          expected_daily=local_latest.get('date')
+
+          def parse_iso(value):
+              try:
+                  dt=datetime.fromisoformat(str(value).replace('Z','+00:00'))
+                  if dt.tzinfo is None: return None
+                  return dt.astimezone(timezone.utc)
+              except Exception:
+                  return None
+
+          def age_minutes(value):
+              dt=parse_iso(value)
+              if not dt: return None
+              return max(0.0,(now-dt).total_seconds()/60.0)
 
           def request_bytes(url):
               sep='&' if '?' in url else '?'
@@ -72,14 +94,16 @@ jobs:
 
           def sha256(data): return hashlib.sha256(data).hexdigest()
 
-          remote_live=remote_desk=remote_stocks=remote_tts=None
+          remote_latest=remote_live=remote_desk=remote_stocks=remote_tts=None
           error=None
           for _ in range(12):
               try:
+                  remote_latest=fetch_json('latest.json')
                   remote_live=fetch_json('live.json')
                   remote_desk=fetch_json('desk-latest.json')
                   remote_stocks=fetch_json('stocks-latest.json')
                   remote_tts=fetch_json('tts-manifest.json')
+                  daily_match=bool(remote_latest.get('date')==expected_daily)
                   live_match=bool(remote_live.get('lastUpdated')==expected_live and (remote_live.get('items') or []))
                   desk_match=bool(remote_desk.get('generatedAt')==expected_live)
                   stock_match=bool(remote_stocks.get('generatedAt')==expected_stocks)
@@ -90,19 +114,54 @@ jobs:
                       int(remote_tts.get('availableArticleCount') or 0)==int(local_tts.get('availableArticleCount') or 0) and
                       str(remote_tts.get('lastVoicePublishedAt') or '')==str(local_tts.get('lastVoicePublishedAt') or '')
                   )
-                  if live_match and desk_match and stock_match and voice_match:
+                  if daily_match and live_match and desk_match and stock_match and voice_match:
                       error=None; break
-                  error=(f"live={remote_live.get('lastUpdated')} expected={expected_live}; desk={remote_desk.get('generatedAt')} expected={expected_live}; "
-                         f"stocks={remote_stocks.get('generatedAt')} expected={expected_stocks}; voice={remote_tts.get('engine')}/{remote_tts.get('assetNamespace')}/{remote_tts.get('availableArticleCount')} "
+                  error=(f"daily={remote_latest.get('date')} expected={expected_daily}; live={remote_live.get('lastUpdated')} expected={expected_live}; "
+                         f"desk={remote_desk.get('generatedAt')} expected={expected_live}; stocks={remote_stocks.get('generatedAt')} expected={expected_stocks}; "
+                         f"voice={remote_tts.get('engine')}/{remote_tts.get('assetNamespace')}/{remote_tts.get('availableArticleCount')} "
                          f"expected={local_tts.get('engine')}/{local_tts.get('assetNamespace')}/{local_tts.get('availableArticleCount')}")
               except Exception as exc:
                   error=str(exc)
               time.sleep(5)
 
+          daily_match=bool(isinstance(remote_latest,dict) and remote_latest.get('date')==expected_daily)
           live_match=bool(isinstance(remote_live,dict) and remote_live.get('lastUpdated')==expected_live and (remote_live.get('items') or []))
           desk_match=bool(isinstance(remote_desk,dict) and remote_desk.get('generatedAt')==expected_live)
           stock_match=bool(isinstance(remote_stocks,dict) and remote_stocks.get('generatedAt')==expected_stocks)
           voice_match=bool(isinstance(remote_tts,dict) and remote_tts.get('engine')==local_tts.get('engine') and remote_tts.get('assetNamespace')==local_tts.get('assetNamespace') and remote_tts.get('prosodyPolicy')==local_tts.get('prosodyPolicy') and int(remote_tts.get('availableArticleCount') or 0)==int(local_tts.get('availableArticleCount') or 0) and str(remote_tts.get('lastVoicePublishedAt') or '')==str(local_tts.get('lastVoicePublishedAt') or ''))
+
+          # Editorial freshness is separate from repository/public equality.  Equal stale
+          # snapshots must never be reported as healthy.
+          hour,minute=now_hkt.hour,now_hkt.minute
+          live_age=age_minutes(remote_live.get('lastUpdated')) if isinstance(remote_live,dict) else None
+          stock_check_value=(remote_stocks.get('lastCheckedAt') or remote_stocks.get('generatedAt')) if isinstance(remote_stocks,dict) else None
+          stock_check_age=age_minutes(stock_check_value)
+          stock_content_age=age_minutes(remote_stocks.get('generatedAt')) if isinstance(remote_stocks,dict) else None
+
+          live_window=(hour==0 or 6<=hour<=7 or 9<=hour<=23)
+          if hour==6 and minute<20:
+              live_fresh=True  # allow the 06:00 publisher its startup grace after the overnight gap
+          elif hour==9 and minute<20:
+              live_fresh=bool(live_age is not None and live_age<=155)
+          elif live_window:
+              live_fresh=bool(live_age is not None and live_age<=95)
+          else:
+              live_fresh=True
+
+          stock_window=(hour==0 or 6<=hour<=23)
+          if hour==6 and minute<15:
+              stock_fresh=True
+          elif stock_window:
+              stock_fresh=bool(stock_check_age is not None and stock_check_age<=95 and str((remote_stocks or {}).get('collectionStatus','')).upper()!='COLLECTION_FAILURE')
+          else:
+              stock_fresh=True
+
+          daily_required=(hour>8 or (hour==8 and minute>=15))
+          daily_fresh=bool(not daily_required or (isinstance(remote_latest,dict) and remote_latest.get('date')==now_hkt.date().isoformat()))
+
+          # Across nine high-profile tracked securities, an unchanged verified-content
+          # pool beyond 36 hours is an editorial degradation even when hourly checks run.
+          stock_content_fresh=bool(stock_content_age is not None and stock_content_age<=36*60)
 
           page_checks={}
           for page in core_pages:
@@ -137,26 +196,34 @@ jobs:
               'new MutationObserver' in tts_local
           )
 
-          overall=bool(live_match and desk_match and stock_match and voice_match and all_pages_ok and runtime_match and tts_guard_ok)
+          infrastructure_ok=bool(daily_match and live_match and desk_match and stock_match and voice_match and all_pages_ok and runtime_match and tts_guard_ok)
+          editorial_fresh=bool(live_fresh and stock_fresh and daily_fresh and stock_content_fresh)
+          overall=bool(infrastructure_ok and editorial_fresh)
           payload={
-              'checkedAt': datetime.now(timezone.utc).isoformat(), 'publicBaseUrl': root,
-              'mainLastUpdated': expected_live,
-              'publicLastUpdated': remote_live.get('lastUpdated') if isinstance(remote_live,dict) else None,
-              'mainWindowLabel': local_live.get('windowLabel'),
-              'publicWindowLabel': remote_live.get('windowLabel') if isinstance(remote_live,dict) else None,
+              'checkedAt': now.isoformat(), 'checkedAtHKT': now_hkt.isoformat(), 'publicBaseUrl': root,
+              'mainDailyDate': expected_daily, 'publicDailyDate': remote_latest.get('date') if isinstance(remote_latest,dict) else None,
+              'mainLastUpdated': expected_live, 'publicLastUpdated': remote_live.get('lastUpdated') if isinstance(remote_live,dict) else None,
+              'mainWindowLabel': local_live.get('windowLabel'), 'publicWindowLabel': remote_live.get('windowLabel') if isinstance(remote_live,dict) else None,
               'publicItemCount': len(remote_live.get('items') or []) if isinstance(remote_live,dict) else 0,
-              'mainDeskExpectedAt': expected_live,
-              'publicDeskGeneratedAt': remote_desk.get('generatedAt') if isinstance(remote_desk,dict) else None,
-              'mainStocksGeneratedAt': expected_stocks,
-              'publicStocksGeneratedAt': remote_stocks.get('generatedAt') if isinstance(remote_stocks,dict) else None,
-              'liveMatch': live_match, 'deskMatch': desk_match, 'stockMatch': stock_match,
+              'mainDeskExpectedAt': expected_live, 'publicDeskGeneratedAt': remote_desk.get('generatedAt') if isinstance(remote_desk,dict) else None,
+              'mainStocksGeneratedAt': expected_stocks, 'publicStocksGeneratedAt': remote_stocks.get('generatedAt') if isinstance(remote_stocks,dict) else None,
+              'publicStocksLastCheckedAt': remote_stocks.get('lastCheckedAt') if isinstance(remote_stocks,dict) else None,
+              'publicStocksCollectionStatus': remote_stocks.get('collectionStatus') if isinstance(remote_stocks,dict) else None,
+              'dailyMatch': daily_match, 'liveMatch': live_match, 'deskMatch': desk_match, 'stockMatch': stock_match,
+              'dailyFresh': daily_fresh, 'liveFresh': live_fresh, 'liveAgeMinutes': live_age,
+              'stockFresh': stock_fresh, 'stockCheckAgeMinutes': stock_check_age,
+              'stockContentFresh': stock_content_fresh, 'stockContentAgeMinutes': stock_content_age,
               'voiceManifestMatch': voice_match,
               'voiceEngine': local_tts.get('engine'),
               'voiceAvailableArticleCount': int(local_tts.get('availableArticleCount') or 0),
               'allCorePagesOk': all_pages_ok, 'pageChecks': page_checks,
               'runtimeMatch': runtime_match, 'runtimeChecks': runtime_checks,
               'ttsHangRegressionGuard': tts_guard_ok,
-              'voiceAssetNamespace': current_namespace, 'match': overall, 'error': error,
+              'voiceAssetNamespace': current_namespace,
+              'infrastructureMatch': infrastructure_ok,
+              'editorialFreshnessMatch': editorial_fresh,
+              'match': overall,
+              'error': error,
           }
           open('/tmp/pages-live-status.json','w',encoding='utf-8').write(json.dumps(payload,ensure_ascii=False,indent=2)+'\n')
           print(json.dumps(payload,ensure_ascii=False))
