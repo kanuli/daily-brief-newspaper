@@ -11,6 +11,7 @@ on:
       - "data/topic-more/**"
       - "data/editorial-overrides/**"
       - "scripts/canto_nano_prod.py"
+      - "scripts/canto_nano_full_article.py"
       - "scripts/tts_hktrad.py"
       - "scripts/tts_hktrad_v2.py"
       - "scripts/hktrad_units.py"
@@ -30,8 +31,9 @@ concurrency:
 env:
   CANTO_RELEASE_TAG: canto-nano-female-cache
   CANTO_PUBLIC_BASE: https://github.com/${{ github.repository }}/releases/download/canto-nano-female-cache
-  # Full-article playback: keep this far above any normal news article so the
-  # generator never slices a sentence or silently publishes truncated audio.
+  # Full-article playback: keep this far above any normal news article. The
+  # full-article wrapper rejects content that ever exceeds this guard instead
+  # of slicing it and publishing a fake completed sentence.
   CANTO_NANO_ARTICLE_MAX_TEXT_CHARS: "100000"
 
 jobs:
@@ -192,12 +194,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           for cycle in $(seq 1 20); do
-            echo "=== Canto Nano female slot ${SLOT} cycle ${cycle}/20 ==="
+            echo "=== Canto Nano full-article female slot ${SLOT} cycle ${cycle}/20 ==="
             git fetch origin main
             git reset --hard origin/main
             rm -rf artifacts/canto-nano-shards
 
-            python scripts/canto_nano_prod.py generate-shard --slot "${SLOT}" --slots 10
+            python scripts/canto_nano_full_article.py generate-shard --slot "${SLOT}" --slots 10
             SHARD="artifacts/canto-nano-shards/shard-${SLOT}.json"
             test -f "$SHARD"
 
@@ -225,15 +227,15 @@ jobs:
             for attempt in 1 2 3 4 5 6 7 8; do
               git fetch origin main
               git reset --hard origin/main
-              python scripts/canto_nano_prod.py publish "/tmp/canto-nano-${SLOT}.json" --public-base "$CANTO_PUBLIC_BASE"
+              python scripts/canto_nano_full_article.py publish "/tmp/canto-nano-${SLOT}.json" --public-base "$CANTO_PUBLIC_BASE"
               git add data/tts-manifest.json
               if git diff --cached --quiet; then
                 published=true
                 break
               fi
-              git commit -m "Publish canto nano female voice slot ${SLOT} cycle ${cycle}"
+              git commit -m "Publish full-article canto nano voice slot ${SLOT} cycle ${cycle}"
               if git push origin HEAD:main; then
-                echo "CANTO_NANO_FEMALE_PUSH_PASS slot=${SLOT} cycle=${cycle}"
+                echo "CANTO_NANO_FULL_ARTICLE_PUSH_PASS slot=${SLOT} cycle=${cycle}"
                 published=true
                 break
               fi
