@@ -54,7 +54,7 @@ def publication_dates_align(latest_date, live_date):
 
 def validate_live(latest, live, desk):
     mode = str(live.get("mode") or "").upper()
-    need(mode in {"LIVE", "DAILY_BASELINE"}, f"live mode invalid: {mode!r}")
+    need(mode in {"LIVE", "HOURLY_LIVE", "DAILY_BASELINE"}, f"live mode invalid: {mode!r}")
     need(publication_dates_align(latest.get("date"), live.get("date")), "live date must match Daily date or immediate overnight handoff date")
     for key in ("lastUpdated", "lastUpdatedLabel", "windowLabel", "nextUpdateLabel"):
         need(isinstance(live.get(key), str) and live[key].strip(), f"live missing {key}")
