@@ -45,6 +45,20 @@ DESK_ALIASES = {
     "football": ["football"],
     "stock-news": [],
 }
+CANONICAL_DESK = {
+    "finance": "market-economy",
+}
+DESK_LABELS = {
+    "world": "世界",
+    "asia": "亞洲",
+    "hong-kong": "香港",
+    "japan": "日本",
+    "market-economy": "財經 / 全球市場",
+    "ai-tech": "AI / 科技",
+    "manga-anime": "漫畫 / Anime",
+    "manchester-united": "Manchester United",
+    "football": "Football",
+}
 REQUIRED = (
     "title", "dek", "summary", "body", "context", "why", "watchNext",
     "sourceName", "sourceUrl", "timeLabel",
@@ -100,7 +114,29 @@ def desk_slugs(item):
     explicit = item.get("deskSlugs")
     if isinstance(explicit, list) and explicit:
         return list(dict.fromkeys(str(slug) for slug in explicit if slug in FLOORS))
-    return DESK_ALIASES.get(str(item.get("desk") or ""), [])
+    desk = CANONICAL_DESK.get(str(item.get("desk") or ""), str(item.get("desk") or ""))
+    return DESK_ALIASES.get(desk, [])
+
+
+def normalize_live_route(item):
+    """Write the routing contract into every published Live item.
+
+    Front-end pages should never need to infer a desk from headline text.  The canonical
+    fields are persisted into live.json so homepage, Live, topic pages and future clients
+    all read the same routing metadata.
+    """
+    raw_desk = str(item.get("desk") or "").strip()
+    canonical = CANONICAL_DESK.get(raw_desk, raw_desk)
+    if canonical:
+        item["desk"] = canonical
+    slugs = desk_slugs(item)
+    item["deskSlugs"] = list(dict.fromkeys(slugs))
+    primary = slugs[0] if slugs else canonical
+    if not str(item.get("section") or "").strip():
+        item["section"] = DESK_LABELS.get(primary, "Live")
+    if not str(item.get("sectionLabel") or "").strip():
+        item["sectionLabel"] = item.get("section") or DESK_LABELS.get(primary, "Live")
+    return slugs
 
 
 def story_identity(story):
@@ -139,6 +175,7 @@ def main():
         desks[slug] = dedupe(retained)[:CAPS[slug]]
 
     for item in live.get("items", []):
+        slugs = normalize_live_route(item)
         for field in REQUIRED:
             if not isinstance(item.get(field), str) or not item[field].strip():
                 raise SystemExit(f"Live item {item.get('id')} missing {field}")
@@ -151,7 +188,6 @@ def main():
         if FORBIDDEN.search(public):
             raise SystemExit(f"Live item {item.get('id')} contains process copy")
 
-        slugs = desk_slugs(item)
         for slug in slugs:
             story = normalize_retained_story(copy.deepcopy(item))
             story["status"] = "LATEST"
