@@ -72,4 +72,19 @@ result = audit(*args, NOW, previous)
 assert result["status"] == "EDITORIAL_ATTENTION_REQUIRED", result
 assert any(f["code"] == "PERSISTENT_COLLECTION_STALE" for f in result["findings"]), result
 
+# A stale Football story intentionally routed to a regional page is no longer a
+# harmless duplicate warning.  It is a repairable retention defect owned by the
+# Rolling Desk merge workflow, while the canonical Football copy remains valid.
+args = list(base())
+old = story("football", "football-jleague-example-20260824")
+old["title"] = "舊J-League跨版新聞"
+old["deskSlugs"] = ["japan", "football"]
+args[2]["desks"]["japan"].append(dict(old))
+args[2]["desks"]["football"].append(dict(old))
+result = audit(*args, NOW)
+assert result["status"] == "AUTO_REPAIRING", result
+assert any(f["code"] == "STALE_CROSS_DESK_FOOTBALL" and f["area"] == "japan" for f in result["findings"]), result
+assert any(x["workflow"] == "merge-live-into-desk.yml" for x in result["repairPlan"]), result
+assert not any(f["code"] in {"DUPLICATE_ARTICLE_ID", "DUPLICATE_HEADLINE"} and "舊J-League" in f.get("message", "") for f in result["findings"]), result
+
 print("EDITOR_IN_CHIEF_TESTS_OK")

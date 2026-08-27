@@ -15,6 +15,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from desk_retention import expired_cross_desk_football, story_time
+
 HKT = timezone(timedelta(hours=8))
 EXPECTED_DESKS = (
     "world", "asia", "hong-kong", "japan", "market-economy",
@@ -23,6 +25,7 @@ EXPECTED_DESKS = (
 REPAIR_WORKFLOWS = {
     "collection": "rolling-news-search.yml",
     "live": "live-publication-maintenance.yml",
+    "desk": "merge-live-into-desk.yml",
     "stock": "stock-publication-maintenance.yml",
     "pages": "pages.yml",
     "voice": "canto-nano-production.yml",
@@ -70,34 +73,6 @@ def age_minutes(value: Any, now: datetime) -> float | None:
     return max(0.0, (now - dt).total_seconds() / 60.0)
 
 
-def story_time(story: dict[str, Any]) -> datetime | None:
-    for key in ("publishedAt", "updatedAt", "timestamp", "time", "verifiedAt"):
-        dt = parse_iso(story.get(key))
-        if dt:
-            return dt
-    ident = str(story.get("id") or "")
-    m = re.search(r"(20\d{6})[-_]?([0-2]\d)([0-5]\d)$", ident)
-    if m:
-        try:
-            return datetime.strptime("".join(m.groups()), "%Y%m%d%H%M").replace(tzinfo=HKT).astimezone(timezone.utc)
-        except ValueError:
-            pass
-    label = str(story.get("timeLabel") or "")
-    m = re.search(r"(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})\s*HKT", label, re.I)
-    if m:
-        month, day, hour, minute = map(int, m.groups())
-        now_hkt = datetime.now(HKT)
-        year = now_hkt.year
-        try:
-            candidate = datetime(year, month, day, hour, minute, tzinfo=HKT)
-            if candidate - now_hkt > timedelta(days=2):
-                candidate = candidate.replace(year=year - 1)
-            return candidate.astimezone(timezone.utc)
-        except ValueError:
-            pass
-    return None
-
-
 def add(findings: list[Finding], code: str, severity: str, area: str, message: str, repair: str | None = None) -> None:
     findings.append(Finding(code, severity, area, message, repair))
 
@@ -136,7 +111,7 @@ def audit(
         add(findings, "LIVE_STALE", "critical", "live",
             f"Live publication age is {live_age if live_age is not None else 'unknown'} min", "live")
 
-    # Desk coverage and article quality.
+    # Desk coverage, retention and article quality.
     desks = desk.get("desks") if isinstance(desk.get("desks"), dict) else {}
     all_ids: dict[str, str] = {}
     all_titles: dict[str, str] = {}
@@ -145,6 +120,7 @@ def audit(
         stories = desks.get(slug) if isinstance(desks.get(slug), list) else []
         newest = None
         quality_errors = 0
+        stale_cross_desk_football = 0
         for story in stories:
             if not isinstance(story, dict):
                 quality_errors += 1
@@ -154,26 +130,46 @@ def audit(
             body = str(story.get("body") or "").strip()
             summary = str(story.get("summary") or "").strip()
             source_url = str(story.get("sourceUrl") or "").strip()
+            routes = {
+                str(x) for x in (story.get("deskSlugs") or [])
+                if isinstance(story.get("deskSlugs"), list) and str(x)
+            }
             if not sid or not title or len(body) < 80 or len(summary) < 20 or not source_url.startswith("http"):
                 quality_errors += 1
+
+            # Intentional multi-desk routing is not itself a duplicate defect.  What
+            # matters is whether a cross-post is still appropriate for the target desk.
+            if expired_cross_desk_football(story, slug, now=now):
+                stale_cross_desk_football += 1
+                add(findings, "STALE_CROSS_DESK_FOOTBALL", "critical", slug,
+                    f"football cross-post {sid or title} exceeded the 36-hour regional-desk retention window",
+                    "desk")
+
             if sid:
                 prior = all_ids.get(sid)
-                if prior and prior != slug:
+                intentional = bool(prior and prior in routes and slug in routes)
+                if prior and prior != slug and not intentional:
                     add(findings, "DUPLICATE_ARTICLE_ID", "warning", "editorial",
-                        f"article id {sid} appears in both {prior} and {slug}")
+                        f"article id {sid} appears in both {prior} and {slug} without an explicit multi-desk route")
                 all_ids[sid] = slug
             norm_title = re.sub(r"\s+", "", title).lower()
             if norm_title:
                 prior = all_titles.get(norm_title)
-                if prior and prior != slug:
+                intentional = bool(prior and prior in routes and slug in routes)
+                if prior and prior != slug and not intentional:
                     add(findings, "DUPLICATE_HEADLINE", "warning", "editorial",
-                        f"same headline appears in both {prior} and {slug}")
+                        f"same headline appears in both {prior} and {slug} without an explicit multi-desk route")
                 all_titles[norm_title] = slug
-            st = story_time(story)
+            st = story_time(story, now=now)
             if st and (newest is None or st > newest):
                 newest = st
         newest_age = max(0.0, (now - newest).total_seconds() / 60.0) if newest else None
-        desk_summary[slug] = {"storyCount": len(stories), "newestAgeMinutes": newest_age, "qualityErrorCount": quality_errors}
+        desk_summary[slug] = {
+            "storyCount": len(stories),
+            "newestAgeMinutes": newest_age,
+            "qualityErrorCount": quality_errors,
+            "staleCrossDeskFootballCount": stale_cross_desk_football,
+        }
         if not stories:
             add(findings, "DESK_EMPTY", "critical", slug,
                 f"{slug} has no Rolling Desk stories", "collection")

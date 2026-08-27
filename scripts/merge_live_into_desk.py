@@ -4,6 +4,8 @@ import json
 import pathlib
 import re
 
+from desk_retention import keep_on_desk
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 LIVE = DATA / "live.json"
@@ -170,8 +172,16 @@ def main():
     live = load(LIVE)
     desk = load(DESK)
     desks = desk.setdefault("desks", {})
+    expired_cross_posts = []
     for slug in FLOORS:
-        retained = [normalize_retained_story(copy.deepcopy(s)) for s in desks.setdefault(slug, [])]
+        retained = []
+        for raw in desks.setdefault(slug, []):
+            if not isinstance(raw, dict):
+                continue
+            if not keep_on_desk(raw, slug):
+                expired_cross_posts.append((slug, str(raw.get("id") or raw.get("title") or "unknown")))
+                continue
+            retained.append(normalize_retained_story(copy.deepcopy(raw)))
         desks[slug] = dedupe(retained)[:CAPS[slug]]
 
     for item in live.get("items", []):
@@ -189,6 +199,11 @@ def main():
             raise SystemExit(f"Live item {item.get('id')} contains process copy")
 
         for slug in slugs:
+            # Cross-routed Football items are useful on regional pages while fresh,
+            # but must age out there.  They remain available on the Football desk.
+            if not keep_on_desk(item, slug):
+                expired_cross_posts.append((slug, str(item.get("id") or item.get("title") or "unknown")))
+                continue
             story = normalize_retained_story(copy.deepcopy(item))
             story["status"] = "LATEST"
             story["deskSlugs"] = list(dict.fromkeys(slugs))
@@ -232,6 +247,8 @@ def main():
 
     DESK.write_text(json.dumps(desk, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     LIVE.write_text(json.dumps(live, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if expired_cross_posts:
+        print("ROLLING DESK EXPIRED CROSS-POSTS", expired_cross_posts)
     print("ROLLING DESK MERGE OK", counts)
 
 

@@ -31,7 +31,9 @@ jobs:
       - name: Validate Python syntax for deployment builders
         run: |
           python -m py_compile scripts/build_static_news_fallback.py
+          python -m py_compile scripts/desk_retention.py
           python -m py_compile scripts/merge_live_into_desk.py
+          python -m py_compile scripts/test_desk_retention.py
           python -m py_compile scripts/stock_news_rules.py
           python -m py_compile scripts/stock_news_heartbeat.py
           python -m py_compile scripts/stock_verified_producer.py
@@ -40,6 +42,9 @@ jobs:
           python -m py_compile scripts/promote_verified_stock_draft.py
           python -m py_compile scripts/editor_in_chief.py
           python -m py_compile scripts/test_editor_in_chief.py
+
+      - name: Desk retention regression tests
+        run: python scripts/test_desk_retention.py
 
       - name: Stock verification regression tests
         run: python scripts/test_stock_news_pipeline.py
@@ -104,6 +109,15 @@ jobs:
                   raise SystemExit(f'{slug}: no Rolling Desk story available for prerender')
               if stories[0].get('title') not in Path(page).read_text(encoding='utf-8'):
                   raise SystemExit(f'{page}: current story not prerendered')
+
+          # Regression: stale Football cross-posts may remain on Football but must
+          # not linger for days on regional pages.
+          stale_ids={'football-jleague-machida-20260825','football-hkpl-shatin-20260825'}
+          for slug in ('japan','hong-kong'):
+              ids={str(s.get('id') or '') for s in ((desk.get('desks') or {}).get(slug) or []) if isinstance(s,dict)}
+              leaked=sorted(ids & stale_ids)
+              if leaked:
+                  raise SystemExit(f'{slug}: stale regional football cross-post leaked into public desk: {leaked}')
 
           print('EDITORIAL_PRERENDER_CI_OK pages', len(pages))
           PY
