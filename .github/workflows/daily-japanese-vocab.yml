@@ -5,6 +5,9 @@ on:
     # 00:10 Hong Kong time every day (UTC+8).
     - cron: "10 16 * * *"
   workflow_dispatch:
+  push:
+    paths:
+      - ".daily-vocab-refresh-trigger"
 
 permissions:
   contents: write
