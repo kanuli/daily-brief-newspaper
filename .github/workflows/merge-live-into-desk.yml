@@ -6,6 +6,7 @@ on:
     paths:
       - "data/live.json"
       - "scripts/merge_live_into_desk.py"
+      - "scripts/desk_retention.py"
       - "scripts/recover_desk_depth.py"
       - "scripts/recover_desk_depth_watchdog.py"
       - "scripts/validate_publication_current.py"
@@ -16,6 +17,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: "rolling-desk-merge"
@@ -33,9 +35,11 @@ jobs:
           fetch-depth: 0
 
       - name: Align Rolling Desk to current Live
+        id: publish
         shell: bash
         run: |
           set -euo pipefail
+          echo "changed=false" >> "$GITHUB_OUTPUT"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
@@ -57,6 +61,7 @@ jobs:
             LIVE_LABEL=$(python -c 'import json; print(json.load(open("data/live.json",encoding="utf-8")).get("windowLabel", "Live"))')
             git commit -m "Sync Rolling Desk to ${LIVE_LABEL}"
             if git push origin HEAD:main; then
+              echo "changed=true" >> "$GITHUB_OUTPUT"
               echo "ROLLING_DESK_AUTO_SYNC_PASS ${LIVE_LABEL}"
               exit 0
             fi
@@ -65,3 +70,20 @@ jobs:
 
           echo "Rolling Desk auto-sync could not push after retries" >&2
           exit 1
+
+      - name: Dispatch Pages after Rolling Desk change
+        if: steps.publish.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload='{"ref":"main"}'
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/pages.yml/dispatches" \
+            -d "$payload"
+          echo "ROLLING_DESK_PAGES_DEPLOY_DISPATCHED"
