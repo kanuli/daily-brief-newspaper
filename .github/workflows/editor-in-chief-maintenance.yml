@@ -7,6 +7,9 @@ on:
       - ".github/workflows/editor-in-chief-maintenance.yml"
       - "scripts/editor_in_chief.py"
       - "scripts/test_editor_in_chief.py"
+      - "scripts/desk_freshness_policy.py"
+      - "scripts/validate_desk_freshness.py"
+      - "scripts/test_desk_freshness.py"
       - "data/latest.json"
       - "data/live.json"
       - "data/desk-latest.json"
@@ -92,6 +95,8 @@ jobs:
           run_validator daily-v3 python scripts/validate_daily_v3.py
           run_validator stock-news python scripts/validate_stock_news.py
           run_validator publication-current python scripts/validate_publication_current.py
+          run_validator desk-freshness python scripts/validate_desk_freshness.py --report /tmp/desk-freshness.json
+          run_validator desk-freshness-tests python scripts/test_desk_freshness.py
           run_validator editorial-v2 python scripts/validate_editorial_v2.py
           run_validator tts-language python scripts/audit_tts_language.py
 
@@ -102,6 +107,21 @@ jobs:
           data=json.loads(path.read_text(encoding='utf-8'))
           rows=[json.loads(x) for x in Path('/tmp/editor-validator-results.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
           data['validatorAudit']=rows
+          freshness_path=Path('/tmp/desk-freshness.json')
+          if freshness_path.is_file():
+              freshness=json.loads(freshness_path.read_text(encoding='utf-8'))
+              data['deskFreshnessAudit']=freshness
+              for slug,row in (freshness.get('desks') or {}).items():
+                  if not row.get('fresh') or not row.get('dailySynced'):
+                      data['findings'].append({
+                          'code':'DESK_FRESHNESS_SLA_FAILED',
+                          'severity':'critical',
+                          'area':slug,
+                          'message':f"{slug} freshness/daily-sync failed: age={row.get('newestAgeHours')}h sla={row.get('freshnessSlaHours')}h missingDaily={row.get('missingCurrentDailyArticleIds')}",
+                          'repair':'desk',
+                      })
+                      data['summary']['criticalCount']=int(data['summary'].get('criticalCount',0))+1
+                      data['summary']['findingCount']=int(data['summary'].get('findingCount',0))+1
           failed=[r for r in rows if not r.get('ok')]
           if failed:
               data['findings'].append({
@@ -129,10 +149,19 @@ jobs:
           python - <<'PY' > /tmp/editor-workflows.txt
           import json
           data=json.load(open('/tmp/editor-in-chief-status.json',encoding='utf-8'))
+          workflows=[]
           for row in data.get('repairPlan') or []:
               wf=str(row.get('workflow') or '').strip()
-              if wf:
-                  print(wf)
+              if wf and wf not in workflows:
+                  workflows.append(wf)
+          # Freshness failures are deterministically repairable by the Rolling
+          # Desk merge workflow because it now synchronizes the verified Daily
+          # baseline before merging Live.
+          if any(isinstance(f,dict) and f.get('code')=='DESK_FRESHNESS_SLA_FAILED' for f in data.get('findings') or []):
+              if 'merge-live-into-desk.yml' not in workflows:
+                  workflows.append('merge-live-into-desk.yml')
+          for wf in workflows:
+              print(wf)
           PY
 
           while IFS= read -r wf; do
