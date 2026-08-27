@@ -7,12 +7,14 @@ may still be described as a healthy current desk.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from desk_retention import story_time
+from desk_retention import parse_iso, story_time
 
 HKT = timezone(timedelta(hours=8))
+JST = timezone(timedelta(hours=9))
 
 EXPECTED_DESKS = (
     "world", "asia", "hong-kong", "japan", "market-economy",
@@ -72,13 +74,47 @@ def routed_slugs(story: dict[str, Any]) -> list[str]:
     return [slug] if slug in EXPECTED_DESKS else []
 
 
+def editorial_story_time(story: dict[str, Any], *, now: datetime | None = None) -> datetime | None:
+    """Resolve the best editorial timestamp without faking end-of-day freshness.
+
+    Daily story IDs often end in a date only. The generic retention parser treats
+    such IDs as 23:59 HKT so it will not delete them prematurely. That behavior is
+    correct for retention but wrong for freshness. Here an explicit timestamp or
+    human editorial timeLabel takes precedence over a date-only ID.
+    """
+    current = (now or now_utc()).astimezone(timezone.utc)
+    for key in ("publishedAt", "updatedAt", "timestamp", "time", "verifiedAt"):
+        stamp = parse_iso(story.get(key))
+        if stamp is not None:
+            return stamp
+
+    label = str(story.get("timeLabel") or "")
+    current_hkt = current.astimezone(HKT)
+    year = current_hkt.year
+    for zone_name, zone in (("HKT", HKT), ("JST", JST)):
+        m = re.search(rf"(\d{{1,2}})月(\d{{1,2}})日\s*(\d{{1,2}}):(\d{{2}})\s*{zone_name}", label, re.I)
+        if not m:
+            continue
+        month, day, hour, minute = map(int, m.groups())
+        try:
+            candidate = datetime(year, month, day, hour, minute, tzinfo=zone)
+            current_local = current.astimezone(zone)
+            if candidate - current_local > timedelta(days=2):
+                candidate = candidate.replace(year=year - 1)
+            return candidate.astimezone(timezone.utc)
+        except ValueError:
+            pass
+
+    return story_time(story, now=current)
+
+
 def freshest_story_time(stories: list[dict[str, Any]], *, now: datetime | None = None) -> datetime | None:
     current = now or now_utc()
     stamps = []
     for story in stories:
         if not isinstance(story, dict):
             continue
-        stamp = story_time(story, now=current)
+        stamp = editorial_story_time(story, now=current)
         if stamp is not None:
             stamps.append(stamp)
     return max(stamps) if stamps else None
