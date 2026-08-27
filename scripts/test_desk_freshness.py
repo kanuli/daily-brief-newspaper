@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from datetime import datetime, timezone
 
+from desk_freshness_policy import newest_age_hours
 from validate_desk_freshness import audit
 
 NOW = datetime(2026, 8, 28, 0, 30, tzinfo=timezone.utc)
@@ -47,5 +48,12 @@ desk["desks"]["manchester-united"] = [story("manchester-united", "mu-other-20260
 result = audit(latest, desk, NOW)
 assert result["status"] == "FAIL", result
 assert any("current Daily" in x and "manchester-united" in x for x in result["failures"]), result
+
+# A date-only ID must not fake 23:59 freshness when the verified editorial
+# timeLabel gives an earlier real publication/check time.
+labelled = story("manga-anime", "anime-real-time-20260827")
+labelled["timeLabel"] = "8月27日12:30 HKT核實"
+age = newest_age_hours([labelled], now=NOW)
+assert age is not None and 19.9 < age < 20.1, age
 
 print("DESK_FRESHNESS_TESTS_OK")
