@@ -1,0 +1,165 @@
+name: Recover 19:00 HKT Live 2026-08-27
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/recover-live-20260827-1900.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: recover-live-20260827-1900
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Publish verified 19:00 HKT Live recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path=Path('data/live.json')
+          live=json.loads(path.read_text(encoding='utf-8'))
+          current=str(live.get('lastUpdated') or '')
+          if current >= '2026-08-27T19:00:00+08:00':
+              print('RECOVERY_NOOP current=', current)
+              raise SystemExit(0)
+
+          items=[
+            {
+              "id":"world-nepal-tibet-flood-rescue-20260827-1900",
+              "desk":"world",
+              "status":"NEW",
+              "title":"尼泊爾與西藏山洪死亡人數升至逾270　逾1,300人仍失蹤",
+              "dek":"冰川崩塌引發的洪水重創尼泊爾與西藏邊境，多國旅客及朝聖者仍在失蹤名單，跨境救援與國際援助持續增加。",
+              "summary":"尼泊爾與西藏邊境山洪災情進一步擴大，死亡人數已超過270，逾1,300人仍失蹤，搜救工作在道路受阻及次生災害風險下繼續。",
+              "body":"尼泊爾與中國西藏邊境的災難性山洪持續造成重大傷亡。美聯社及路透社27日最新報道顯示，死亡人數已超過270人，仍有逾1,300人失蹤，當中包括來自多個國家的旅客及前往岡仁波齊一帶的朝聖者。尼泊爾已動員直升機及大批救援人員，而中方亦在西藏災區展開大規模搜救。\n\n初步調查指災害由高山冰川及冰岩崩塌觸發，大量冰、岩石和泥沙湧入河谷後形成高速洪流，摧毀道路、橋樑、房屋及部分水電設施。部分地區仍有堰塞湖、山泥傾瀉及持續降雨風險，國際援助亦正陸續抵達，災區目前仍處於緊急搜救階段。",
+              "context":"喜馬拉雅高山地區近年冰川消融加快，極端高溫、冰岩不穩及陡峭河谷地形令突發山洪風險增加。",
+              "why":"傷亡及失蹤規模巨大，而且涉及多國公民、跨境交通與水電基建，後續救援及災害風險具有明顯國際影響。",
+              "watchNext":"留意尼泊爾與西藏最新傷亡名單、外國旅客搜救、堰塞湖監測、道路恢復及國際救援物資到達情況。",
+              "sourceName":"Associated Press／Reuters",
+              "sourceUrl":"https://apnews.com/article/61b592d428e4631add31ce052d0daf1f",
+              "timeLabel":"8月27日19:00 HKT核實",
+              "sources":[
+                {"name":"Associated Press","url":"https://apnews.com/article/61b592d428e4631add31ce052d0daf1f"},
+                {"name":"Reuters","url":"https://www.reuters.com/business/environment/rescuers-search-survivors-after-devastating-nepal-flood-2026-08-27/"}
+              ],
+              "deskSlugs":["world"],
+              "section":"世界｜南亞／災害",
+              "sectionLabel":"世界"
+            },
+            {
+              "id":"japan-hokuriku-extreme-rain-20260827-1900",
+              "desk":"japan",
+              "status":"NEW",
+              "title":"富山石川極端大雨持續　氷見3小時雨量130.5毫米破紀錄",
+              "dek":"北陸前線帶來猛烈降雨，氣象廳數據顯示富山縣氷見市3小時雨量刷新觀測史最高紀錄，石川與富山仍需防範河川氾濫及山泥傾瀉。",
+              "summary":"富山及石川27日遭遇極端大雨，部分地區一度發布最高級別警報，氷見市錄得破紀錄短時雨量。",
+              "body":"日本北陸地區27日持續受前線影響，富山、石川多地出現猛烈降雨。日本氣象廳截至18時的最新觀測顯示，富山縣氷見市3小時雨量達130.5毫米，刷新當地有觀測紀錄以來最高值；氣象廳亦提醒石川及富山部分地區仍有非常激烈降雨、河川水位上升及山泥傾瀉風險。\n\n早上富山縣西部及石川縣能登曾發布最高級別的大雨特別警報，當局要求居民立即確保安全。由於前線仍停留在北陸附近，部分地區至28日仍可能出現警報級大雨，交通、山區道路、低窪地區及受災社區的次生風險仍未解除。",
+              "context":"北陸多山且河川短急，短時間極端降雨容易造成快速水浸、河川氾濫與土砂災害。",
+              "why":"破紀錄短時雨量代表災害風險仍高，並直接影響居民安全、鐵路公路交通及地方救援安排。",
+              "watchNext":"留意氣象廳最新警報、河川水位、避難指示、鐵路及高速公路運行情況，以及28日降雨是否持續。",
+              "sourceName":"日本氣象廳／朝日新聞",
+              "sourceUrl":"https://www.data.jma.go.jp/stats/data/mdrr/periodstat/20260827a/20260827/24/pre3h_mxarea00.html",
+              "timeLabel":"8月27日19:00 HKT核實",
+              "sources":[
+                {"name":"日本氣象廳","url":"https://www.data.jma.go.jp/stats/data/mdrr/periodstat/20260827a/20260827/24/pre3h_mxarea00.html"},
+                {"name":"朝日新聞","url":"https://smart.asahi.com/v/article/ASV8V7FJTV8VOXIE002M.php"}
+              ],
+              "deskSlugs":["japan"],
+              "section":"日本｜北陸／天氣",
+              "sectionLabel":"日本"
+            },
+            {
+              "id":"ai-nvidia-results-market-reaction-20260827-1900",
+              "desk":"ai-tech",
+              "status":"NEW",
+              "title":"輝達強勁展望再推高AI交易　納指期貨升逾1%",
+              "dek":"輝達季度收入按年倍增至962億美元，市場聚焦公司對未來AI需求的強勁展望；晶片及軟件股盤前普遍上升。",
+              "summary":"輝達業績及前瞻重新強化市場對AI基建需求的信心，美國科技股期貨27日明顯跑贏大市。",
+              "body":"輝達公布截至7月的季度收入達962億美元，按年增長106%，其中資料中心收入890億美元，按年增117%。公司管理層表示人工智能運算需求仍在加速，市場其後進一步消化強勁展望，輝達股價在美股盤前上升，帶動其他晶片、儲存及軟件股份同步走強。\n\n路透社27日報道，納斯達克100指數期貨在美東時間清晨升約1%，美光、Marvell、Broadcom等晶片股亦上升；Salesforce及CrowdStrike公布較佳展望後同樣大幅造好。市場目前的主要限制由需求不足轉向記憶體及供應能力，令AI基建投資週期仍維持高強度。",
+              "context":"市場此前擔心大型科技公司AI資本開支可能見頂，但輝達最新業績與需求評論暫時削弱了這種憂慮。",
+              "why":"輝達是全球AI基建交易的核心指標，其需求與供應展望會直接影響半導體、資料中心、雲端及軟件估值。",
+              "watchNext":"留意輝達正式電話會議細節、記憶體供應限制、美股開市後升幅能否維持，以及其他AI供應鏈公司的跟隨表現。",
+              "sourceName":"NVIDIA／Reuters",
+              "sourceUrl":"https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Announces-Financial-Results-for-Second-Quarter-Fiscal-2027/default.aspx",
+              "timeLabel":"8月27日19:00 HKT核實",
+              "sources":[
+                {"name":"NVIDIA Investor Relations","url":"https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Announces-Financial-Results-for-Second-Quarter-Fiscal-2027/default.aspx"},
+                {"name":"Reuters","url":"https://www.reuters.com/business/nasdaq-futures-take-lead-after-nvidia-forecast-refuels-ai-trade-2026-08-27/"}
+              ],
+              "deskSlugs":["ai-tech","market-economy"],
+              "section":"AI / 科技",
+              "sectionLabel":"AI / 科技"
+            }
+          ]
+
+          live.update({
+            'mode':'LIVE',
+            'date':'2026-08-27',
+            'editorialStandardVersion':3,
+            'contentVersion':3,
+            'lastUpdated':'2026-08-27T19:00:00+08:00',
+            'lastUpdatedLabel':'2026年8月27日 19:00 HKT',
+            'windowLabel':'19:00 HKT Live',
+            'nextUpdateLabel':'下一輪 Live 更新 20:00 HKT',
+            'newCount':len(items),
+            'updatedCount':0,
+            'developingCount':0,
+            'items':items,
+          })
+          coverage=live.setdefault('coverage',{})
+          coverage.update({
+            'status':'INCOMPLETE',
+            'deskLatestDepthMet':False,
+            'publishingGateMet':False,
+            'sourceGateMet':True,
+            'geographicGateMet':True,
+            'footballGateMet':True,
+            'dailyEdition':'2026-08-27',
+          })
+          path.write_text(json.dumps(live,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+
+          python scripts/merge_live_into_desk.py
+          python scripts/validate_publication_current.py
+
+      - name: Commit recovered Live and rolling desks
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- data/live.json data/desk-latest.json
+          if git diff --cached --quiet; then
+            echo "19:00 recovery no longer required"
+            exit 0
+          fi
+          git commit -m "Recover 19:00 HKT Live and rolling desks"
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "RECOVER_1900_PASS"
+              exit 0
+            fi
+            git fetch origin main
+            git rebase origin/main
+            sleep $((attempt * 2))
+          done
+          exit 1
