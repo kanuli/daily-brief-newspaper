@@ -16,7 +16,7 @@ concurrency:
 jobs:
   generate:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -28,13 +28,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Generate today's 10 words
+      - name: Generate today's 10 teacher-quality words
         run: python scripts/generate_daily_vocab.py
 
-      - name: Validate output
+      - name: Validate output and teaching-quality metadata
         run: |
           python - <<'PY'
           import json
+          import re
           from datetime import datetime
           from pathlib import Path
           from zoneinfo import ZoneInfo
@@ -44,10 +45,25 @@ jobs:
           data = json.loads(path.read_text(encoding="utf-8"))
           words = data.get("words", [])
           assert len(words) == 10, f"Expected 10 words, got {len(words)}"
+          assert "teacher-core" in str(data.get("selectionPolicy", "")), data.get("selectionPolicy")
+          seen = set()
+          blocked = {("コム", "COM"), ("のこったぶん", "残った分"), ("アロハ", "アロハ"), ("ビア", "ビア")}
+          for word in words:
+              key = (str(word.get("reading", "")), str(word.get("kanji", "")))
+              assert key not in seen, f"Duplicate word: {key}"
+              seen.add(key)
+              assert key not in blocked, f"Known unsuitable daily-teaching regression: {key}"
+              assert word.get("teacherGrade") in {"A", "B"}, f"Non A/B teacher grade: {key}"
+              assert word.get("teacherStatus") == "direct", f"Non-direct teacher status: {key}"
+              assert word.get("teacherCommon") is True, f"Non-common word: {key}"
+              assert word.get("selectionClass") == "teacher-core-common-direct", f"Wrong source class: {key}"
+              assert not re.search(r"[A-Za-z0-9@:/\\]", key[1]), f"ASCII/code-like display: {key}"
           for level in ("N1", "N2", "N3", "N4", "N5"):
               count = sum(1 for word in words if word.get("level") == level)
               assert count == 2, f"{level}: expected 2, got {count}"
-          print(f"Validated {path}: 10 words, 2 per JLPT level")
+          latest = json.loads(Path("data/vocab/latest.json").read_text(encoding="utf-8"))
+          assert latest == data, "latest.json must exactly match today's dated file"
+          print(f"Validated {path}: 10 teacher-quality words, 2 per JLPT level")
           PY
 
       - name: Commit generated vocab
