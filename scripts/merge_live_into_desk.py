@@ -213,6 +213,8 @@ def main():
     desk["contentVersion"] = 3
 
     coverage = live.setdefault("coverage", {})
+    # Public Live metadata must not expose internal QA/recovery process notes.
+    coverage.pop("qaNote", None)
     depth_met = all(counts[slug] >= minimum for slug, minimum in FLOORS.items())
     source_gate = bool(coverage.get("sourceGateMet", True))
     geographic_gate = bool(coverage.get("geographicGateMet", True))
