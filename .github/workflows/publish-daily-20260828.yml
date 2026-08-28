@@ -1,0 +1,29 @@
+name: Publish 2026-08-28 Daily
+on:
+  push:
+    branches: ["main"]
+    paths: [".github/workflows/publish-daily-20260828.yml"]
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Build 08:00 Daily from verified Rolling Desk reservoir
+        run: python scripts/publish_daily_20260828.py
+      - name: Validate Daily v3
+        run: python scripts/validate_daily_v3.py
+      - name: Validate site data
+        run: python scripts/validate_site_data.py
+      - name: Validate hard desk depth / geography
+        run: python scripts/validate_editorial_v2.py
+      - name: Commit publication artifacts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/2026-08-28.json data/latest.json data/archive.json data/topic-more/2026-08-28.json data/desk-latest.json data/live.json editions/2026-08-28.html
+          git commit -m "Publish 2026-08-28 Daily Edition" || exit 0
+          git push
