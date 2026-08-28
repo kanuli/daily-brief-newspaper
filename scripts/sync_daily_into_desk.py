@@ -4,7 +4,7 @@
 The Daily edition is already verified editorial copy. Topic pages combine Daily,
 Rolling Desk and Live, so a Daily story must never be hidden behind a stale
 Rolling Desk simply because the Rolling Desk still satisfies a numeric count
-floor.
+floor. Hard desk depths are minimums, never story caps.
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import copy
 import json
 from pathlib import Path
 
-from desk_freshness_policy import CAPS, EXPECTED_DESKS, current_daily_dates, routed_slugs
+from desk_freshness_policy import EXPECTED_DESKS, current_daily_dates, routed_slugs
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -66,7 +66,9 @@ def main() -> int:
             story["deskSlugs"] = list(dict.fromkeys(slugs))
             existing = desks.setdefault(slug, [])
             before = [str(x.get("id") or "") for x in existing if isinstance(x, dict)]
-            desks[slug] = merge_front(existing, story)[:CAPS[slug]]
+            # Preserve every distinct retained story. Staleness is handled by the
+            # retention policy, not by an arbitrary topic-page count maximum.
+            desks[slug] = merge_front(existing, story)
             after = [str(x.get("id") or "") for x in desks[slug] if isinstance(x, dict)]
             if after and after[0] == str(story.get("id")) and (not before or before[0] != after[0]):
                 promoted[slug] += 1
