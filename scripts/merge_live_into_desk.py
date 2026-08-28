@@ -23,17 +23,6 @@ FLOORS = {
     "manchester-united": 4,
     "football": 10,
 }
-CAPS = {
-    "world": 24,
-    "asia": 24,
-    "hong-kong": 16,
-    "japan": 20,
-    "market-economy": 20,
-    "ai-tech": 20,
-    "manga-anime": 12,
-    "manchester-united": 10,
-    "football": 24,
-}
 DESK_ALIASES = {
     "world": ["world"],
     "asia": ["asia"],
@@ -121,12 +110,7 @@ def desk_slugs(item):
 
 
 def normalize_live_route(item):
-    """Write the routing contract into every published Live item.
-
-    Front-end pages should never need to infer a desk from headline text.  The canonical
-    fields are persisted into live.json so homepage, Live, topic pages and future clients
-    all read the same routing metadata.
-    """
+    """Write the routing contract into every published Live item."""
     raw_desk = str(item.get("desk") or "").strip()
     canonical = CANONICAL_DESK.get(raw_desk, raw_desk)
     if canonical:
@@ -182,7 +166,8 @@ def main():
                 expired_cross_posts.append((slug, str(raw.get("id") or raw.get("title") or "unknown")))
                 continue
             retained.append(normalize_retained_story(copy.deepcopy(raw)))
-        desks[slug] = dedupe(retained)[:CAPS[slug]]
+        # Hard floors are minimums, never caps: keep every still-current unique story.
+        desks[slug] = dedupe(retained)
 
     for item in live.get("items", []):
         slugs = normalize_live_route(item)
@@ -199,8 +184,6 @@ def main():
             raise SystemExit(f"Live item {item.get('id')} contains process copy")
 
         for slug in slugs:
-            # Cross-routed Football items are useful on regional pages while fresh,
-            # but must age out there.  They remain available on the Football desk.
             if not keep_on_desk(item, slug):
                 expired_cross_posts.append((slug, str(item.get("id") or item.get("title") or "unknown")))
                 continue
@@ -215,7 +198,8 @@ def main():
                 if str(s.get("id") or "") != story_id
                 and re.sub(r"\s+", " ", str(s.get("title") or "")).strip().lower() != story_title
             ]
-            desks[slug] = dedupe([story] + existing)[:CAPS[slug]]
+            # New current stories lead their desk; no arbitrary topic-page maximum.
+            desks[slug] = dedupe([story] + existing)
 
     counts = {slug: unique_count(desks.get(slug, [])) for slug in FLOORS}
     missing = {slug: (counts[slug], minimum) for slug, minimum in FLOORS.items() if counts[slug] < minimum}
@@ -239,7 +223,6 @@ def main():
     coverage["japanCountVerified"] = counts["japan"]
     coverage["footballGateMet"] = football_gate
     coverage["publishingGateMet"] = publication_ready
-    # Preserve the special 08:00 Daily baseline status; hourly Live may become COMPLETE.
     if str(live.get("mode") or "").upper() == "DAILY_BASELINE":
         coverage["status"] = "DAILY_BASELINE"
     else:
