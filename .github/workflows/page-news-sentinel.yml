@@ -6,6 +6,7 @@ on:
     paths:
       - "*.html"
       - "scripts/page_news_sentinel.py"
+      - "scripts/run_page_news_sentinel.py"
       - "scripts/desk_freshness_policy.py"
       - "data/latest.json"
       - "data/live.json"
@@ -13,8 +14,9 @@ on:
       - "data/stocks-latest.json"
       - ".github/workflows/page-news-sentinel.yml"
   schedule:
-    # Independent page-level newsroom check four times per hour.
-    - cron: "7,22,37,52 * * * *"
+    # Availability is already checked every 10 minutes by pages-probe.
+    # This lower-frequency supervisory pass avoids adding queue pressure.
+    - cron: "47 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -66,7 +68,7 @@ jobs:
             --output /tmp/page-news-sentinel-status.json
           )
           [ -s /tmp/previous-page-news-sentinel.json ] && args+=(--previous-status /tmp/previous-page-news-sentinel.json)
-          python scripts/page_news_sentinel.py "${args[@]}"
+          python scripts/run_page_news_sentinel.py "${args[@]}"
           rc=$?
           echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
           exit 0
@@ -108,6 +110,7 @@ jobs:
           data['repairExecution']=rows
           if any(r.get('reason') == 'dispatch-failed' for r in rows):
               data['status']='EDITORIAL_ATTENTION_REQUIRED'
+              data['escalationRequired']=True
           path.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
           PY
 
@@ -117,19 +120,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          status=$(python -c 'import json; print(json.load(open("/tmp/page-news-sentinel-status.json",encoding="utf-8")).get("status","UNKNOWN"))')
-          [ "$status" = "EDITORIAL_ATTENTION_REQUIRED" ] || exit 0
+          escalate=$(python -c 'import json; print("true" if json.load(open("/tmp/page-news-sentinel-status.json",encoding="utf-8")).get("escalationRequired") else "false")')
+          [ "$escalate" = "true" ] || exit 0
 
           title="[Page News Sentinel] Persistent public-news freshness failure"
           body=$(python - <<'PY'
           import json
           d=json.load(open('/tmp/page-news-sentinel-status.json',encoding='utf-8'))
-          print('Automated Editor-in-Chief escalation. The same public page/news failure survived consecutive sentinel cycles.\n')
+          print('Automated Editor-in-Chief escalation. A public page/news failure survived the repair cycle, or the sentinel itself could not collect authoritative evidence.\n')
           print(f"Checked: {d.get('checkedAtHKT')}\n")
           for row in d.get('pageResults') or []:
               if not row.get('ok'):
                   print(f"- `{row.get('page')}`: {'; '.join(row.get('reasons') or [])}")
-          print('\nThe robot has already attempted only verification-gated repair workflows. No news or timestamps were fabricated.')
+          if d.get('runnerFailure'):
+              print(f"- Sentinel runner: {d.get('runnerFailure')}")
+          print('\nThe robot attempted only verification-gated repair workflows. It did not fabricate news or rewrite timestamps.')
           PY
           )
           existing=$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search "$title in:title" --json number --jq '.[0].number // empty')
