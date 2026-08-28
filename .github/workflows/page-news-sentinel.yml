@@ -120,7 +120,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          escalate=$(python -c 'import json; print("true" if json.load(open("/tmp/page-news-sentinel-status.json",encoding="utf-8")).get("escalationRequired") else "false")')
+          escalate=$(python - <<'PY'
+          import json
+          from pathlib import Path
+          current=json.load(open('/tmp/page-news-sentinel-status.json',encoding='utf-8'))
+          previous={}
+          previous_path=Path('/tmp/previous-page-news-sentinel.json')
+          if previous_path.is_file():
+              try:
+                  previous=json.loads(previous_path.read_text(encoding='utf-8'))
+              except Exception:
+                  previous={}
+          transitioned=(
+              current.get('status') == 'EDITORIAL_ATTENTION_REQUIRED'
+              and previous.get('status') != 'EDITORIAL_ATTENTION_REQUIRED'
+          )
+          print('true' if current.get('escalationRequired') or transitioned else 'false')
+          PY
+          )
           [ "$escalate" = "true" ] || exit 0
 
           title="[Page News Sentinel] Persistent public-news freshness failure"
@@ -139,7 +156,7 @@ jobs:
           )
           existing=$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search "$title in:title" --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
-            gh issue comment "$existing" --repo "${GITHUB_REPOSITORY}" --body "$body"
+            echo "Existing Page News Sentinel escalation issue #${existing}; not duplicating or spamming comments."
           else
             gh issue create --repo "${GITHUB_REPOSITORY}" --title "$title" --body "$body"
           fi
