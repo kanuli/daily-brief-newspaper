@@ -40,49 +40,70 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Align Rolling Desk to verified Daily and current Live
+      - name: Prepare publisher workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git reset --hard origin/main
+
+      - name: Catch up missed Live snapshots
+        shell: bash
+        run: python scripts/catch_up_live_into_desk.py
+
+      - name: Sync verified Daily into Rolling Desk
+        shell: bash
+        run: python scripts/sync_daily_into_desk.py
+
+      - name: Recover hard desk depth
+        shell: bash
+        run: python scripts/recover_desk_depth_watchdog.py
+
+      - name: Merge current Live snapshot
+        shell: bash
+        run: python scripts/merge_live_into_desk.py
+
+      - name: Validate desk freshness
+        shell: bash
+        run: python scripts/validate_desk_freshness.py
+
+      - name: Validate current publication
+        shell: bash
+        run: python scripts/validate_publication_current.py
+
+      - name: Audit Traditional Chinese TTS coverage
+        shell: bash
+        run: python scripts/audit_tts_language.py
+
+      - name: Test desk freshness policy
+        shell: bash
+        run: python scripts/test_desk_freshness.py
+
+      - name: Commit Rolling Desk
         id: publish
         shell: bash
         run: |
           set -euo pipefail
           echo "changed=false" >> "$GITHUB_OUTPUT"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
+          git add -- data/desk-latest.json data/live.json
+          if git diff --cached --quiet; then
+            echo "ROLLING_DESK_CURRENT no merge change required"
+            exit 0
+          fi
+          LIVE_LABEL=$(python -c 'import json; print(json.load(open("data/live.json",encoding="utf-8")).get("windowLabel", "Live"))')
+          git commit -m "Sync Rolling Desk to verified Daily + ${LIVE_LABEL}"
           for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git reset --hard origin/main
-
-            # First replay every committed Live snapshot newer than the Rolling
-            # reservoir. This closes gaps when a previous hourly merge failed.
-            python scripts/catch_up_live_into_desk.py
-
-            # Then align today's verified Daily, recover any hard-floor deficit,
-            # re-merge the current Live snapshot, and run all publication gates.
-            python scripts/sync_daily_into_desk.py
-            python scripts/recover_desk_depth_watchdog.py
-            python scripts/merge_live_into_desk.py
-            python scripts/validate_desk_freshness.py
-            python scripts/validate_publication_current.py
-            python scripts/audit_tts_language.py
-            python scripts/test_desk_freshness.py
-
-            git add -- data/desk-latest.json data/live.json
-            if git diff --cached --quiet; then
-              echo "ROLLING_DESK_CURRENT no merge change required"
-              exit 0
-            fi
-
-            LIVE_LABEL=$(python -c 'import json; print(json.load(open("data/live.json",encoding="utf-8")).get("windowLabel", "Live"))')
-            git commit -m "Sync Rolling Desk to verified Daily + ${LIVE_LABEL}"
             if git push origin HEAD:main; then
               echo "changed=true" >> "$GITHUB_OUTPUT"
               echo "ROLLING_DESK_AUTO_SYNC_PASS ${LIVE_LABEL}"
               exit 0
             fi
             sleep $((attempt * 2))
+            git fetch origin main
+            git rebase origin/main
           done
-
           echo "Rolling Desk auto-sync could not push after retries" >&2
           exit 1
 
