@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import copy,json,pathlib,re
-from datetime import datetime
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 DATA=ROOT/'data'
 DATE='2026-08-29'; DATE_LABEL='2026年8月29日 星期六'; EDITION='010'
@@ -19,16 +18,19 @@ META={
 
 def load(p): return json.loads(p.read_text(encoding='utf-8'))
 def dump(p,obj): p.parent.mkdir(parents=True,exist_ok=True); p.write_text(json.dumps(obj,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+def measure(text):
+    cjk=len(re.findall(r'[\u3400-\u9fff]',str(text or '')))
+    return cjk if cjk>=50 else len(re.sub(r'\s+','',str(text or '')))
 def score(s):
     sid=str(s.get('id','')); t=str(s.get('timeLabel',''))
     return (100 if '20260829' in sid or '8月29日' in t else 0)+(25 if s.get('status')=='NEW' else 0)+(5 if len(s.get('sources',[]))>=2 else 0)
 def valid_story(s):
     req=['id','title','dek','summary','body','context','why','watchNext','sourceName','sourceUrl','timeLabel']
-    return all(isinstance(s.get(k),str) and s[k].strip() for k in req) and '\n\n' in s['body'] and len(re.sub(r'\s+','',s['body']))>=100
+    if not all(isinstance(s.get(k),str) and s[k].strip() for k in req): return False
+    paras=[p.strip() for p in re.split(r'\n\s*\n',s['body']) if p.strip()]
+    return len(paras)>=2 and measure(s['body'])>=100
 
-desk=load(DATA/'desk-latest.json')
-desks=desk['desks']
-# World excludes stories explicitly cross-tagged to Asia.
+desk=load(DATA/'desk-latest.json'); desks=desk['desks']
 desks['world']=[s for s in desks.get('world',[]) if 'asia' not in (s.get('deskSlugs') or [])]
 for slug,minn in FLOORS.items():
     arr=[]; seen=set()
@@ -41,7 +43,6 @@ if len(desks['japan'])<8: raise SystemExit('JAPAN HARD FLOOR FAIL')
 desk['date']=DATE; desk['generatedAt']=DATE+'T08:00:00+08:00'; desk['editorialStandardVersion']=3; desk['contentVersion']=3
 dump(DATA/'desk-latest.json',desk)
 
-# Build homepage: fresh-first within each desk, quotas total 16.
 selected=[]; selected_ids=set()
 for slug,q in QUOTA.items():
     ranked=sorted(desks[slug],key=score,reverse=True)
@@ -52,7 +53,6 @@ for slug,q in QUOTA.items():
         selected.append(c); selected_ids.add(c['id'])
         if sum(1 for x in selected if x.get('desk')==slug)>=q: break
 if len(selected)<12: raise SystemExit(f'homepage too shallow: {len(selected)}')
-# Top five are distinct current developments across major desks.
 top=[]
 for slug in ('market-economy','world','japan','asia','football'):
     candidates=[s for s in selected if s.get('desk')==slug]
@@ -66,29 +66,22 @@ for slug in META:
 daily={'editionNumber':EDITION,'date':DATE,'dateLabel':DATE_LABEL,'tagline':'全球更新 · 08:00 verified · v3長文','editorialStandardVersion':3,'contentVersion':3,'leadId':lead,'topFive':top,'articles':selected,'sections':sections}
 dump(DATA/f'{DATE}.json',daily); dump(DATA/'latest.json',daily)
 
-# Topic-more retains the broad reservoir; one unique article object can be referenced by multiple desks.
-all_articles=[]; byid={}
-section_ids={slug:[] for slug in META}
+all_articles=[]; byid={}; section_ids={slug:[] for slug in META}
 for slug in META:
     for s in desks[slug]:
         sid=s['id']; section_ids[slug].append(sid)
         if sid not in byid:
             c=copy.deepcopy(s); c['desk']=slug; byid[sid]=c; all_articles.append(c)
 topic_sections=[]
-for slug,(title,subtitle) in META.items():
-    topic_sections.append({'slug':slug,'title':title,'subtitle':subtitle,'articleIds':section_ids[slug]})
+for slug,(title,subtitle) in META.items(): topic_sections.append({'slug':slug,'title':title,'subtitle':subtitle,'articleIds':section_ids[slug]})
 topic={'date':DATE,'editorialStandardVersion':3,'contentVersion':3,'articles':all_articles,'sections':topic_sections}
 dump(DATA/'topic-more'/f'{DATE}.json',topic)
 
-# Archive
 archive=load(DATA/'archive.json'); entries=[e for e in archive.get('editions',[]) if e.get('date')!=DATE]
-headlines=[]
-for i in top[:3]:
-    s=next(x for x in selected if x['id']==i); headlines.append(s['title'][:32])
+headlines=[next(x for x in selected if x['id']==i)['title'][:32] for i in top[:3]]
 entry={'date':DATE,'shortDate':'29 AUG 2026','headline':'；'.join(headlines),'topics':[META[s][0] for s in META],'url':f'editions/{DATE}.html'}
 archive['editions']=[entry]+entries; dump(DATA/'archive.json',archive)
 
-# 08:00 Daily-only baseline.
 counts={slug:len(desks[slug]) for slug in FLOORS}
 live={'mode':'DAILY_BASELINE','date':DATE,'editorialStandardVersion':3,'contentVersion':3,'lastUpdated':DATE+'T08:00:00+08:00','lastUpdatedLabel':'2026年8月29日 08:00 HKT','windowLabel':'08:00 HKT Daily Edition','nextUpdateLabel':'下一輪 Live 更新 09:00 HKT','newCount':0,'updatedCount':0,'developingCount':0,'coverage':{'status':'DAILY_BASELINE','checkedAt':DATE+'T08:00:00+08:00','deskLatestStoryCounts':counts,'deskLatestDepthMet':all(counts[k]>=FLOORS[k] for k in FLOORS),'japanCountVerified':counts['japan'],'sourceGateMet':True,'geographicGateMet':True,'footballGateMet':True,'publishingGateMet':True,'dailyEdition':DATE},'items':[]}
 dump(DATA/'live.json',live)
