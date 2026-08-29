@@ -1,5 +1,5 @@
 name: Publish 2026-08-29 Daily Edition
-# trigger: 08:00 HKT publication
+# trigger: 08:00 HKT publication repair v2
 
 on:
   push:
@@ -11,18 +11,13 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: daily-publication-20260829
   cancel-in-progress: false
 
 jobs:
   publish:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -55,12 +50,3 @@ jobs:
           git add data/desk-latest.json data/live.json data/latest.json data/2026-08-29.json data/topic-more/2026-08-29.json data/archive.json editions/2026-08-29.html
           git commit -m "Publish 2026-08-29 CANTONESE Daily Edition" || true
           git push
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-      - name: Upload static site
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: .
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
