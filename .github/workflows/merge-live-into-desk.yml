@@ -7,6 +7,7 @@ on:
       - "data/latest.json"
       - "data/live.json"
       - "scripts/merge_live_into_desk.py"
+      - "scripts/catch_up_live_into_desk.py"
       - "scripts/desk_retention.py"
       - "scripts/desk_freshness_policy.py"
       - "scripts/sync_daily_into_desk.py"
@@ -52,9 +53,12 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            # The verified Daily edition is a first-class source for every topic
-            # desk. This prevents an old Rolling reservoir from hiding today's
-            # verified Daily story simply because the desk still meets a count floor.
+            # First replay every committed Live snapshot newer than the Rolling
+            # reservoir. This closes gaps when a previous hourly merge failed.
+            python scripts/catch_up_live_into_desk.py
+
+            # Then align today's verified Daily, recover any hard-floor deficit,
+            # re-merge the current Live snapshot, and run all publication gates.
             python scripts/sync_daily_into_desk.py
             python scripts/recover_desk_depth_watchdog.py
             python scripts/merge_live_into_desk.py
