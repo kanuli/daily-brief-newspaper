@@ -162,6 +162,13 @@ def main():
         for raw in desks.setdefault(slug, []):
             if not isinstance(raw, dict):
                 continue
+            # When a story carries an explicit routing contract, it must not linger
+            # on a desk that is no longer listed there. Legacy stories without an
+            # explicit deskSlugs list are left untouched for backward compatibility.
+            explicit_routes = raw.get("deskSlugs")
+            if isinstance(explicit_routes, list) and explicit_routes and slug not in explicit_routes:
+                expired_cross_posts.append((slug, str(raw.get("id") or raw.get("title") or "unknown")))
+                continue
             if not keep_on_desk(raw, slug):
                 expired_cross_posts.append((slug, str(raw.get("id") or raw.get("title") or "unknown")))
                 continue
