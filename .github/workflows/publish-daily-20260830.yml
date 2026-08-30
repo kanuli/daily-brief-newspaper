@@ -20,6 +20,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Apply World geography guard
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('scripts/publish_daily_20260830.py')
+          src = p.read_text(encoding='utf-8')
+          replacement = r'''\1if slug == "world" and any(term in (str(story.get("section", "")) + " " + str(story.get("title", ""))) for term in ("西亞", "中東", "伊朗", "以色列", "海灣", "Middle East", "West Asia")):\n\1    continue\n\1sid = story.get("id")'''
+          src = re.sub(r'(?m)^(\s*)sid = story\.get\("id"\)$', replacement, src)
+          p.write_text(src, encoding='utf-8')
+          PY
+
       - name: Build 08:00 Daily Edition
         run: python scripts/publish_daily_20260830.py
 
