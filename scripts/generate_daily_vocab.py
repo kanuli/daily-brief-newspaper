@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Generate a teacher-quality daily 10-word Japanese vocabulary file.
 
-The newspaper deliberately selects from the vocabulary game's teacher-audited
-CORE set, not from the unrestricted advanced dictionary supplement.  An entry is
-eligible only when the exact reading+display key is marked common, directly
-classified, non-conflicting, and teacher grade A/B in jlpt_teacher_audit.tsv.
+The newspaper selects JLPT level/quality from the vocabulary game's teacher-audited
+CORE set and exact teacher audit, then enriches each selected headword with the
+part-of-speech metadata used by the Japanese vocabulary list.
 
 JLPT has no official exhaustive post-2010 word list; levels remain this project's
 pedagogical classifications.
@@ -25,6 +24,7 @@ from zoneinfo import ZoneInfo
 
 CORE_URL = "https://raw.githubusercontent.com/kanuli/japanese-vocab-game/main/data/vocab_core_verified.js"
 AUDIT_URL = "https://raw.githubusercontent.com/kanuli/japanese-vocab-game/main/data/jlpt_teacher_audit.tsv"
+ADVANCED_URL = "https://raw.githubusercontent.com/kanuli/japanese-vocab-game/main/data/advanced_vocab.js"
 SOURCE_REPO_URL = "https://github.com/kanuli/japanese-vocab-game"
 LEVELS = ("N1", "N2", "N3", "N4", "N5")
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,9 +33,6 @@ KANA_RE = re.compile(r"^[\u3040-\u30ffー・ヽヾゝゞ]+$")
 ASCII_RE = re.compile(r"[A-Za-z0-9@:/\\]")
 BAD_DISPLAY_RE = re.compile(r"[\[\]［］{}<>＜＞]|https?://|www\.", re.I)
 
-# Regression sentinels: dictionary-valid does not automatically mean suitable as a
-# representative daily JLPT teaching headword. These exact forms must never return
-# to the normal N1-N5 newspaper teaching pool.
 BLOCKED_DAILY_KEYS = {
     ("コム", "COM"),
     ("のこったぶん", "残った分"),
@@ -60,7 +57,7 @@ def target_date(value: str | None) -> str:
 def download_text(url: str) -> str:
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": "daily-brief-newspaper-vocab-generator/2.0"},
+        headers={"User-Agent": "daily-brief-newspaper-vocab-generator/2.1"},
     )
     with urllib.request.urlopen(request, timeout=45) as response:
         return response.read().decode("utf-8")
@@ -72,6 +69,22 @@ def parse_js_array(text: str, label: str):
     if marker_at < 0:
         raise RuntimeError(f"Could not locate vocabulary array marker ',T=' in {label}")
     array_at = text.find("[", marker_at + len(marker))
+    if array_at < 0:
+        raise RuntimeError(f"Could not locate vocabulary array in {label}")
+    data, _ = json.JSONDecoder().raw_decode(text[array_at:])
+    if not isinstance(data, list):
+        raise RuntimeError(f"{label} vocabulary source did not decode to a list")
+    return data
+
+
+def parse_named_js_array(text: str, variable: str, label: str):
+    marker_at = text.find(variable)
+    if marker_at < 0:
+        raise RuntimeError(f"Could not locate {variable} in {label}")
+    equals_at = text.find("=", marker_at + len(variable))
+    if equals_at < 0:
+        raise RuntimeError(f"Could not locate assignment for {variable} in {label}")
+    array_at = text.find("[", equals_at + 1)
     if array_at < 0:
         raise RuntimeError(f"Could not locate vocabulary array in {label}")
     data, _ = json.JSONDecoder().raw_decode(text[array_at:])
@@ -97,6 +110,28 @@ def parse_audit(text: str):
     return rows
 
 
+def build_pos_lookup(entries):
+    """Index the same POS metadata exposed by the Japanese vocabulary list."""
+    lookup = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        reading = str(entry.get("reading") or "").strip()
+        kanji = str(entry.get("kanji") or "").strip()
+        display = str(entry.get("displayWord") or kanji or reading).strip()
+        pos = str(entry.get("pos") or "").strip().lower()
+        if not reading or not display or not pos or pos == "unclassified":
+            continue
+        lookup.setdefault((reading, display), pos)
+        if kanji:
+            lookup.setdefault((reading, kanji), pos)
+        elif display == reading:
+            lookup.setdefault((reading, ""), pos)
+    if len(lookup) < 1000:
+        raise RuntimeError(f"Advanced POS lookup unexpectedly small: {len(lookup)} exact keys")
+    return lookup
+
+
 def clean_teaching_headword(reading: str, display: str) -> bool:
     if not reading or not KANA_RE.fullmatch(reading):
         return False
@@ -112,11 +147,18 @@ def clean_teaching_headword(reading: str, display: str) -> bool:
     return True
 
 
-def normalize_core(entries, audit):
-    """Return only high-confidence, common, direct teacher-audited core headwords."""
+def normalize_core(entries, audit, pos_lookup):
+    """Return high-confidence teacher-audited headwords with real POS metadata."""
     rows = []
     seen = set()
-    rejected = {"not_exact": 0, "not_common": 0, "not_direct": 0, "grade": 0, "form": 0}
+    rejected = {
+        "not_exact": 0,
+        "not_common": 0,
+        "not_direct": 0,
+        "grade": 0,
+        "form": 0,
+        "missing_pos": 0,
+    }
 
     # vocab_core_verified.js tuples:
     # reading, display, level, meaning, meaningSource, levelSource, entryId,
@@ -147,17 +189,22 @@ def normalize_core(entries, audit):
         if level not in LEVELS or not meaning or not clean_teaching_headword(reading, display):
             rejected["form"] += 1
             continue
+
+        shown = display or reading
+        pos = pos_lookup.get((reading, display)) or pos_lookup.get((reading, shown))
+        if not pos:
+            rejected["missing_pos"] += 1
+            continue
         if key in seen:
             continue
         seen.add(key)
         rows.append(
             {
-                "level": level,  # final teacher-audit level is authoritative
+                "level": level,
                 "reading": reading,
                 "kanji": display,
                 "meaning": meaning,
-                # Core overlay has no POS field. Do not invent one.
-                "partOfSpeech": "unclassified",
+                "partOfSpeech": pos,
                 "teacherGrade": grade,
                 "teacherStatus": status,
                 "teacherBasis": str(meta.get("basis") or "").strip(),
@@ -205,8 +252,6 @@ def choose_words(rows, date: str):
     for level in LEVELS:
         level_rows = [row for row in rows if row["level"] == level]
         fresh = [row for row in level_rows if (row["reading"], row["kanji"]) not in used]
-        # Reuse is allowed only after the fresh high-quality pool is exhausted; never
-        # degrade into an unreviewed or uncommon word merely to avoid repetition.
         pool = fresh if len(fresh) >= 2 else level_rows
         pool = sorted(pool, key=lambda row: stable_rank(date, row))
 
@@ -243,6 +288,8 @@ def validate_selected(words):
             raise RuntimeError(f"Non-common/non-direct word selected: {key}")
         if word.get("selectionClass") != "teacher-core-common-direct":
             raise RuntimeError(f"Unexpected selection class: {key}")
+        if not word.get("partOfSpeech") or word.get("partOfSpeech") == "unclassified":
+            raise RuntimeError(f"Missing part of speech for selected word: {key}")
         if not clean_teaching_headword(word["reading"], word["kanji"]):
             raise RuntimeError(f"Unsuitable teaching headword selected: {key}")
     counts = {level: sum(1 for word in words if word["level"] == level) for level in LEVELS}
@@ -255,9 +302,9 @@ def build_payload(date: str, words):
     return {
         "date": date,
         "sourceRepo": "kanuli/japanese-vocab-game",
-        "sourceFile": "data/vocab_core_verified.js + data/jlpt_teacher_audit.tsv",
+        "sourceFile": "data/vocab_core_verified.js + data/jlpt_teacher_audit.tsv + data/advanced_vocab.js",
         "sourceUrl": SOURCE_REPO_URL,
-        "selectionPolicy": "teacher-core + exact audit + common + direct + grade A/B; no unrestricted advanced-dictionary random picks",
+        "selectionPolicy": "teacher-core + exact audit + common + direct + grade A/B; POS enriched from exact Japanese vocabulary-list entry",
         "levelNote": "JLPT 分級為本站教師審核後的學習用分類；現行 JLPT 並沒有官方完整逐字詞表。",
         "words": words,
     }
@@ -268,7 +315,11 @@ def main():
     date = target_date(args.date)
     core_entries = parse_js_array(download_text(CORE_URL), "vocab_core_verified.js")
     audit = parse_audit(download_text(AUDIT_URL))
-    rows = normalize_core(core_entries, audit)
+    advanced_entries = parse_named_js_array(
+        download_text(ADVANCED_URL), "window.ADVANCED_WORDS", "advanced_vocab.js"
+    )
+    pos_lookup = build_pos_lookup(advanced_entries)
+    rows = normalize_core(core_entries, audit, pos_lookup)
     words = choose_words(rows, date)
     counts = validate_selected(words)
     payload = build_payload(date, words)
