@@ -32,6 +32,40 @@ jobs:
           p.write_text(src, encoding='utf-8')
           PY
 
+      - name: Enforce current Rolling Desk lookback
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('data/desk-latest.json')
+          data = json.loads(path.read_text(encoding='utf-8'))
+          floors = {'world':8,'asia':8,'hong-kong':6,'japan':8,'market-economy':8,'ai-tech':6,'manga-anime':4,'manchester-united':4,'football':10}
+          special = {'manga-anime','manchester-united','football'}
+          def freshness(story, slug):
+              text = ' '.join(str(story.get(k,'')) for k in ('id','timeLabel','title'))
+              if '20260830' in text or '2026-08-30' in text or '8月30' in text or '30 Aug' in text:
+                  return 3
+              if '20260829' in text or '2026-08-29' in text or '8月29' in text or '29 Aug' in text:
+                  return 2
+              if slug in special and ('20260828' in text or '2026-08-28' in text or '8月28' in text or '28 Aug' in text):
+                  return 1
+              return 0
+          counts = {}
+          for slug, stories in data.get('desks', {}).items():
+              ranked = [(freshness(s, slug), i, s) for i, s in enumerate(stories)]
+              kept = [s for score, i, s in ranked if score > 0]
+              kept.sort(key=lambda s: (-freshness(s, slug), next((i for i,x in enumerate(stories) if x.get('id') == s.get('id')), 10**6)))
+              data['desks'][slug] = kept
+              counts[slug] = len(kept)
+          failures = {slug:(counts.get(slug,0), floor) for slug,floor in floors.items() if counts.get(slug,0) < floor}
+          print('Current-window desk counts:', counts)
+          if failures:
+              raise SystemExit(f'Current-window recovery required; floors not met: {failures}')
+          if counts.get('japan',0) < 8:
+              raise SystemExit(f'Japan current-window publication failure: {counts.get("japan",0)} < 8')
+          path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+
       - name: Build 08:00 Daily Edition
         run: python scripts/publish_daily_20260830.py
 
