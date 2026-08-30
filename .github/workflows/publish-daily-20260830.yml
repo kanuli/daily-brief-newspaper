@@ -32,7 +32,7 @@ jobs:
           p.write_text(src, encoding='utf-8')
           PY
 
-      - name: Enforce current Rolling Desk lookback
+      - name: Enforce current lookback and recover Hong Kong
         run: |
           python - <<'PY'
           import json
@@ -50,17 +50,53 @@ jobs:
               if slug in special and ('20260828' in text or '2026-08-28' in text or '8月28' in text or '28 Aug' in text):
                   return 1
               return 0
-          counts = {}
           for slug, stories in data.get('desks', {}).items():
-              ranked = [(freshness(s, slug), i, s) for i, s in enumerate(stories)]
-              kept = [s for score, i, s in ranked if score > 0]
-              kept.sort(key=lambda s: (-freshness(s, slug), next((i for i,x in enumerate(stories) if x.get('id') == s.get('id')), 10**6)))
+              kept = [s for s in stories if freshness(s, slug) > 0]
+              original_order = {s.get('id'):i for i,s in enumerate(stories)}
+              kept.sort(key=lambda s: (-freshness(s, slug), original_order.get(s.get('id'), 10**6)))
               data['desks'][slug] = kept
-              counts[slug] = len(kept)
+
+          hk = data['desks']['hong-kong']
+          existing = {s.get('id') for s in hk}
+          recovery = [
+            {
+              'id':'hk-five-year-plan-policy-address-20260829-1907','deskSlugs':['hong-kong'],'section':'香港｜公共政策／施政','status':'LATEST',
+              'title':'李家超再促市民同讀五年規劃與施政報告　兩份文件9月16日同日公布',
+              'dek':'行政長官指首份五年規劃會訂出中期發展方向，施政報告則交代年度政策落實。',
+              'summary':'李家超8月29日表示，香港首份五年規劃與2026年施政報告將於9月16日公布，並鼓勵市民把兩份文件一併閱讀。',
+              'body':'行政長官李家超8月29日在活動上再次表示，香港首份五年規劃與2026年施政報告將於9月16日公布。他稱五年規劃會聚焦未來數年的經濟與社會發展方向，而施政報告則按相關方向提出當年度政策與項目，兩者需要一併理解。\n\n政府早前已確認，五年規劃會在立法會特別會議公布，施政報告緊接發表。文件涉及經濟、就業、青年發展及民生等範疇，公布後的年度指標、重大工程與具體資源安排，將成為衡量政策落實的重要內容。',
+              'context':'香港首次編製本地五年規劃，並把年度施政報告與中期發展藍圖直接銜接。','why':'文件會影響未來數年的公共政策、投資方向、就業及民生措施。','watchNext':'留意9月16日正式文本、年度里程碑、重大項目與財政資源安排。',
+              'sourceName':'RTHK／香港政府新聞網','sourceUrl':'https://news.rthk.hk/rthk/en/component/k2/1868069-20260829.htm','timeLabel':'29 Aug 2026 · 19:07 HKT','sources':[{'name':'RTHK','url':'https://news.rthk.hk/rthk/en/component/k2/1868069-20260829.htm'},{'name':'香港政府新聞網','url':'https://www.news.gov.hk/eng/2026/08/20260826/20260826_163631_258.html'}]
+            },
+            {
+              'id':'hk-school-opening-rain-thunderstorm-20260829-1809','deskSlugs':['hong-kong'],'section':'香港｜天氣／開學','status':'LATEST',
+              'title':'天文台料開學日部分地區驟雨較多兼有雷暴　籲上學上班留意天氣變化',
+              'dek':'南海北部廣闊低壓槽令廣東沿岸未來數日天氣不穩定，低壓區發展仍有變數。',
+              'summary':'天文台表示未來兩三日香港間中有驟雨，星期二開學日初時部分地區雨勢或較大並有雷暴。',
+              'body':'香港天文台表示，受廣闊低壓槽影響，未來兩三日廣東沿岸及南海北部天氣不穩定，本港會間中有驟雨。預料星期二開學日初時部分地區驟雨較多及有雷暴，如有需要會發出暴雨警告信號或局部地區大雨提示。\n\n天文台同時指出，南海北部低壓系統的發展、路徑和強度仍存在變數，電腦模式存在靠近廣東沿岸、移向台灣海峽或維持較弱等不同情景。家長、學生及上班市民需要留意最新短期預報、交通安排及早上雨勢。',
+              'context':'開學日早上交通需求集中，局部大雨及雷暴可能放大道路、公共交通與步行安全風險。','why':'天氣變化會直接影響學生返校、上班交通及戶外活動安排。','watchNext':'留意天文台最新九天天氣預報、暴雨警告、局部大雨提示及低壓區發展。',
+              'sourceName':'RTHK／香港天文台','sourceUrl':'https://news.rthk.hk/rthk/ch/component/k2/1868072-20260829.htm','timeLabel':'29 Aug 2026 · 18:09 HKT','sources':[{'name':'RTHK','url':'https://news.rthk.hk/rthk/ch/component/k2/1868072-20260829.htm'},{'name':'香港天文台','url':'https://www.hko.gov.hk/'}]
+            },
+            {
+              'id':'hk-jockey-club-gyirong-relief-20260829','deskSlugs':['hong-kong'],'section':'香港｜社會／慈善救援','status':'LATEST',
+              'title':'香港賽馬會捐2,000萬港元支援吉隆泥石流救援　醫療與重建支援同步展開',
+              'dek':'款項經香港中聯辦支援西藏吉隆縣受災地區，相關醫療及災害管理團隊亦參與救援。',
+              'summary':'香港賽馬會8月29日宣布捐出2,000萬港元，支援吉隆縣泥石流緊急救援與災後工作。',
+              'body':'香港賽馬會8月29日宣布捐出2,000萬港元，經香港中聯辦支援西藏自治區吉隆縣受泥石流影響地區的緊急救援與救災工作。馬會表示，款項用於協助受災社區及恢復工作，並向死傷者及家屬致意。\n\n馬會同時指出，由其過往資助建立的災害管理與醫療網絡亦已參與今次救援，包括相關災害管理機構及急救醫療團隊。今次行動顯示香港大型慈善機構再次參與跨地域緊急救災，後續重點會由搜救逐步轉向醫療、道路及社區恢復。',
+              'context':'香港賽馬會過去亦曾為內地地震及洪災提供大型緊急援助和重建資助。','why':'香港機構的資金與專業支援已直接投入今次重大災害的救援及恢復工作。','watchNext':'留意吉隆縣搜救進展、傷亡更新、道路恢復及捐款實際支援項目。',
+              'sourceName':'香港賽馬會／The Standard','sourceUrl':'https://corporate.hkjc.com/en-us/news-and-publications/corporate-news/2026-08/news_2026082901940','timeLabel':'29 Aug 2026','sources':[{'name':'香港賽馬會','url':'https://corporate.hkjc.com/en-us/news-and-publications/corporate-news/2026-08/news_2026082901940'},{'name':'The Standard','url':'https://www.thestandard.com.hk/news/article/341278/HKJC-pledges-20m-to-support-Gyirong-mudslide-relief-efforts'}]
+            }
+          ]
+          for story in recovery:
+              if story['id'] not in existing:
+                  hk.append(story)
+                  existing.add(story['id'])
+
+          counts = {slug:len(stories) for slug,stories in data.get('desks',{}).items()}
           failures = {slug:(counts.get(slug,0), floor) for slug,floor in floors.items() if counts.get(slug,0) < floor}
-          print('Current-window desk counts:', counts)
+          print('Current-window desk counts after recovery:', counts)
           if failures:
-              raise SystemExit(f'Current-window recovery required; floors not met: {failures}')
+              raise SystemExit(f'Current-window recovery still insufficient: {failures}')
           if counts.get('japan',0) < 8:
               raise SystemExit(f'Japan current-window publication failure: {counts.get("japan",0)} < 8')
           path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
