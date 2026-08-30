@@ -36,18 +36,11 @@ DESK_ALIASES = {
     "football": ["football"],
     "stock-news": [],
 }
-CANONICAL_DESK = {
-    "finance": "market-economy",
-}
+CANONICAL_DESK = {"finance": "market-economy"}
 DESK_LABELS = {
-    "world": "世界",
-    "asia": "亞洲",
-    "hong-kong": "香港",
-    "japan": "日本",
-    "market-economy": "財經 / 全球市場",
-    "ai-tech": "AI / 科技",
-    "manga-anime": "漫畫 / Anime",
-    "manchester-united": "Manchester United",
+    "world": "世界", "asia": "亞洲", "hong-kong": "香港", "japan": "日本",
+    "market-economy": "財經 / 全球市場", "ai-tech": "AI / 科技",
+    "manga-anime": "漫畫 / Anime", "manchester-united": "Manchester United",
     "football": "Football",
 }
 REQUIRED = (
@@ -57,8 +50,7 @@ REQUIRED = (
 FORBIDDEN = re.compile(
     r"本輪|本報訊|incremental|duplicate|重複刊登|coverage\s*(?:check|test)|"
     r"collection\s*(?:design|test)|這次重新檢查|之後每一輪|每一輪Football|"
-    r"固定檢查HKFA|不應由全球搜尋排名決定",
-    re.I,
+    r"固定檢查HKFA|不應由全球搜尋排名決定", re.I,
 )
 
 
@@ -73,11 +65,6 @@ def body_measure(value):
 
 
 def normalize_retained_story(story):
-    """Repair only undersized retained copy using facts already stored on the story.
-
-    This never invents new facts: it promotes the story's existing verified context/why
-    into the body when an older reservoir item falls below the approximate-100 floor.
-    """
     if not isinstance(story, dict):
         return story
     body = str(story.get("body") or "").strip()
@@ -94,10 +81,7 @@ def normalize_retained_story(story):
         if body_measure(candidate) >= MIN_BODY_MEASURE:
             break
     if additions:
-        if "\n\n" in body:
-            story["body"] = body + " " + " ".join(additions)
-        else:
-            story["body"] = body + "\n\n" + " ".join(additions)
+        story["body"] = body + ((" " if "\n\n" in body else "\n\n")) + " ".join(additions)
     return story
 
 
@@ -110,7 +94,6 @@ def desk_slugs(item):
 
 
 def normalize_live_route(item):
-    """Write the routing contract into every published Live item."""
     raw_desk = str(item.get("desk") or "").strip()
     canonical = CANONICAL_DESK.get(raw_desk, raw_desk)
     if canonical:
@@ -133,9 +116,7 @@ def story_identity(story):
 
 
 def dedupe(stories):
-    out = []
-    seen = set()
-    seen_titles = set()
+    out, seen, seen_titles = [], set(), set()
     for story in stories:
         ident = story_identity(story)
         title = re.sub(r"\s+", " ", str(story.get("title") or "")).strip().lower()
@@ -157,14 +138,23 @@ def main():
     desk = load(DESK)
     desks = desk.setdefault("desks", {})
     expired_cross_posts = []
+
+    # The newest Live snapshot is authoritative for any event it contains. If an
+    # event's routing was corrected, remove stale copies from desks no longer listed.
+    current_routes = {}
+    for item in live.get("items", []):
+        if isinstance(item, dict):
+            current_routes[story_identity(item)] = set(desk_slugs(item))
+
     for slug in FLOORS:
         retained = []
         for raw in desks.setdefault(slug, []):
             if not isinstance(raw, dict):
                 continue
-            # When a story carries an explicit routing contract, it must not linger
-            # on a desk that is no longer listed there. Legacy stories without an
-            # explicit deskSlugs list are left untouched for backward compatibility.
+            ident = story_identity(raw)
+            if ident in current_routes and slug not in current_routes[ident]:
+                expired_cross_posts.append((slug, str(raw.get("id") or raw.get("title") or "unknown")))
+                continue
             explicit_routes = raw.get("deskSlugs")
             if isinstance(explicit_routes, list) and explicit_routes and slug not in explicit_routes:
                 expired_cross_posts.append((slug, str(raw.get("id") or raw.get("title") or "unknown")))
@@ -173,7 +163,6 @@ def main():
                 expired_cross_posts.append((slug, str(raw.get("id") or raw.get("title") or "unknown")))
                 continue
             retained.append(normalize_retained_story(copy.deepcopy(raw)))
-        # Hard floors are minimums, never caps: keep every still-current unique story.
         desks[slug] = dedupe(retained)
 
     for item in live.get("items", []):
@@ -200,12 +189,9 @@ def main():
             existing = desks[slug]
             story_id = str(story.get("id") or "")
             story_title = re.sub(r"\s+", " ", str(story.get("title") or "")).strip().lower()
-            existing = [
-                s for s in existing
-                if str(s.get("id") or "") != story_id
-                and re.sub(r"\s+", " ", str(s.get("title") or "")).strip().lower() != story_title
-            ]
-            # New current stories lead their desk; no arbitrary topic-page maximum.
+            existing = [s for s in existing
+                        if str(s.get("id") or "") != story_id
+                        and re.sub(r"\s+", " ", str(s.get("title") or "")).strip().lower() != story_title]
             desks[slug] = dedupe([story] + existing)
 
     counts = {slug: unique_count(desks.get(slug, [])) for slug in FLOORS}
@@ -220,7 +206,6 @@ def main():
     desk["contentVersion"] = 3
 
     coverage = live.setdefault("coverage", {})
-    # Public Live metadata must not expose internal QA/recovery process notes.
     coverage.pop("qaNote", None)
     depth_met = all(counts[slug] >= minimum for slug, minimum in FLOORS.items())
     source_gate = bool(coverage.get("sourceGateMet", True))
@@ -232,10 +217,7 @@ def main():
     coverage["japanCountVerified"] = counts["japan"]
     coverage["footballGateMet"] = football_gate
     coverage["publishingGateMet"] = publication_ready
-    if str(live.get("mode") or "").upper() == "DAILY_BASELINE":
-        coverage["status"] = "DAILY_BASELINE"
-    else:
-        coverage["status"] = "COMPLETE" if publication_ready else "INCOMPLETE"
+    coverage["status"] = "DAILY_BASELINE" if str(live.get("mode") or "").upper() == "DAILY_BASELINE" else ("COMPLETE" if publication_ready else "INCOMPLETE")
 
     DESK.write_text(json.dumps(desk, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     LIVE.write_text(json.dumps(live, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
