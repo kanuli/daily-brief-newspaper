@@ -49,8 +49,14 @@ HK_CHINESE_CASES = {
     "HSBC": "滙豐",
 }
 
+LETTER_SPEECH_NAMES = (
+    "打孖優", "艾克斯", "些德", "艾夫", "艾治", "艾路", "艾姆", "艾恩",
+    "艾斯", "欸", "比", "施", "啲", "伊", "芝", "艾", "啫", "基", "柯",
+    "披", "翹", "亞", "剔", "優", "維", "歪",
+)
+_LETTER_ALT = "|".join(re.escape(x) for x in sorted(LETTER_SPEECH_NAMES, key=len, reverse=True))
 FRAGMENTED_LETTER_PATTERN = re.compile(
-    r"(?:欸|比|施|啲|伊|艾夫|芝|艾治|艾|啫|基|艾路|艾姆|艾恩|柯|披|翹|亞|艾斯|剔|優|維|打孖優|艾克斯|歪|些德)、"
+    rf"(?:{_LETTER_ALT})(?:、(?:{_LETTER_ALT})){{1,}}"
 )
 
 
@@ -119,6 +125,9 @@ def audit_current_copy() -> dict:
                         f"{bad_translation!r} in {path}"
                     )
 
+            # Only a sequence of two or more letter-name chunks separated by
+            # Chinese list commas is the old broken fallback.  A single normal
+            # Chinese word followed by `、` is legitimate newsroom copy.
             if FRAGMENTED_LETTER_PATTERN.search(localized):
                 raise RuntimeError(
                     f"fragmented English-letter fallback detected in {path}"
