@@ -49,11 +49,6 @@ HK_CHINESE_CASES = {
     "HSBC": "滙豐",
 }
 
-FORBIDDEN_OUTPUT = (
-    "開放人工智能公司",
-    "人工智能聊天機械人",
-)
-
 FRAGMENTED_LETTER_PATTERN = re.compile(
     r"(?:欸|比|施|啲|伊|艾夫|芝|艾治|艾|啫|基|艾路|艾姆|艾恩|柯|披|翹|亞|艾斯|剔|優|維|打孖優|艾克斯|歪|些德)、"
 )
@@ -68,6 +63,16 @@ def iter_strings(value):
             yield from iter_strings(child)
     elif isinstance(value, str):
         yield value
+
+
+def _contains_ascii_term(text: str, term: str) -> bool:
+    return bool(
+        re.search(
+            r"(?<![A-Za-z0-9])" + re.escape(term) + r"(?![A-Za-z0-9])",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
 
 
 def assert_policy_examples() -> None:
@@ -103,10 +108,15 @@ def audit_current_copy() -> dict:
             strings += 1
             localized = hk.localize(raw)
 
-            for bad in FORBIDDEN_OUTPUT:
-                if bad in localized:
+            # Reject the bad literal form only when this string actually
+            # contains the corresponding official English name.  This avoids
+            # false positives if generic Chinese wording happens to be valid
+            # in another editorial context.
+            for source_term, bad_translation in hk.FORBIDDEN_LITERAL_TRANSLATIONS.items():
+                if _contains_ascii_term(raw, source_term) and bad_translation in localized:
                     raise RuntimeError(
-                        f"HK terminology gate rejected {bad!r} in {path}"
+                        f"HK terminology gate rejected {source_term!r} -> "
+                        f"{bad_translation!r} in {path}"
                     )
 
             if FRAGMENTED_LETTER_PATTERN.search(localized):
