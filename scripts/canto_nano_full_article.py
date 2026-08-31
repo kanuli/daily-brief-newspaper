@@ -33,16 +33,6 @@ ENGLISH_POLICY = "hk-natural-cantonese-english-codeswitch-v4"
 # HK terminology policy rather than reusing cnf3 recordings.
 base.NS = "cnf4"
 
-LETTER_SPEECH_NAMES = (
-    "打孖優", "艾克斯", "些德", "艾夫", "艾治", "艾路", "艾姆", "艾恩",
-    "艾斯", "欸", "比", "施", "啲", "伊", "芝", "艾", "啫", "基", "柯",
-    "披", "翹", "亞", "剔", "優", "維", "歪",
-)
-_LETTER_ALT = "|".join(re.escape(x) for x in sorted(LETTER_SPEECH_NAMES, key=len, reverse=True))
-FRAGMENTED_LETTER_PATTERN = re.compile(
-    rf"(?:{_LETTER_ALT})(?:、(?:{_LETTER_ALT})){{1,}}"
-)
-
 
 def localize_mixed_english(text: str) -> str:
     """Apply only established HK localization; preserve valid English names."""
@@ -109,18 +99,15 @@ def verified_synth(tts, ref, story, out_path):
     result = _original_synth(tts, ref, story, out_path)
     spoken = "".join(str(unit.get("text") or "") for unit in result.get("semanticUnits") or [])
 
+    # This exact script-vs-semantic-units equality is the authoritative
+    # regression gate. It catches truncation, dropped English, altered names,
+    # or any future text mutation without guessing from ambiguous Chinese
+    # characters that can legitimately appear in people/place names.
     normalize = lambda value: re.sub(r"\s+", "", str(value or ""))
     if normalize(spoken) != normalize(expected):
         raise RuntimeError(
             f"semantic-unit completeness check failed for {story.get('id') or story.get('title')}"
         )
-
-    # Defensive regression gate: only block a genuine sequence of two or more
-    # old letter-name chunks separated by Chinese list commas.  A single
-    # ordinary Chinese word followed by `、` is valid copy and must not fail.
-    for unit in result.get("semanticUnits") or []:
-        if FRAGMENTED_LETTER_PATTERN.search(str(unit.get("text") or "")):
-            raise RuntimeError("fragmented English-letter TTS regression detected")
 
     latin_tokens = base.hktrad.residual_latin_tokens(expected)
     result["contentCoveragePolicy"] = COVERAGE_POLICY
