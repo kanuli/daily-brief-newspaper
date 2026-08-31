@@ -19,14 +19,19 @@ from __future__ import annotations
 import re
 
 import canto_nano_prod as base
+import tts_hktrad_v3 as hkpolicy
+
+# Force the production wrapper to use the HK mixed-language policy even though
+# the legacy base module still imports tts_hktrad_v2 internally.
+base.hktrad = hkpolicy
 
 COVERAGE_POLICY = "full-visible-article-no-truncation-v1"
-ENGLISH_POLICY = "hk-natural-cantonese-english-codeswitch-v3"
+ENGLISH_POLICY = "hk-natural-cantonese-english-codeswitch-v4"
 
 # Bump the asset namespace whenever speech normalization semantics change.
-# cnf3 forces current articles to be regenerated under the natural HK
-# Cantonese-English code-switch policy instead of reusing cnf2 recordings.
-base.NS = "cnf3"
+# cnf4 forces current articles to be regenerated under the actual production
+# HK terminology policy rather than reusing cnf3 recordings.
+base.NS = "cnf4"
 
 
 def localize_mixed_english(text: str) -> str:
