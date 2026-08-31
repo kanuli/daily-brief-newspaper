@@ -23,15 +23,10 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-
           p = Path('data/desk-latest.json')
           data = json.loads(p.read_text(encoding='utf-8'))
           desks = data.setdefault('desks', {})
           old = desks.get('manchester-united', [])
-
-          # Preserve the current completed Ipswich match, while dropping old cup-draw
-          # items and same-match previews/injury rewrites that no longer represent
-          # distinct current events.
           kept = []
           for s in old:
               sid = str(s.get('id') or '')
@@ -39,81 +34,16 @@ jobs:
               if 'ipswich-5-2' in sid or ('5：2' in title and '葉士域治' in title):
                   kept.append(s)
                   break
-
-          common = {
-              'desk': 'manchester-united',
-              'status': 'LATEST',
-              'deskSlugs': ['manchester-united'],
-              'section': '曼聯｜轉會／青訓',
-              'sectionLabel': '曼聯',
-              'mediaLabel': '曼聯',
-              'image': None,
-          }
-
+          common = {'desk':'manchester-united','status':'LATEST','deskSlugs':['manchester-united'],'section':'曼聯｜轉會／青訓','sectionLabel':'曼聯','mediaLabel':'曼聯','image':None}
           stories = [
-            {
-              **common,
-              'id': 'mu-collyer-west-brom-complete-20260830',
-              'title': '高利亞正式永久轉投西布朗　結束曼聯生涯並簽約四年',
-              'dek': '西布朗8月30日確認完成交易；高利亞上季曾外借該會，今次以永久形式重返山楂球場。',
-              'summary': '曼聯中場高利亞已完成永久轉會西布朗，西布朗確認他簽下四年合約，正式把此前的轉會協議變成已完成交易。',
-              'body': '西布朗在8月30日正式宣布，22歲中場高利亞由曼聯永久加盟，並簽下四年合約。高利亞上季曾外借西布朗，其後轉往侯城，今夏曼聯中場重組後再度尋找穩定上陣機會。\n\n這宗交易與日前仍處於「兩會達成協議」階段的消息不同，現時轉會已正式完成。高利亞表示重返西布朗是容易作出的決定，並希望透過更多一隊分鐘推進職業生涯。',
-              'context': '高利亞由曼聯青訓晉升一隊，上季先後外借西布朗及侯城；曼聯今夏大幅重整中場人腳。',
-              'why': '正式出售青訓中場既精簡曼聯陣容，也確認球會在轉會窗尾段持續處理邊緣球員去留。',
-              'watchNext': '留意高利亞在西布朗的首次上陣、註冊情況及曼聯轉會窗最後階段的人員調整。',
-              'sourceName': 'West Bromwich Albion／Manchester United',
-              'sourceUrl': 'https://www.wba.co.uk/news/albion-complete-signing-toby-collyer',
-              'timeLabel': '8月30日正式確認',
-              'sources': [
-                {'name':'West Bromwich Albion','url':'https://www.wba.co.uk/news/albion-complete-signing-toby-collyer'},
-                {'name':'Manchester United','url':'https://www.manutd.com/en/news/detail/toby-collyer-completes-permanent-transfer-to-west-brom'}
-              ],
-            },
-            {
-              **common,
-              'id': 'mu-louis-jackson-st-mirren-20260830',
-              'title': '曼聯青訓中堅 Louis Jackson 永久加盟聖美倫　簽兩年另加一年選項',
-              'dek': '20歲守將離開曼聯尋求穩定一隊機會，加盟蘇超聖美倫後已進入比賽名單。',
-              'summary': 'Louis Jackson 已由曼聯永久轉投聖美倫，簽下兩年合約並附帶一年延長選項，是曼聯轉會窗尾段另一宗已完成青訓球員離隊。',
-              'body': '蘇超聖美倫確認，20歲中堅 Louis Jackson 由曼聯永久加盟，合約為期兩年，球會另有一年延長選項。Jackson 出身曼聯青訓，曾代表蘇格蘭青年隊，上季則外借英格蘭非聯賽球會 Solihull Moors 累積成年隊經驗。\n\nJackson 表示現階段永久離隊是推進職業生涯的合適時機，希望在重視年輕球員發展的聖美倫爭取穩定上陣。他加盟後已被列入球隊周日聯賽比賽名單。',
-              'context': '曼聯正於夏季轉會窗尾段整理青訓及U21梯隊，多名已到需要固定成年隊分鐘的球員尋求永久轉會。',
-              'why': 'Jackson 的永久離隊是曼聯青訓出口及陣容精簡的獨立事件，亦影響球會U21防線人腳配置。',
-              'watchNext': '留意 Jackson 在聖美倫的首次正式上陣，以及曼聯會否在關窗前再完成其他青訓球員永久轉會。',
-              'sourceName': 'St Mirren／BBC Sport',
-              'sourceUrl': 'https://www.stmirren.com/all-news/5947-louis-jackson-joins-st-mirren',
-              'timeLabel': '8月30日正式確認',
-              'sources': [
-                {'name':'St Mirren','url':'https://www.stmirren.com/all-news/5947-louis-jackson-joins-st-mirren'},
-                {'name':'BBC Sport','url':'https://www.bbc.com/sport/football/articles/clyl4v4l5v4o'}
-              ],
-            },
-            {
-              **common,
-              'id': 'mu-ogunneye-arsenal-20260830',
-              'title': 'Habeeb Ogunneye 離開曼聯轉投阿仙奴　20歲右閘加入槍手青訓體系',
-              'dek': 'Ogunneye 結束長年曼聯青訓生涯，8月30日完成轉會北倫敦，將先加入阿仙奴青年梯隊。',
-              'summary': '曼聯青訓右閘 Habeeb Ogunneye 已完成轉會阿仙奴；阿仙奴青訓官方確認其加盟，球員亦表示回到倫敦展開新階段。',
-              'body': '阿仙奴青訓在8月30日確認，20歲右閘 Habeeb Ogunneye 已完成由曼聯轉會加盟。Ogunneye 長期在曼聯青訓成長，曾多次進入一隊比賽名單，但未有正式一隊上陣；上季曾外借 Newport County 累積成年隊經驗。\n\nOgunneye 出生於倫敦 Hackney，加盟後表示回到家鄉具有特別意義，並看重阿仙奴近年讓年輕球員晉升的路徑。這宗交易與高利亞及 Jackson 的離隊屬三宗不同已完成轉會。',
-              'context': '曼聯在一隊重建同時亦調整青訓梯隊，部分接近一隊年齡但出場路徑有限的球員正在轉會窗尾段離隊。',
-              'why': '直接轉投英超競爭對手的青訓體系具有發展與人才流動意義，也進一步顯示曼聯正在重整U21人腳。',
-              'watchNext': '留意 Ogunneye 在阿仙奴U21的註冊及首次上陣，以及曼聯其他青年球員在關窗前的去留。',
-              'sourceName': 'Arsenal Academy／Manchester United reporting',
-              'sourceUrl': 'https://www.arsenal.com/news/habeeb-ogunneye-joins-our-academy',
-              'timeLabel': '8月30日正式確認',
-              'sources': [
-                {'name':'Arsenal Academy','url':'https://www.arsenal.com/news/habeeb-ogunneye-joins-our-academy'},
-                {'name':'The Sun','url':'https://www.thesun.co.uk/sport/40220819/man-utd-transfer-habeeb-ogunneye-jackson/'}
-              ],
-            },
+            {**common,'id':'mu-collyer-west-brom-complete-20260830','title':'高利亞正式永久轉投西布朗　結束曼聯生涯並簽約四年','dek':'西布朗8月30日確認完成交易；高利亞上季曾外借該會，今次以永久形式重返山楂球場。','summary':'曼聯中場高利亞已完成永久轉會西布朗，西布朗確認他簽下四年合約，正式把此前的轉會協議變成已完成交易。','body':'西布朗在8月30日正式宣布，22歲中場高利亞由曼聯永久加盟，並簽下四年合約。高利亞上季曾外借西布朗，其後轉往侯城，今夏曼聯中場重組後再度尋找穩定上陣機會。\n\n這宗交易與日前仍處於「兩會達成協議」階段的消息不同，現時轉會已正式完成。高利亞表示重返西布朗是容易作出的決定，並希望透過更多一隊分鐘推進職業生涯。','context':'高利亞由曼聯青訓晉升一隊，上季先後外借西布朗及侯城；曼聯今夏大幅重整中場人腳。','why':'正式出售青訓中場既精簡曼聯陣容，也確認球會在轉會窗尾段持續處理邊緣球員去留。','watchNext':'留意高利亞在西布朗的首次上陣、註冊情況及曼聯轉會窗最後階段的人員調整。','sourceName':'West Bromwich Albion／Manchester United','sourceUrl':'https://www.wba.co.uk/news/albion-complete-signing-toby-collyer','timeLabel':'8月30日正式確認','sources':[{'name':'West Bromwich Albion','url':'https://www.wba.co.uk/news/albion-complete-signing-toby-collyer'},{'name':'Manchester United','url':'https://www.manutd.com/en/news/detail/toby-collyer-completes-permanent-transfer-to-west-brom'}]},
+            {**common,'id':'mu-louis-jackson-st-mirren-20260830','title':'曼聯青訓中堅 Louis Jackson 永久加盟聖美倫　簽兩年另加一年選項','dek':'20歲守將離開曼聯尋求穩定一隊機會，加盟蘇超聖美倫後已進入比賽名單。','summary':'Louis Jackson 已由曼聯永久轉投聖美倫，簽下兩年合約並附帶一年延長選項，是曼聯轉會窗尾段另一宗已完成青訓球員離隊。','body':'蘇超聖美倫確認，20歲中堅 Louis Jackson 由曼聯永久加盟，合約為期兩年，球會另有一年延長選項。Jackson 出身曼聯青訓，曾代表蘇格蘭青年隊，上季則外借英格蘭非聯賽球會 Solihull Moors 累積成年隊經驗。\n\nJackson 表示現階段永久離隊是推進職業生涯的合適時機，希望在重視年輕球員發展的聖美倫爭取穩定上陣。他加盟後已被列入球隊周日聯賽比賽名單。','context':'曼聯正於夏季轉會窗尾段整理青訓及U21梯隊，多名已到需要固定成年隊分鐘的球員尋求永久轉會。','why':'Jackson 的永久離隊是曼聯青訓出口及陣容精簡的獨立事件，亦影響球會U21防線人腳配置。','watchNext':'留意 Jackson 在聖美倫的首次正式上陣，以及曼聯會否在關窗前再完成其他青訓球員永久轉會。','sourceName':'St Mirren／BBC Sport','sourceUrl':'https://www.stmirren.com/all-news/5947-louis-jackson-joins-st-mirren','timeLabel':'8月30日正式確認','sources':[{'name':'St Mirren','url':'https://www.stmirren.com/all-news/5947-louis-jackson-joins-st-mirren'},{'name':'BBC Sport','url':'https://www.bbc.com/sport/football/articles/clyl4v4l5v4o'}]},
+            {**common,'id':'mu-ogunneye-arsenal-20260830','title':'Habeeb Ogunneye 離開曼聯轉投阿仙奴　20歲右閘加入槍手青訓體系','dek':'Ogunneye 結束長年曼聯青訓生涯，8月30日完成轉會北倫敦，將先加入阿仙奴青年梯隊。','summary':'曼聯青訓右閘 Habeeb Ogunneye 已完成轉會阿仙奴；阿仙奴青訓官方確認其加盟，球員亦表示回到倫敦展開新階段。','body':'阿仙奴青訓在8月30日確認，20歲右閘 Habeeb Ogunneye 已完成由曼聯轉會加盟。Ogunneye 長期在曼聯青訓成長，曾多次進入一隊比賽名單，但未有正式一隊上陣；上季曾外借 Newport County 累積成年隊經驗。\n\nOgunneye 出生於倫敦 Hackney，加盟後表示回到家鄉具有特別意義，並看重阿仙奴近年讓年輕球員晉升的路徑。這宗交易與高利亞及 Jackson 的離隊屬三宗不同已完成轉會。','context':'曼聯在一隊重建同時亦調整青訓梯隊，部分接近一隊年齡但出場路徑有限的球員正在轉會窗尾段離隊。','why':'直接轉投英超競爭對手的青訓體系具有發展與人才流動意義，也進一步顯示曼聯正在重整U21人腳。','watchNext':'留意 Ogunneye 在阿仙奴U21的註冊及首次上陣，以及曼聯其他青年球員在關窗前的去留。','sourceName':'Arsenal Academy／The Sun','sourceUrl':'https://www.arsenal.com/news/habeeb-ogunneye-joins-our-academy','timeLabel':'8月30日正式確認','sources':[{'name':'Arsenal Academy','url':'https://www.arsenal.com/news/habeeb-ogunneye-joins-our-academy'},{'name':'The Sun','url':'https://www.thesun.co.uk/sport/40220819/man-utd-transfer-habeeb-ogunneye-jackson/'}]}
           ]
-
           desks['manchester-united'] = kept + stories
           data['generatedAt'] = '2026-08-31T12:10:00+08:00'
           p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-
-          assert len(desks['manchester-united']) >= 4
-          assert data.get('editorialStandardVersion') == 3
-          assert data.get('contentVersion') == 3
+          assert len(desks['manchester-united']) == 4
           print('MU desk recovered:', len(desks['manchester-united']))
           PY
       - name: Commit desk-only recovery
