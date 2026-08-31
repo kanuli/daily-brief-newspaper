@@ -22,7 +22,9 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-CORE_URL = "https://raw.githubusercontent.com/kanuli/japanese-vocab-game/main/data/vocab_core_verified.js"
+# The upstream main-branch core was truncated to metadata on 2026-08-27.
+# Pin the last verified full teacher-audited core until upstream main is healthy again.
+CORE_URL = "https://raw.githubusercontent.com/kanuli/japanese-vocab-game/26efc977c5fb8e234f1f0b141b9f9308249a9c8f/data/vocab_core_verified.js"
 AUDIT_URL = "https://raw.githubusercontent.com/kanuli/japanese-vocab-game/main/data/jlpt_teacher_audit.tsv"
 ADVANCED_URL = "https://raw.githubusercontent.com/kanuli/japanese-vocab-game/main/data/advanced_vocab.js"
 SOURCE_REPO_URL = "https://github.com/kanuli/japanese-vocab-game"
