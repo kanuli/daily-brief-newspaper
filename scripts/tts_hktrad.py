@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Traditional-Chinese localization for Cantonese TTS.
+"""Hong Kong Traditional-Chinese localization for Cantonese TTS.
 
-Display copy may keep official English/romanized names, but the speech script
-uses established Hong Kong Traditional-Chinese names wherever possible.
-Taiwan Traditional-Chinese names are used only when Hong Kong has no stable
-local form. Residual Latin text is audited by desk so CosyVoice is not asked to
-guess a different language/accent mid-sentence.
+Editorial rule:
+- preserve official English/romanized brand, product and proper names when that
+  is the normal Hong Kong usage (for example OpenAI, ChatGPT, Google, iPhone,
+  Android, AI, GPU, API);
+- use a Chinese form only when Hong Kong newsrooms have a stable, established
+  local name (for example 微軟, 蘋果公司, 曼聯, 阿仙奴, 聯儲局);
+- never invent a literal Chinese translation merely to remove Latin letters.
+
+The production TTS model explicitly supports Hong Kong Cantonese + English
+code-switching, so residual English is valid speech input rather than an error.
 """
 from __future__ import annotations
 
@@ -48,10 +53,12 @@ REPLACEMENTS = [
     ("ASEAN", "東盟"),
     ("APEC", "亞太經合組織"),
 
-    # Hong Kong / compact identifiers that must be resolved before number handling
+    # Hong Kong / compact identifiers that have an established local reading
     ("MU88", "都大八十八學生宿舍"),
 
-    # Finance / economics
+    # Finance / economics — expand institutional terms where HK news speech
+    # normally uses a Chinese name. Common market acronyms such as GDP, CPI,
+    # IPO and ETF are deliberately left in English for natural code-switching.
     ("£51m", "五千一百萬英鎊"),
     ("Federal Reserve", "美國聯儲局"),
     ("Fed", "美國聯儲局"),
@@ -59,34 +66,19 @@ REPLACEMENTS = [
     ("ECB", "歐洲中央銀行"),
     ("BOJ", "日本銀行"),
     ("HKMA", "香港金融管理局"),
-    ("GDP", "本地生產總值"),
-    ("CPI", "消費物價指數"),
-    ("PPI", "生產物價指數"),
-    ("IPO", "首次公開招股"),
-    ("ETF", "交易所買賣基金"),
     ("SEC", "美國證券交易委員會"),
     ("FDA", "美國食品藥物管理局"),
 
-    # Technology / AI
-    ("NVIDIA", "輝達"),
-    ("Nvidia", "輝達"),
+    # Technology / AI — Hong Kong usage is intentionally mixed-language.
+    # Do NOT translate OpenAI as 「開放人工智能公司」 or ChatGPT as a generic
+    # Chinese description. Brand/product identifiers stay official.
     ("Microsoft", "微軟"),
     ("Apple", "蘋果公司"),
     ("Amazon", "亞馬遜"),
-    ("Meta", "臉書母公司"),
-    ("OpenAI", "開放人工智能公司"),
-    ("ChatGPT", "人工智能聊天機械人"),
-    ("Google", "谷歌"),
-    ("Android", "安卓"),
-    ("iPhone", "蘋果手機"),
-    ("AI", "人工智能"),
-    ("GPU", "圖像處理器"),
-    ("CPU", "中央處理器"),
-    ("API", "應用程式介面"),
     ("cloud", "雲端"),
     ("Cloud", "雲端"),
 
-    # Manga / anime — visible copy and speech both use Traditional Chinese
+    # Manga / anime — use established Traditional-Chinese franchise names
     ("ONE PIECE FILM GOD VALLEY", "海賊王劇場版：神之谷"),
     ("ONE PIECE FILM BAAD", "海賊王劇場版：巴德（暫譯）"),
     ("ONE PIECE FILM RED", "海賊王劇場版：紅髮歌姬"),
@@ -102,11 +94,11 @@ REPLACEMENTS = [
     ("V Varen Nagasaki", "長崎成功丸"),
     ("FC Tokyo", "東京足球會"),
     ("FC東京", "東京足球會"),
-    ("J.League", "日本職業足球聯賽"),
-    ("J League", "日本職業足球聯賽"),
+    ("J.League", "日職"),
+    ("J League", "日職"),
     ("J1", "日職聯賽"),
 
-    # English / European football — Hong Kong naming
+    # English / European football — established Hong Kong names
     ("Manchester United", "曼聯"),
     ("Manchester City", "曼城"),
     ("Hull City", "侯城"),
@@ -132,18 +124,18 @@ REPLACEMENTS = [
     ("Leeds United", "列斯聯"),
     ("Leeds", "列斯聯"),
     ("Coventry City", "高雲地利"),
-    ("AC Milan", "米蘭足球會"),
+    ("AC Milan", "AC米蘭"),
     ("Barcelona", "巴塞隆拿"),
     ("Real Madrid", "皇家馬德里"),
     ("Bayern Munich", "拜仁慕尼黑"),
     ("Paris Saint-Germain", "巴黎聖日耳門"),
     ("PSG", "巴黎聖日耳門"),
-    ("Champions League", "歐洲聯賽冠軍盃"),
-    ("Premier League", "英格蘭超級聯賽"),
-    ("La Liga", "西班牙甲組聯賽"),
-    ("Serie A", "意大利甲組聯賽"),
-    ("Bundesliga", "德國甲組聯賽"),
-    ("Ligue 1", "法國甲組聯賽"),
+    ("Champions League", "歐聯"),
+    ("Premier League", "英超"),
+    ("La Liga", "西甲"),
+    ("Serie A", "意甲"),
+    ("Bundesliga", "德甲"),
+    ("Ligue 1", "法甲"),
     ("UEFA", "歐洲足協"),
     ("FIFA", "國際足協"),
     ("FT", "完場"),
@@ -194,6 +186,7 @@ def localize(text: str) -> str:
 
 
 def residual_latin_tokens(text: str) -> list[str]:
+    """Return English/Latin tokens for audit only; they are valid TTS input."""
     localized = localize(text)
     return sorted({m.group(1) for m in LATIN_TOKEN_RE.finditer(localized)}, key=str.lower)
 
