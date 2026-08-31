@@ -59,7 +59,7 @@ def target_date(value: str | None) -> str:
 def download_text(url: str) -> str:
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": "daily-brief-newspaper-vocab-generator/2.1"},
+        headers={"User-Agent": "daily-brief-newspaper-vocab-generator/2.2"},
     )
     with urllib.request.urlopen(request, timeout=45) as response:
         return response.read().decode("utf-8")
@@ -113,8 +113,14 @@ def parse_audit(text: str):
 
 
 def build_pos_lookup(entries):
-    """Index the same POS metadata exposed by the Japanese vocabulary list."""
-    lookup = {}
+    """Index POS by exact key and stable JMdict entry ID.
+
+    Core and advanced display forms can differ after safe notation normalization, but
+    their JMdict entry IDs remain stable. Entry-ID fallback therefore preserves real
+    vocabulary-list POS metadata without guessing a grammatical class.
+    """
+    key_lookup = {}
+    id_pos_sets = {}
     for entry in entries:
         if not isinstance(entry, dict):
             continue
@@ -122,16 +128,27 @@ def build_pos_lookup(entries):
         kanji = str(entry.get("kanji") or "").strip()
         display = str(entry.get("displayWord") or kanji or reading).strip()
         pos = str(entry.get("pos") or "").strip().lower()
+        entry_id = str(entry.get("entryId") or "").strip()
         if not reading or not display or not pos or pos == "unclassified":
             continue
-        lookup.setdefault((reading, display), pos)
+        key_lookup.setdefault((reading, display), pos)
         if kanji:
-            lookup.setdefault((reading, kanji), pos)
+            key_lookup.setdefault((reading, kanji), pos)
         elif display == reading:
-            lookup.setdefault((reading, ""), pos)
-    if len(lookup) < 1000:
-        raise RuntimeError(f"Advanced POS lookup unexpectedly small: {len(lookup)} exact keys")
-    return lookup
+            key_lookup.setdefault((reading, ""), pos)
+        if entry_id:
+            id_pos_sets.setdefault(entry_id, set()).add(pos)
+
+    id_lookup = {
+        entry_id: next(iter(values))
+        for entry_id, values in id_pos_sets.items()
+        if len(values) == 1
+    }
+    if len(key_lookup) < 1000 or len(id_lookup) < 1000:
+        raise RuntimeError(
+            f"Advanced POS lookup unexpectedly small: exact={len(key_lookup)} entryId={len(id_lookup)}"
+        )
+    return {"exact": key_lookup, "entryId": id_lookup}
 
 
 def clean_teaching_headword(reading: str, display: str) -> bool:
@@ -161,6 +178,8 @@ def normalize_core(entries, audit, pos_lookup):
         "form": 0,
         "missing_pos": 0,
     }
+    pos_exact = pos_lookup["exact"]
+    pos_by_entry_id = pos_lookup["entryId"]
 
     # vocab_core_verified.js tuples:
     # reading, display, level, meaning, meaningSource, levelSource, entryId,
@@ -171,6 +190,7 @@ def normalize_core(entries, audit, pos_lookup):
         reading = str(entry[0] or "").strip()
         display = str(entry[1] or "").strip()
         meaning = str(entry[3] or "").strip()
+        entry_id = str(entry[6] or "").strip() if len(entry) > 6 else ""
         key = (reading, display)
         meta = audit.get(key)
         if not meta:
@@ -193,7 +213,11 @@ def normalize_core(entries, audit, pos_lookup):
             continue
 
         shown = display or reading
-        pos = pos_lookup.get((reading, display)) or pos_lookup.get((reading, shown))
+        pos = (
+            pos_exact.get((reading, display))
+            or pos_exact.get((reading, shown))
+            or (pos_by_entry_id.get(entry_id) if entry_id else None)
+        )
         if not pos:
             rejected["missing_pos"] += 1
             continue
@@ -306,7 +330,7 @@ def build_payload(date: str, words):
         "sourceRepo": "kanuli/japanese-vocab-game",
         "sourceFile": "data/vocab_core_verified.js + data/jlpt_teacher_audit.tsv + data/advanced_vocab.js",
         "sourceUrl": SOURCE_REPO_URL,
-        "selectionPolicy": "teacher-core + exact audit + common + direct + grade A/B; POS enriched from exact Japanese vocabulary-list entry",
+        "selectionPolicy": "teacher-core + exact audit + common + direct + grade A/B; POS enriched from exact Japanese vocabulary-list entry or unambiguous JMdict entry ID",
         "levelNote": "JLPT 分級為本站教師審核後的學習用分類；現行 JLPT 並沒有官方完整逐字詞表。",
         "words": words,
     }
