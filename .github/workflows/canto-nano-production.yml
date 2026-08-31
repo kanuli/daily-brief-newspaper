@@ -14,6 +14,8 @@ on:
       - "scripts/canto_nano_full_article.py"
       - "scripts/tts_hktrad.py"
       - "scripts/tts_hktrad_v2.py"
+      - "scripts/tts_hktrad_v3.py"
+      - "scripts/hk_language_preflight.py"
       - "scripts/hktrad_units.py"
       - ".github/workflows/canto-nano-production.yml"
   schedule:
@@ -46,6 +48,12 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+
+      - name: Validate Hong Kong mixed-language newsroom policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/hk_language_preflight.py
 
       - name: Stop and disable every old voice generator
         env:
@@ -199,6 +207,10 @@ jobs:
             git reset --hard origin/main
             rm -rf artifacts/canto-nano-shards
 
+            # Re-run the language gate against the exact latest main revision
+            # before each progressive publish. This prevents a concurrent news
+            # update from bypassing the initialize-time terminology audit.
+            python scripts/hk_language_preflight.py
             python scripts/canto_nano_full_article.py generate-shard --slot "${SLOT}" --slots 10
             SHARD="artifacts/canto-nano-shards/shard-${SLOT}.json"
             test -f "$SHARD"
@@ -227,6 +239,7 @@ jobs:
             for attempt in 1 2 3 4 5 6 7 8; do
               git fetch origin main
               git reset --hard origin/main
+              python scripts/hk_language_preflight.py
               python scripts/canto_nano_full_article.py publish "/tmp/canto-nano-${SLOT}.json" --public-base "$CANTO_PUBLIC_BASE"
               git add data/tts-manifest.json
               if git diff --cached --quiet; then
