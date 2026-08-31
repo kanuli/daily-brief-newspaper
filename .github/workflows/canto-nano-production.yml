@@ -28,7 +28,11 @@ permissions:
 
 concurrency:
   group: "canto-nano-female-current-news-production"
-  cancel-in-progress: true
+  # Full-article synthesis can legitimately exceed the 15-minute schedule
+  # interval. Never kill a healthy active run merely because the next
+  # maintenance tick or news push arrives. Workers reset to latest main before
+  # every cycle, so the active run still follows current newsroom content.
+  cancel-in-progress: false
 
 env:
   CANTO_RELEASE_TAG: canto-nano-female-cache
