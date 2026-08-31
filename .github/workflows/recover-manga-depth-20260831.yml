@@ -1,3 +1,4 @@
+# trigger: 2026-08-31 09:12 HKT
 name: Recover Manga Anime Desk Depth 20260831
 
 on:
@@ -96,7 +97,6 @@ jobs:
               if story['id'] not in existing_ids:
                   current.insert(0, story)
 
-          # Deduplicate exact IDs while preserving order.
           seen = set(); deduped = []
           for story in current:
               ident = story.get('id')
