@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Pre-publication audit for Hong Kong Cantonese-English newsroom speech.
 
-The gate mirrors the current Canto Nano source set and is intentionally
-conservative:
+The gate mirrors the current Canto Nano source set and audits only fields that
+can actually enter the spoken article script. It is intentionally conservative:
 - official English names that Hong Kong media commonly keeps in English must
   survive speech localization unchanged;
 - long-established Hong Kong Chinese names must still localize correctly;
@@ -23,6 +23,19 @@ BASE_SOURCE_FILES = (
     Path("data/desk-latest.json"),
     Path("data/live.json"),
     Path("data/stocks-latest.json"),
+)
+
+SPOKEN_FIELDS = (
+    "title",
+    "dek",
+    "summary",
+    "body",
+    "context",
+    "background",
+    "why",
+    "whyImportant",
+    "watchNext",
+    "nextStep",
 )
 
 PRESERVE_CASES = {
@@ -49,10 +62,14 @@ HK_CHINESE_CASES = {
     "HSBC": "滙豐",
 }
 
-# Synthetic name that deliberately has no dictionary entry.  It verifies the
+# Synthetic name that deliberately has no dictionary entry. It verifies the
 # default Hong Kong rule: an unfamiliar official English/proper name stays in
 # English instead of being letter-spelled or given an invented Chinese name.
 UNKNOWN_ENGLISH_PROBE = "ZXQTestBrand"
+
+
+def clean(value) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
 def current_source_files() -> list[Path]:
@@ -73,15 +90,32 @@ def current_source_files() -> list[Path]:
     return paths
 
 
-def iter_strings(value):
+def is_story(value) -> bool:
+    return (
+        isinstance(value, dict)
+        and clean(value.get("title"))
+        and any(clean(value.get(field)) for field in SPOKEN_FIELDS[1:])
+    )
+
+
+def walk_stories(value):
+    """Mirror the production collector's recursive story discovery."""
     if isinstance(value, dict):
+        if is_story(value):
+            yield value
         for child in value.values():
-            yield from iter_strings(child)
+            yield from walk_stories(child)
     elif isinstance(value, list):
         for child in value:
-            yield from iter_strings(child)
-    elif isinstance(value, str):
-        yield value
+            yield from walk_stories(child)
+
+
+def iter_spoken_strings(story):
+    """Yield only source text that full_script() can actually send to TTS."""
+    for field in SPOKEN_FIELDS:
+        raw = clean(story.get(field))
+        if raw:
+            yield raw
 
 
 def _contains_ascii_term(text: str, term: str) -> bool:
@@ -122,6 +156,7 @@ def assert_policy_examples() -> None:
 
 def audit_current_copy() -> dict:
     files = 0
+    stories = 0
     strings = 0
     mixed_strings = 0
     latin_tokens = set()
@@ -133,31 +168,32 @@ def audit_current_copy() -> dict:
         files += 1
         checked_paths.append(path.as_posix())
         data = json.loads(path.read_text(encoding="utf-8"))
-        for raw in iter_strings(data):
-            strings += 1
-            localized = hk.localize(raw)
+        for story in walk_stories(data):
+            stories += 1
+            for raw in iter_spoken_strings(story):
+                strings += 1
+                localized = hk.localize(raw)
 
-            # Reject the bad literal form only when this string actually
-            # contains the corresponding official English name.  This avoids
-            # false positives if generic Chinese wording happens to be valid
-            # in another editorial context.
-            for source_term, bad_translation in hk.FORBIDDEN_LITERAL_TRANSLATIONS.items():
-                if _contains_ascii_term(raw, source_term) and bad_translation in localized:
-                    raise RuntimeError(
-                        f"HK terminology gate rejected {source_term!r} -> "
-                        f"{bad_translation!r} in {path}"
-                    )
+                # Reject the bad literal form only when this spoken field
+                # actually contains the corresponding official English name.
+                for source_term, bad_translation in hk.FORBIDDEN_LITERAL_TRANSLATIONS.items():
+                    if _contains_ascii_term(raw, source_term) and bad_translation in localized:
+                        raise RuntimeError(
+                            f"HK terminology gate rejected {source_term!r} -> "
+                            f"{bad_translation!r} in {path}"
+                        )
 
-            tokens = hk.residual_latin_tokens(raw)
-            if tokens:
-                mixed_strings += 1
-                latin_tokens.update(tokens)
+                tokens = hk.residual_latin_tokens(raw)
+                if tokens:
+                    mixed_strings += 1
+                    latin_tokens.update(tokens)
 
     return {
         "sourceFilesChecked": files,
         "sourcePathsChecked": checked_paths,
-        "stringsChecked": strings,
-        "mixedLanguageStrings": mixed_strings,
+        "storiesChecked": stories,
+        "spokenStringsChecked": strings,
+        "mixedLanguageSpokenStrings": mixed_strings,
         "englishCodeSwitchTokens": sorted(latin_tokens, key=str.lower),
     }
 
