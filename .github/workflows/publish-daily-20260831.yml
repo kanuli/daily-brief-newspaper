@@ -21,6 +21,30 @@ jobs:
           fetch-depth: 0
       - name: Publish Daily Edition
         run: python scripts/publish_daily_20260831.py
+      - name: Enforce World excludes Asia
+        run: |
+          python - <<'PY'
+          import json, pathlib, re
+          root=pathlib.Path('.')
+          pat=re.compile(r'西亞|中東|伊朗|以色列|海灣|Middle East|West Asia', re.I)
+          def load(p): return json.loads(p.read_text(encoding='utf-8'))
+          def dump(p,o): p.write_text(json.dumps(o,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          deskp=root/'data/desk-latest.json'; desk=load(deskp)
+          bad={s.get('id') for s in desk['desks']['world'] if pat.search(str(s.get('section',''))+' '+str(s.get('title','')))}
+          desk['desks']['world']=[s for s in desk['desks']['world'] if s.get('id') not in bad]
+          assert len(desk['desks']['world']) >= 8
+          dump(deskp,desk)
+          for p in [root/'data/latest.json', root/'data/2026-08-31.json', root/'data/topic-more/2026-08-31.json']:
+            o=load(p)
+            for sec in o.get('sections',[]):
+              if sec.get('slug')=='world': sec['articleIds']=[x for x in sec.get('articleIds',[]) if x not in bad]
+            dump(p,o)
+          lp=root/'data/live.json'; live=load(lp)
+          if isinstance(live.get('coverage'),dict) and isinstance(live['coverage'].get('deskLatestStoryCounts'),dict):
+            live['coverage']['deskLatestStoryCounts']['world']=len(desk['desks']['world'])
+          dump(lp,live)
+          print('Removed Asian IDs from World:', sorted(bad))
+          PY
       - name: Validate site schema
         run: python scripts/validate_site_data.py
       - name: Validate Daily v3
