@@ -33,6 +33,16 @@ ENGLISH_POLICY = "hk-natural-cantonese-english-codeswitch-v4"
 # HK terminology policy rather than reusing cnf3 recordings.
 base.NS = "cnf4"
 
+LETTER_SPEECH_NAMES = (
+    "打孖優", "艾克斯", "些德", "艾夫", "艾治", "艾路", "艾姆", "艾恩",
+    "艾斯", "欸", "比", "施", "啲", "伊", "芝", "艾", "啫", "基", "柯",
+    "披", "翹", "亞", "剔", "優", "維", "歪",
+)
+_LETTER_ALT = "|".join(re.escape(x) for x in sorted(LETTER_SPEECH_NAMES, key=len, reverse=True))
+FRAGMENTED_LETTER_PATTERN = re.compile(
+    rf"(?:{_LETTER_ALT})(?:、(?:{_LETTER_ALT})){{1,}}"
+)
+
 
 def localize_mixed_english(text: str) -> str:
     """Apply only established HK localization; preserve valid English names."""
@@ -105,10 +115,11 @@ def verified_synth(tts, ref, story, out_path):
             f"semantic-unit completeness check failed for {story.get('id') or story.get('title')}"
         )
 
-    # Defensive regression gate: never reintroduce the old letter-by-letter
-    # Chinese-comma fallback which broke one English word into many TTS units.
+    # Defensive regression gate: only block a genuine sequence of two or more
+    # old letter-name chunks separated by Chinese list commas.  A single
+    # ordinary Chinese word followed by `、` is valid copy and must not fail.
     for unit in result.get("semanticUnits") or []:
-        if re.search(r"(?:欸|比|施|啲|伊|艾夫|芝|艾治|艾|啫|基|艾路|艾姆|艾恩|柯|披|翹|亞|艾斯|剔|優|維|打孖優|艾克斯|歪|些德)、", str(unit.get("text") or "")):
+        if FRAGMENTED_LETTER_PATTERN.search(str(unit.get("text") or "")):
             raise RuntimeError("fragmented English-letter TTS regression detected")
 
     latin_tokens = base.hktrad.residual_latin_tokens(expected)
