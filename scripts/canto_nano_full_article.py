@@ -22,7 +22,12 @@ import canto_nano_prod as base
 COVERAGE_POLICY = "full-visible-article-no-truncation-v1"
 ENGLISH_POLICY = "hk-chinese-first-compact-latin-fallback-v2"
 
-# Residual phrases observed in current/recent newsroom copy.  These sit after
+# Bump the asset namespace whenever speech normalization semantics change.
+# This makes old cnf1 WAV files ineligible for cache reuse and forces current
+# articles to be regenerated under the corrected mixed-English policy.
+base.NS = "cnf2"
+
+# Residual phrases observed in current/recent newsroom copy. These sit after
 # tts_hktrad_v2, so the larger shared dictionary remains the primary source of
 # Hong Kong newsroom names and terminology.
 ENGLISH_OVERRIDES = [
@@ -46,7 +51,7 @@ LETTER_NAMES = {
     "X": "艾克斯", "Y": "歪", "Z": "些德",
 }
 
-# Keep punctuation that belongs to the Latin identifier inside one match.  The
+# Keep punctuation that belongs to the Latin identifier inside one match. The
 # replacement itself contains no segmentation punctuation.
 LATIN_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])([A-Za-z][A-Za-z0-9.+&'’/-]*)(?![A-Za-z0-9])")
 
@@ -74,7 +79,7 @@ def localize_mixed_english(text: str) -> str:
                 spoken.append(LETTER_NAMES[ch.upper()])
             elif ch.isdigit():
                 spoken.append("零一二三四五六七八九"[int(ch)])
-            # punctuation inside an identifier is deliberately omitted from the
+            # Punctuation inside an identifier is deliberately omitted from the
             # speech fallback rather than becoming a segmentation boundary.
         return "".join(spoken) or token
 
