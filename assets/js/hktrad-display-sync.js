@@ -27,17 +27,39 @@
       ]);
   }
 
+  function makePreserveRules(terms) {
+    return [...new Set((terms || []).map((term) => String(term || "").trim()).filter(Boolean))]
+      .sort((a, b) => b.length - a.length)
+      .map((term) => new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(term)}(?![A-Za-z0-9])`, "gi"));
+  }
+
   function buildLocalizer(data) {
     const baseRules = makeRules(data?.baseReplacements, "gi");
     const shortRules = makeRules(Object.entries(data?.shortAcronyms || {}), "g");
     const overrideRules = makeRules(data?.overrides, "gi");
     const unitRules = makeUnitRules(data?.unitReplacements);
+    const preserveRules = makePreserveRules(data?.preserveOfficialEnglish);
+
     return (value) => {
       let out = String(value || "");
+      const restored = [];
+
+      // Protect official English names before any general replacement runs.
+      // This prevents substring rules such as App / Store / Digital / Markets
+      // from damaging Hong Kong-normal names such as App Store or OpenAI.
+      for (const pattern of preserveRules) {
+        out = out.replace(pattern, (match) => {
+          const marker = String.fromCharCode(0xE000 + restored.length);
+          restored.push([marker, match]);
+          return marker;
+        });
+      }
+
       for (const [pattern, target] of baseRules) out = out.replace(pattern, target);
       for (const [pattern, target] of shortRules) out = out.replace(pattern, target);
       for (const [pattern, target] of overrideRules) out = out.replace(pattern, target);
       for (const [pattern, target] of unitRules) out = out.replace(pattern, target);
+      for (const [marker, original] of restored) out = out.replaceAll(marker, original);
       return out;
     };
   }
@@ -78,9 +100,16 @@
         }
       });
       observer.observe(main, { childList: true, subtree: true, characterData: true });
-      window.HKTradDisplayMap = { policy: data.policy, localize, scan: (root = document) => scan(root, localize) };
+      window.HKTradDisplayMap = {
+        policy: data.policy,
+        preserveOfficialEnglish: data.preserveOfficialEnglish || [],
+        localize,
+        scan: (root = document) => scan(root, localize),
+      };
     } catch (error) {
-      console.warn("Shared HK Traditional Chinese display map unavailable; using embedded fallback", error);
+      // Safe failure mode: keep the source newsroom wording. Never fall back to
+      // an older forced-translation table that can corrupt official names.
+      console.warn("Shared HK mixed-language display map unavailable; source wording preserved", error);
     }
   }
 
