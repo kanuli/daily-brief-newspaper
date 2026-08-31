@@ -8,8 +8,7 @@ conservative:
 - long-established Hong Kong Chinese names must still localize correctly;
 - unknown English is allowed and reported, never auto-rejected or invented as
   a literal Chinese translation;
-- known bad literal translations and the old fragmented letter fallback block
-  publication.
+- known bad literal translations block publication.
 """
 from __future__ import annotations
 
@@ -50,15 +49,10 @@ HK_CHINESE_CASES = {
     "HSBC": "滙豐",
 }
 
-LETTER_SPEECH_NAMES = (
-    "打孖優", "艾克斯", "些德", "艾夫", "艾治", "艾路", "艾姆", "艾恩",
-    "艾斯", "欸", "比", "施", "啲", "伊", "芝", "艾", "啫", "基", "柯",
-    "披", "翹", "亞", "剔", "優", "維", "歪",
-)
-_LETTER_ALT = "|".join(re.escape(x) for x in sorted(LETTER_SPEECH_NAMES, key=len, reverse=True))
-FRAGMENTED_LETTER_PATTERN = re.compile(
-    rf"(?:{_LETTER_ALT})(?:、(?:{_LETTER_ALT})){{1,}}"
-)
+# Synthetic name that deliberately has no dictionary entry.  It verifies the
+# default Hong Kong rule: an unfamiliar official English/proper name stays in
+# English instead of being letter-spelled or given an invented Chinese name.
+UNKNOWN_ENGLISH_PROBE = "ZXQTestBrand"
 
 
 def current_source_files() -> list[Path]:
@@ -109,6 +103,14 @@ def assert_policy_examples() -> None:
                 f"HK English preservation regression: {source!r} -> {out!r}"
             )
 
+    unknown_sample = f"香港消息：{UNKNOWN_ENGLISH_PROBE} 今日公布更新。"
+    unknown_out = hk.localize(unknown_sample)
+    if UNKNOWN_ENGLISH_PROBE not in unknown_out:
+        raise RuntimeError(
+            f"unknown English must remain official English: "
+            f"{UNKNOWN_ENGLISH_PROBE!r} -> {unknown_out!r}"
+        )
+
     for source, expected in HK_CHINESE_CASES.items():
         sample = f"新聞消息：{source} 今日公布更新。"
         out = hk.localize(sample)
@@ -145,14 +147,6 @@ def audit_current_copy() -> dict:
                         f"HK terminology gate rejected {source_term!r} -> "
                         f"{bad_translation!r} in {path}"
                     )
-
-            # Only a sequence of two or more letter-name chunks separated by
-            # Chinese list commas is the old broken fallback.  A single normal
-            # Chinese word followed by `、` is legitimate newsroom copy.
-            if FRAGMENTED_LETTER_PATTERN.search(localized):
-                raise RuntimeError(
-                    f"fragmented English-letter fallback detected in {path}"
-                )
 
             tokens = hk.residual_latin_tokens(raw)
             if tokens:
