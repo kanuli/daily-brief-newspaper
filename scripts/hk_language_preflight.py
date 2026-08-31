@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Pre-publication audit for Hong Kong Cantonese-English newsroom speech.
 
-The gate is intentionally conservative:
+The gate mirrors the current Canto Nano source set and is intentionally
+conservative:
 - official English names that Hong Kong media commonly keeps in English must
   survive speech localization unchanged;
 - long-established Hong Kong Chinese names must still localize correctly;
@@ -18,7 +19,7 @@ from pathlib import Path
 
 import tts_hktrad_v3 as hk
 
-SOURCE_FILES = (
+BASE_SOURCE_FILES = (
     Path("data/latest.json"),
     Path("data/desk-latest.json"),
     Path("data/live.json"),
@@ -58,6 +59,24 @@ _LETTER_ALT = "|".join(re.escape(x) for x in sorted(LETTER_SPEECH_NAMES, key=len
 FRAGMENTED_LETTER_PATTERN = re.compile(
     rf"(?:{_LETTER_ALT})(?:、(?:{_LETTER_ALT})){{1,}}"
 )
+
+
+def current_source_files() -> list[Path]:
+    paths = list(BASE_SOURCE_FILES)
+    latest = Path("data/latest.json")
+    if latest.exists():
+        try:
+            date = str(json.loads(latest.read_text(encoding="utf-8")).get("date") or "").strip()
+        except Exception:
+            date = ""
+        if date:
+            paths.extend(
+                (
+                    Path(f"data/topic-more/{date}.json"),
+                    Path(f"data/editorial-overrides/{date}.json"),
+                )
+            )
+    return paths
 
 
 def iter_strings(value):
@@ -104,11 +123,13 @@ def audit_current_copy() -> dict:
     strings = 0
     mixed_strings = 0
     latin_tokens = set()
+    checked_paths = []
 
-    for path in SOURCE_FILES:
+    for path in current_source_files():
         if not path.exists():
             continue
         files += 1
+        checked_paths.append(path.as_posix())
         data = json.loads(path.read_text(encoding="utf-8"))
         for raw in iter_strings(data):
             strings += 1
@@ -140,6 +161,7 @@ def audit_current_copy() -> dict:
 
     return {
         "sourceFilesChecked": files,
+        "sourcePathsChecked": checked_paths,
         "stringsChecked": strings,
         "mixedLanguageStrings": mixed_strings,
         "englishCodeSwitchTokens": sorted(latin_tokens, key=str.lower),
