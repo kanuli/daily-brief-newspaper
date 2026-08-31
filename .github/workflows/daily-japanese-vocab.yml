@@ -8,6 +8,8 @@ on:
   push:
     paths:
       - ".daily-vocab-refresh-trigger"
+      - "scripts/generate_daily_vocab.py"
+      - ".github/workflows/daily-japanese-vocab.yml"
 
 permissions:
   contents: write
@@ -19,7 +21,7 @@ concurrency:
 jobs:
   generate:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -31,8 +33,31 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Generate today's 10 teacher-quality words
-        run: python scripts/generate_daily_vocab.py
+      - name: Generate and backfill daily words through today
+        shell: bash
+        run: |
+          set -euo pipefail
+          TODAY="$(TZ=Asia/Hong_Kong date +%F)"
+          LAST="$(find data/vocab -maxdepth 1 -type f -name '20??-??-??.json' -printf '%f\n' | sed 's/\.json$//' | sort | tail -1 || true)"
+
+          if [[ -z "$LAST" ]]; then
+            echo "No dated vocab file exists; generating today: $TODAY"
+            python scripts/generate_daily_vocab.py --date "$TODAY"
+          elif [[ "$LAST" > "$TODAY" ]]; then
+            echo "Latest dated vocab $LAST is later than Hong Kong today $TODAY; refusing unsafe generation."
+            exit 1
+          elif [[ "$LAST" == "$TODAY" ]]; then
+            echo "Today's vocab already exists; regenerating and validating $TODAY"
+            python scripts/generate_daily_vocab.py --date "$TODAY"
+          else
+            NEXT="$(date -u -d "$LAST + 1 day" +%F)"
+            echo "Backfilling daily vocab from $NEXT through $TODAY (last existing: $LAST)"
+            while [[ "$NEXT" < "$TODAY" || "$NEXT" == "$TODAY" ]]; do
+              echo "Generating $NEXT"
+              python scripts/generate_daily_vocab.py --date "$NEXT"
+              NEXT="$(date -u -d "$NEXT + 1 day" +%F)"
+            done
+          fi
 
       - name: Validate output and teaching-quality metadata
         run: |
@@ -60,13 +85,14 @@ jobs:
               assert word.get("teacherStatus") == "direct", f"Non-direct teacher status: {key}"
               assert word.get("teacherCommon") is True, f"Non-common word: {key}"
               assert word.get("selectionClass") == "teacher-core-common-direct", f"Wrong source class: {key}"
+              assert word.get("partOfSpeech") and word.get("partOfSpeech") != "unclassified", f"Missing POS: {key}"
               assert not re.search(r"[A-Za-z0-9@:/\\]", key[1]), f"ASCII/code-like display: {key}"
           for level in ("N1", "N2", "N3", "N4", "N5"):
               count = sum(1 for word in words if word.get("level") == level)
               assert count == 2, f"{level}: expected 2, got {count}"
           latest = json.loads(Path("data/vocab/latest.json").read_text(encoding="utf-8"))
           assert latest == data, "latest.json must exactly match today's dated file"
-          print(f"Validated {path}: 10 teacher-quality words, 2 per JLPT level")
+          print(f"Validated {path}: 10 teacher-quality words, 2 per JLPT level, classified POS")
           PY
 
       - name: Commit generated vocab
