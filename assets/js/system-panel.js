@@ -62,8 +62,12 @@
   }
 
   function loadDisplayLocalization() {
-    inject("assets/js/hktrad-display.js?v=20260823-1719", "data-hktrad-display");
-    inject("assets/js/hktrad-display-sync.js?v=20260823-1748-units", "data-hktrad-display-sync");
+    // The deploy workflow builds data/hktrad-localization.json from the same
+    // HK mixed-language terminology policy used by production TTS.  Do not
+    // load the legacy embedded fallback in parallel: it contains historical
+    // forced translations such as OpenAI -> 開放人工智能公司 and can race the
+    // authoritative shared map.
+    inject("assets/js/hktrad-display-sync.js?v=20260831-hk-mixed-v1", "data-hktrad-display-sync");
   }
 
   function loadArticleEnhancers() {
