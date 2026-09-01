@@ -1,0 +1,113 @@
+name: Sync Global Navigation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '*.html'
+      - 'assets/css/newspaper.css'
+      - '.github/workflows/sync-global-nav.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-global-navigation
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Normalize every root navbar
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          NAV_RE = re.compile(r'(<nav\b[^>]*class=["\'][^"\']*section-nav[^"\']*["\'][^>]*>)(.*?)(</nav>)', re.I | re.S)
+          RETAIL_RE = re.compile(r'<a\b[^>]*href=["\'][^"\']*retail-deals\.html[^"\']*["\'][^>]*>.*?</a>', re.I | re.S)
+          ARCHIVE_RE = re.compile(r'(<a\b[^>]*href=["\'][^"\']*archive\.html[^"\']*["\'][^>]*>.*?</a>)', re.I | re.S)
+          CSS_RE = re.compile(r'assets/css/newspaper\.css\?v=[^"\']+', re.I)
+
+          changed = []
+          checked = []
+          for path in sorted(Path('.').glob('*.html')):
+              text = path.read_text(encoding='utf-8')
+              match = NAV_RE.search(text)
+              if not match:
+                  continue
+
+              checked.append(path.name)
+              inner = RETAIL_RE.sub('', match.group(2))
+              archive = ARCHIVE_RE.search(inner)
+              if not archive:
+                  raise SystemExit(f'{path.name}: section-nav missing Archive link')
+
+              current = ' aria-current="page"' if path.name == 'retail-deals.html' else ''
+              retail = f'<a class="retail-nav" href="./retail-deals.html?v=20260901-globalnav"{current}>🛒 最新優惠</a>'
+              inner = inner[:archive.start()] + retail + inner[archive.start():]
+              new_nav = match.group(1) + inner + match.group(3)
+              new_text = text[:match.start()] + new_nav + text[match.end():]
+              new_text = CSS_RE.sub('assets/css/newspaper.css?v=20260901-globalnav', new_text)
+
+              nav = NAV_RE.search(new_text).group(2)
+              links = RETAIL_RE.findall(nav)
+              football = nav.find('football.html')
+              retail_pos = nav.find('retail-deals.html')
+              archive_pos = nav.find('archive.html')
+              if len(links) != 1:
+                  raise SystemExit(f'{path.name}: expected exactly one retail nav link, found {len(links)}')
+              if football >= 0 and not (football < retail_pos < archive_pos):
+                  raise SystemExit(f'{path.name}: nav order must be Football -> 最新優惠 -> Archive')
+              if not (retail_pos < archive_pos):
+                  raise SystemExit(f'{path.name}: 最新優惠 must be before Archive')
+
+              if new_text != text:
+                  path.write_text(new_text, encoding='utf-8')
+                  changed.append(path.name)
+
+          if not checked:
+              raise SystemExit('No root section-nav pages found')
+          print('GLOBAL_NAV_CHECKED', len(checked), checked)
+          print('GLOBAL_NAV_CHANGED', len(changed), changed)
+          PY
+
+      - name: Ensure mobile navbar remains visible
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('assets/css/newspaper.css')
+          text=p.read_text(encoding='utf-8')
+          block='''\n/* Global nav visibility contract: final items must remain visible on narrow screens. */\n.section-nav .retail-nav { background: var(--red-dark); }\n.section-nav .retail-nav:hover { background: var(--red); }\n@media (max-width: 620px) {\n  .section-nav { overflow-x: visible; flex-wrap: wrap; }\n  .section-nav a { white-space: nowrap; padding: 8px 10px; font-size: 12px; }\n}\n'''
+          marker='/* Global nav visibility contract:'
+          if marker in text:
+              text=text[:text.index(marker)].rstrip()+"\n"+block
+          else:
+              text=text.rstrip()+"\n"+block
+          p.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit synchronized navbars
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'GLOBAL_NAV_ALREADY_SYNCED'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add '*.html' assets/css/newspaper.css
+          git commit -m 'Synchronize latest promotions across all navbars'
+          git push origin HEAD:main
