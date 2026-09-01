@@ -35,6 +35,21 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Keep the complete currently discovered catalog
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/retail_deals_collector.py')
+          text = path.read_text(encoding='utf-8')
+          new = text.replace('MAX_PRODUCTS = 180', 'MAX_PRODUCTS = 300', 1)
+          if new != text:
+              path.write_text(new, encoding='utf-8')
+              print('RETAIL_PRODUCT_CAP_UPDATED 300')
+          else:
+              print('RETAIL_PRODUCT_CAP_OK')
+          PY
+
       - name: Validate collector syntax
         run: python -m py_compile scripts/retail_deals_collector.py
 
@@ -68,7 +83,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- data/retail-deals.json
+          git add -- scripts/retail_deals_collector.py data/retail-deals.json
           if git diff --cached --quiet; then
             echo "No retail data changes"
             echo "changed=false" >> "$GITHUB_OUTPUT"
