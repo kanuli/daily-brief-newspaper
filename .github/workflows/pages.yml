@@ -60,7 +60,7 @@ jobs:
           changed=0
           for path in Path('.').rglob('*.html'):
               text=path.read_text(encoding='utf-8')
-              new=re.sub(r'assets/js/system-panel\.js\?v=[^"\']+', 'assets/js/system-panel.js?v=20260901-nav-icons-time-v1', text)
+              new=re.sub(r'assets/js/system-panel\.js\?v=[^"\']+', 'assets/js/system-panel.js?v=20260901-cnf4-playback-v2', text)
               if new != text:
                   path.write_text(new, encoding='utf-8')
                   changed += 1
@@ -119,6 +119,30 @@ jobs:
           if '最後資料更新' not in retail_js or "UPDATED ${when(data.generatedAt)}" in retail_js:
               raise SystemExit('retail update-time wording contract failed')
           print('PAGE_TIME_STOCK_RETAIL_CONTRACT_OK pages',len(pages))
+          PY
+
+      - name: Verify cnf4 voice playback contract before deploy
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          manifest=json.loads(Path('data/tts-manifest.json').read_text(encoding='utf-8'))
+          js=Path('assets/js/site-tts-canto-nano.js').read_text(encoding='utf-8')
+          status=Path('assets/js/voice-production-status.js').read_text(encoding='utf-8')
+          system=Path('assets/js/system-panel.js').read_text(encoding='utf-8')
+          if manifest.get('assetNamespace') != 'cnf4':
+              raise SystemExit('voice manifest namespace is not cnf4')
+          if 'const ASSET_NAMESPACE = "cnf4"' not in js or 'hk-cantonese-english-codeswitch-allowed' not in js:
+              raise SystemExit('site TTS client is not aligned with cnf4 mixed-language playback')
+          if 'const ASSET_NAMESPACE = "cnf4"' not in status:
+              raise SystemExit('voice status client is not aligned with cnf4')
+          if '20260901-cnf4-playback-v1' not in system:
+              raise SystemExit('system panel is not loading the cnf4 playback clients')
+          available=int(manifest.get('availableArticleCount') or 0)
+          if available <= 0:
+              raise SystemExit('cnf4 manifest has zero available voice articles')
+          print('CNF4_PLAYBACK_CONTRACT_OK available',available,'pending',manifest.get('pendingArticleCount'))
           PY
 
       - name: Availability gate — JSON readable and publication mode valid
@@ -277,6 +301,13 @@ jobs:
                   if not (runtime.index('⚽ Football') < runtime.index('🛒 最新優惠') < runtime.index('🗂️ Archive')):
                       raise RuntimeError('public runtime nav order wrong')
 
+                  tts_client=get('assets/js/site-tts-canto-nano.js')
+                  if 'const ASSET_NAMESPACE = "cnf4"' not in tts_client or 'hk-cantonese-english-codeswitch-allowed' not in tts_client:
+                      raise RuntimeError('public TTS client is not cnf4 mixed-language capable')
+                  manifest=json.loads(get('data/tts-manifest.json'))
+                  if manifest.get('assetNamespace') != 'cnf4' or int(manifest.get('availableArticleCount') or 0) <= 0:
+                      raise RuntimeError('public cnf4 manifest has no playable voice assets')
+
                   page_time=get('assets/js/page-updated-time.js')
                   for label in ['最後內容更新','最後 Live 更新','最後檢查','最後資料更新']:
                       if label not in page_time:
@@ -291,7 +322,7 @@ jobs:
                   if '最後資料更新' not in retail_js or 'UPDATED ${when(data.generatedAt)}' in retail_js:
                       raise RuntimeError('public retail timestamp wording stale')
 
-                  print('PAGES_PUBLIC_UI_CONTRACTS_OK', expected, 'mode', expected_mode, 'items', expected_items, 'icons', len(icon_labels))
+                  print('PAGES_PUBLIC_UI_CONTRACTS_OK', expected, 'mode', expected_mode, 'items', expected_items, 'icons', len(icon_labels), 'voiceAvailable', manifest.get('availableArticleCount'))
                   raise SystemExit(0)
               except Exception as exc:
                   last_error=str(exc)
