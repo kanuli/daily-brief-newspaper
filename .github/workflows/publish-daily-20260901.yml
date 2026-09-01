@@ -31,6 +31,8 @@ jobs:
         run: python scripts/inject_hk_recovery_20260901.py
       - name: Recover fresh Manchester United depth
         run: python scripts/inject_mu_recovery_20260901.py
+      - name: Sanitize public-copy reservoir
+        run: python scripts/sanitize_reservoir_20260901.py
       - name: Build Daily Edition
         run: python scripts/publish_daily_20260901.py
       - name: Validate Site Schema
