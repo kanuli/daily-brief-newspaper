@@ -1,0 +1,61 @@
+name: Retail Promotion Page Smoke Test
+
+on:
+  workflow_run:
+    workflows: ["Deploy Daily Brief to GitHub Pages"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify homepage link and promotion page are public
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, time, urllib.request
+
+          base='https://kanuli.github.io/daily-brief-newspaper/'
+          last=None
+          for attempt in range(12):
+              try:
+                  stamp=str(int(time.time()))
+                  req=urllib.request.Request(base+'?v='+stamp, headers={'Cache-Control':'no-cache','User-Agent':'daily-brief-retail-smoke'})
+                  with urllib.request.urlopen(req, timeout=15) as r:
+                      home=r.read().decode('utf-8','replace')
+                      if r.status != 200:
+                          raise RuntimeError(f'homepage HTTP {r.status}')
+                  if 'retail-deals.html' not in home or '最新優惠' not in home:
+                      raise RuntimeError('homepage missing latest-promotion link')
+
+                  req=urllib.request.Request(base+'retail-deals.html?v='+stamp, headers={'Cache-Control':'no-cache','User-Agent':'daily-brief-retail-smoke'})
+                  with urllib.request.urlopen(req, timeout=15) as r:
+                      page=r.read().decode('utf-8','replace')
+                      if r.status != 200:
+                          raise RuntimeError(f'retail page HTTP {r.status}')
+                  if '香港最新優惠' not in page or 'retail-deals.js' not in page:
+                      raise RuntimeError('retail promotion page content incomplete')
+
+                  req=urllib.request.Request(base+'data/retail-deals.json?v='+stamp, headers={'Cache-Control':'no-cache','User-Agent':'daily-brief-retail-smoke'})
+                  with urllib.request.urlopen(req, timeout=15) as r:
+                      data=json.loads(r.read().decode('utf-8'))
+                  if data.get('schemaVersion') != 3 or not isinstance(data.get('promotions'), list):
+                      raise RuntimeError('promotion dataset invalid')
+                  forbidden={'offers','products','currentPrice','regularPrice','priceHistory'}
+                  text=json.dumps(data, ensure_ascii=False)
+                  for key in forbidden:
+                      if f'"{key}"' in text:
+                          raise RuntimeError(f'forbidden price field published: {key}')
+                  print('RETAIL_PUBLIC_SMOKE_OK', 'promotions', len(data['promotions']), 'generated', data.get('generatedAt'))
+                  raise SystemExit(0)
+              except Exception as exc:
+                  last=exc
+                  time.sleep(5)
+          raise SystemExit(f'RETAIL_PUBLIC_SMOKE_FAIL: {last}')
+          PY
