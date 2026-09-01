@@ -1,0 +1,82 @@
+name: Recover Hong Kong desk depth 2026-09-01 10:15 HKT
+
+on:
+  push:
+    paths:
+      - '.github/workflows/recover-hk-depth-20260901-1015.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Patch rolling desk safely
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          p = Path('data/desk-latest.json')
+          data = json.loads(p.read_text(encoding='utf-8'))
+          assert data.get('editorialStandardVersion') == 3
+          assert data.get('contentVersion') == 3
+          desks = data['desks']
+          hk = desks['hong-kong']
+
+          # Remove the superseded pre-signal Saudel rewrite; keep the newer Signal No. 1 update.
+          hk = [x for x in hk if x.get('id') != 'hk-saudel-regeneration-signal-20260831-1000']
+
+          story_id = 'hk-retail-sales-july-2026-20260901-1015'
+          if not any(x.get('id') == story_id for x in hk):
+              hk.append({
+                'id': story_id,
+                'desk': 'hong-kong',
+                'status': 'LATEST',
+                'deskSlugs': ['hong-kong', 'market-economy'],
+                'section': '香港｜經濟／零售',
+                'sectionLabel': '香港',
+                'mediaLabel': '香港',
+                'title': '香港7月零售銷貨額升4.5%至310億元　連續15個月錄得按年增長',
+                'dek': '政府統計處指網上零售按年升9.5%，珠寶鐘錶及名貴禮物銷售升19.7%；經季節調整後近三個月總銷貨價值則跌1.7%。',
+                'summary': '香港7月零售業總銷貨價值臨時估計310億元，按年升4.5%；網上零售升9.5%至28億元，政府稱整體零售銷售已連續15個月錄得按年增長。',
+                'body': '香港政府統計處公布，2026年7月零售業總銷貨價值臨時估計為310億元，較去年同月上升4.5%；首七個月合計按年上升8.9%。扣除價格變動後，7月總銷貨數量按年增加2.3%。\n\n網上銷售佔當月零售總值9.1%，約28億元，按年上升9.5%。分類方面，珠寶首飾、鐘錶及名貴禮物銷售升19.7%，電器及其他耐用消費品升11.5%；汽車及零件則跌18.2%。政府表示零售銷售增長動力保持韌性，7月為連續第15個月錄得按年增長，但經季節調整後，5至7月三個月總銷貨價值較之前三個月仍下跌1.7%，顯示復甦並非全面加速。',
+                'context': '香港今年零售表現受訪港旅遊、本地消費及網購渠道共同影響；大型新股及金融市場活動亦提高市場對本地消費與服務業動能的關注。',
+                'why': '零售銷售是香港本地消費與旅遊需求的重要高頻指標，會影響零售、商場、消費品牌及整體經濟增長判斷。',
+                'watchNext': '留意8月零售數據、訪港旅客消費、網上零售佔比，以及珠寶鐘錶等旅客敏感類別能否維持增長。',
+                'sourceName': '香港政府統計處',
+                'sourceUrl': 'https://www.info.gov.hk/gia/general/202608/31/P2026083100277p.htm',
+                'timeLabel': '9月1日10:15 HKT前核實',
+                'sources': [
+                  {'name': '香港政府統計處／政府新聞公報', 'url': 'https://www.info.gov.hk/gia/general/202608/31/P2026083100277p.htm'}
+                ],
+                'image': None
+              })
+
+          desks['hong-kong'] = hk
+          data['generatedAt'] = '2026-09-01T10:15:00+08:00'
+
+          # Hard-floor structural check after removing the rewrite and adding one independent event.
+          floors = {'world':8,'asia':8,'hong-kong':6,'japan':8,'market-economy':8,'ai-tech':6,'manga-anime':4,'manchester-united':4,'football':10}
+          for slug, floor in floors.items():
+              assert len(desks[slug]) >= floor, (slug, len(desks[slug]), floor)
+          assert len(desks['hong-kong']) >= 6
+          assert len(desks['japan']) >= 8
+          assert not any(x.get('id') == 'hk-saudel-regeneration-signal-20260831-1000' for x in desks['hong-kong'])
+          assert any(x.get('id') == story_id for x in desks['hong-kong'])
+
+          p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+      - name: Commit recovery and self-remove workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/recover-hk-depth-20260901-1015.yml
+          git add data/desk-latest.json
+          git commit -m 'Repair Hong Kong rolling-desk unique depth'
+          git push origin HEAD:main
