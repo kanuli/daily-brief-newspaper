@@ -13,12 +13,6 @@
     if (Number.isNaN(d.getTime())) return esc(value);
     return new Intl.DateTimeFormat('zh-HK', { timeZone:'Asia/Hong_Kong', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }).format(d) + ' HKT';
   };
-  const timeOnly = (value) => {
-    if (!value) return '—';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '—';
-    return new Intl.DateTimeFormat('zh-HK', { timeZone:'Asia/Hong_Kong', hour:'2-digit', minute:'2-digit', hour12:false }).format(d);
-  };
   const dateOnly = (value) => {
     if (!value) return '未註明';
     const d = new Date(`${value}T00:00:00+08:00`);
@@ -92,7 +86,7 @@
       <div class="retail-stat"><strong>${rows.length}</strong><span>最新推廣</span></div>
       <div class="retail-stat"><strong>${retailers.size}</strong><span>涵蓋商店</span></div>
       <div class="retail-stat"><strong>${ok}/${sources.length}</strong><span>來源正常</span></div>
-      <div class="retail-stat"><strong>${timeOnly(data.generatedAt)}</strong><span>最後更新 HKT</span></div>`;
+      <div class="retail-stat"><strong>2小時</strong><span>更新頻率</span></div>`;
   }
 
   function renderPromotions(data) {
@@ -159,13 +153,13 @@
       const data = await response.json();
       if (!data || data.schemaVersion !== 3 || !Array.isArray(data.promotions) || !Array.isArray(data.sources)) throw new Error('invalid promotion-only schema');
       state.data = data;
-      $('retail-generated').textContent = `資料時間：${when(data.generatedAt)}`;
+      $('retail-generated').textContent = '資料範圍：推廣活動（PROMOTION ONLY）';
       $('retail-checked').textContent = `最後資料更新：${when(data.generatedAt)}`;
       populateRetailers(data);
       render();
     } catch (err) {
       const message = `最新推廣資料暫時無法載入：${esc(err.message || err)}`;
-      $('retail-generated').textContent = '資料暫時未能載入';
+      $('retail-generated').textContent = '資料範圍：推廣活動（PROMOTION ONLY）';
       $('retail-checked').textContent = '最後資料更新：暫時未能讀取';
       $('promotion-list').innerHTML = `<p class="notice">${message}</p>`;
       $('source-health').innerHTML = '<p class="notice">請稍後重新整理頁面；其他新聞版面不受影響。</p>';
