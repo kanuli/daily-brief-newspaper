@@ -25,10 +25,11 @@ from pathlib import Path
 from typing import Any, Iterable
 
 HKT = timezone(timedelta(hours=8))
-USER_AGENT = "DailyBriefRetailTracker/1.0 (+https://github.com/kanuli/daily-brief-newspaper)"
+USER_AGENT = "DailyBriefRetailTracker/1.1 (+https://github.com/kanuli/daily-brief-newspaper)"
 HISTORY_DAYS = 180
 MAX_PRODUCTS = 180
-MAX_DISCOVERY_PROMOS = 60
+MAX_DISCOVERY_PROMOS = 24
+DISCOVERY_PER_RETAILER = 6
 
 WELLCOME_HOME = "https://www.wellcome.com.hk/en"
 WELLCOME_FRESH = "https://www.wellcome.com.hk/en/d/pH7gxW1LTK04bz.html"
@@ -41,10 +42,21 @@ KAIBO = "https://www.kaibo.com.hk/"
 DISCOVERY_QUERIES = [
     ("Kai Bo 佳寶", '"佳寶食品超級市場" (優惠 OR 折 OR 減價 OR 推廣) when:7d'),
     ("Wellcome 惠康", '惠康 (優惠 OR 特價 OR 推廣) when:7d'),
-    ("DAISO Japan / AEON", '(DAISO OR 大創 OR AEON) 香港 (優惠 OR 推廣 OR 折) when:14d'),
+    ("DAISO Japan / AEON", '(DAISO OR 大創 OR AEON) 香港 (優惠 OR 推廣 OR 折) when:7d'),
     ("PARKnSHOP 百佳", '(百佳 OR PARKnSHOP) (優惠 OR 特價 OR 推廣) when:7d'),
 ]
 PROMO_TERMS = re.compile(r"優惠|特價|減價|折扣|\d\s*折|買.+送|贈|coupon|promo|promotion|discount|sale|會員|感謝日", re.I)
+PRODUCT_UNIT_RE = re.compile(r"(?:\d+(?:\.\d+)?\s*(?:KG|GM|G|ML|LT|L|PC|PCS|PK|RL|EA|LB|OZ|CS))\b", re.I)
+PRICE_TOKEN_RE = re.compile(r"^\$\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)$")
+DECIMAL_TOKEN_RE = re.compile(r"^\.([0-9]{2})$")
+TITLE_DAY_RE = re.compile(r"(?<!\d)(1[0-2]|[1-9])月([0-3]?\d)日")
+RESTRICTED_PRODUCT_RE = re.compile(r"啤酒|紅酒|白酒|香檳|威士忌|清酒|梅酒|wine|beer|champagne|whisky|whiskey|vodka|sake", re.I)
+SEED_ALIASES = {
+    "wellcome-cherry-blossom-rice-8kg": ["櫻城牌日本品種珍珠米 8KG"],
+    "wellcome-norway-salmon-480g": ["挪威 急凍三文魚柳4件裝 480GM"],
+    "wellcome-meadows-mackerel-2pc": ["Meadows 挪威急凍鯖魚柳 2PC"],
+    "wellcome-deqingyuan-white-eggs-10pc": ["DQY 德青源日本白蛋10隻裝 10PC"],
+}
 
 
 class TextCollector(HTMLParser):
@@ -189,7 +201,7 @@ def jsonld_products(markup: str, source_url: str, observed: datetime) -> list[di
             if "product" not in types:
                 continue
             name = clean(node.get("name"))
-            if not name or len(name) < 3:
+            if not name or len(name) < 3 or RESTRICTED_PRODUCT_RE.search(name):
                 continue
             offers = node.get("offers")
             offer_nodes: list[dict[str, Any]] = []
@@ -230,6 +242,83 @@ def jsonld_products(markup: str, source_url: str, observed: datetime) -> list[di
     return products
 
 
+def visible_products(markup: str, source_url: str, observed: datetime) -> list[dict[str, Any]]:
+    """Parse visible Wellcome product/price text when JSON-LD is unavailable.
+
+    Wellcome commonly renders a product text node followed by one or two price
+    nodes, with cents sometimes split into a separate `.90` text node. We only
+    accept candidate names that contain a retail size/unit token and whose next
+    few text nodes contain a dollar price. This intentionally favors precision.
+    """
+    parser = TextCollector()
+    parser.feed(markup)
+    parts = parser.parts
+    products: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def candidate(text: str) -> bool:
+        if len(text) < 4 or len(text) > 180:
+            return False
+        if text.startswith(("電話", "電郵", "©", "關於", "條款")):
+            return False
+        return bool(PRODUCT_UNIT_RE.search(text)) and not bool(RESTRICTED_PRODUCT_RE.search(text))
+
+    i = 0
+    while i < len(parts):
+        name = clean(parts[i])
+        if not candidate(name):
+            i += 1
+            continue
+        prices: list[float] = []
+        hints: list[str] = []
+        j = i + 1
+        while j < len(parts) and j <= i + 8:
+            token = clean(parts[j])
+            if j > i + 1 and candidate(token):
+                break
+            match = PRICE_TOKEN_RE.match(token.replace(" ", ""))
+            if match:
+                value = float(match.group(1).replace(",", ""))
+                if j + 1 < len(parts):
+                    decimal = DECIMAL_TOKEN_RE.match(clean(parts[j + 1]))
+                    if decimal and "." not in match.group(1):
+                        value += int(decimal.group(1)) / 100
+                        j += 1
+                if 0 < value <= 50000:
+                    prices.append(round(value, 2))
+            elif re.search(r"新人價|頭\s*\d+\s*件|優惠|特價|原箱", token, re.I):
+                hints.append(token[:60])
+            j += 1
+        if prices:
+            current = prices[-1]
+            regular = prices[0] if len(prices) >= 2 and prices[0] > current else None
+            key = normalized_name(name)
+            if key not in seen:
+                seen.add(key)
+                size_matches = list(PRODUCT_UNIT_RE.finditer(name))
+                size = size_matches[-1].group(0).replace(" ", "") if size_matches else ""
+                promo = " / ".join(dict.fromkeys(hints)) if hints else ("網站優惠價" if regular else ("Fresh Deal" if source_url == WELLCOME_FRESH else "公開網店價格"))
+                products.append(
+                    {
+                        "id": "wellcome-" + slug(name),
+                        "retailer": "Wellcome 惠康",
+                        "name": name,
+                        "size": size,
+                        "currency": "HKD",
+                        "currentPrice": current,
+                        "regularPrice": regular,
+                        "promoLabel": promo,
+                        "sourceType": "official-products",
+                        "sourceUrl": source_url,
+                        "observedAt": iso(observed),
+                    }
+                )
+        i += 1
+        if len(products) >= 120:
+            break
+    return products
+
+
 def source_record(source_id: str, retailer: str, label: str, url: str, mode: str, status: str, checked: datetime, detail: str) -> dict[str, Any]:
     return {
         "id": source_id,
@@ -243,23 +332,39 @@ def source_record(source_id: str, retailer: str, label: str, url: str, mode: str
     }
 
 
+def dedupe_observations(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    unique: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        key = (clean(row.get("retailer")), normalized_name(str(row.get("name") or "")))
+        if not key[1]:
+            continue
+        old = unique.get(key)
+        if old is None or (old.get("regularPrice") is None and row.get("regularPrice") is not None):
+            unique[key] = row
+    return list(unique.values())
+
+
 def collect_official(now: datetime) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     observed: list[dict[str, Any]] = []
     sources: list[dict[str, Any]] = []
-
     wellcome_errors: list[str] = []
+
     for url in (WELLCOME_HOME, WELLCOME_FRESH):
         try:
             markup = fetch_text(url)
-            observed.extend(jsonld_products(markup, url, now))
+            rows = jsonld_products(markup, url, now)
+            if not rows:
+                rows = visible_products(markup, url, now)
+            observed.extend(rows)
         except Exception as exc:
             wellcome_errors.append(f"{url}: {exc}")
+    observed = dedupe_observations(observed)
     if observed:
-        sources.append(source_record("wellcome-products", "Wellcome 惠康", "官方網店價格", WELLCOME_HOME, "official-products", "ok", now, f"本輪讀取 {len(observed)} 個結構化公開商品價格。"))
+        sources.append(source_record("wellcome-products", "Wellcome 惠康", "官方網店價格", WELLCOME_HOME, "official-products", "ok", now, f"本輪直接從官方公開頁讀取 {len(observed)} 個商品價格。"))
     elif wellcome_errors:
         sources.append(source_record("wellcome-products", "Wellcome 惠康", "官方網店價格", WELLCOME_HOME, "official-products", "limited", now, "官方頁可用性／結構本輪未能抽取價格；保留上一輪資料，不會清空歷史。"))
     else:
-        sources.append(source_record("wellcome-products", "Wellcome 惠康", "官方網店價格", WELLCOME_HOME, "official-products", "limited", now, "官方頁本輪未提供可辨識的結構化商品價格；保留上一輪資料。"))
+        sources.append(source_record("wellcome-products", "Wellcome 惠康", "官方網店價格", WELLCOME_HOME, "official-products", "limited", now, "官方頁本輪未提供可辨識商品價格；保留上一輪資料。"))
 
     for source_id, retailer, label, url, mode in [
         ("wellcome-promotions", "Wellcome 惠康", "官方推廣及每週廣告", WELLCOME_WEEKLY, "official-promotions"),
@@ -294,6 +399,7 @@ def discovery_promotions(now: datetime) -> tuple[list[dict[str, Any]], dict[str,
     rows: list[dict[str, Any]] = []
     failures = 0
     for retailer, query in DISCOVERY_QUERIES:
+        per_retailer = 0
         try:
             payload = fetch_text(google_news_url(query))
             root = ET.fromstring(payload)
@@ -306,7 +412,7 @@ def discovery_promotions(now: datetime) -> tuple[list[dict[str, Any]], dict[str,
             if not title or not link or not PROMO_TERMS.search(title):
                 continue
             published = parse_dt(item.findtext("pubDate"))
-            if published and published < now - timedelta(days=16):
+            if published and published < now - timedelta(days=8):
                 continue
             source_node = item.find("source")
             source_name = clean(source_node.text if source_node is not None else "") or "Google News indexed source"
@@ -328,9 +434,12 @@ def discovery_promotions(now: datetime) -> tuple[list[dict[str, Any]], dict[str,
                     "publishedAt": iso(published) if published else None,
                 }
             )
+            per_retailer += 1
+            if per_retailer >= DISCOVERY_PER_RETAILER:
+                break
     dedup: dict[str, dict[str, Any]] = {row["id"]: row for row in rows}
     status = "ok" if failures == 0 else "limited" if failures < len(DISCOVERY_QUERIES) else "error"
-    detail = f"本輪發現 {len(dedup)} 個近期優惠線索；{failures} 個搜尋查詢失敗。"
+    detail = f"本輪保留 {len(dedup)} 個近期優惠發現線索；{failures} 個搜尋查詢失敗。"
     health = source_record("retail-social-discovery", "多個零售商", "Facebook／網上優惠發現", "https://news.google.com/", "social-reference", status, now, detail)
     return list(dedup.values())[:MAX_DISCOVERY_PROMOS], health
 
@@ -345,12 +454,23 @@ def load_existing(path: Path) -> dict[str, Any]:
         return {}
 
 
+def aliases_for(row: dict[str, Any]) -> set[str]:
+    values = {normalized_name(str(row.get("name") or ""))}
+    for alias in SEED_ALIASES.get(str(row.get("id") or ""), []):
+        values.add(normalized_name(alias))
+    return {x for x in values if x}
+
+
 def same_product(a: dict[str, Any], b: dict[str, Any]) -> bool:
     if clean(a.get("retailer")) != clean(b.get("retailer")):
         return False
-    an = normalized_name(str(a.get("name") or ""))
-    bn = normalized_name(str(b.get("name") or ""))
-    return bool(an and bn and (an == bn or an in bn or bn in an))
+    aa = aliases_for(a)
+    bb = aliases_for(b)
+    for an in aa:
+        for bn in bb:
+            if an == bn or (len(an) >= 8 and an in bn) or (len(bn) >= 8 and bn in an):
+                return True
+    return False
 
 
 def history_values(history: list[dict[str, Any]]) -> list[float]:
@@ -380,9 +500,9 @@ def merge_products(existing: list[dict[str, Any]], observations: list[dict[str, 
         row["lastSeenAt"] = new.get("observedAt") or iso(now)
         row["observedAt"] = new.get("observedAt") or iso(now)
         row["stale"] = False
-        if new.get("regularPrice") is None and old.get("regularPrice") is not None:
+        if new.get("regularPrice") is None and old.get("regularPrice") is not None and price_number(old.get("currentPrice")) == price_number(new.get("currentPrice")):
             row["regularPrice"] = old.get("regularPrice")
-        if (not new.get("promoLabel") or new.get("promoLabel") == "公開網店價格") and old.get("promoLabel"):
+        if (not new.get("promoLabel") or new.get("promoLabel") == "公開網店價格") and old.get("promoLabel") and price_number(old.get("currentPrice")) == price_number(new.get("currentPrice")):
             row["promoLabel"] = old.get("promoLabel")
 
         history = [dict(x) for x in old.get("priceHistory", []) if isinstance(x, dict) and (parse_dt(x.get("observedAt")) or now) >= cutoff]
@@ -419,25 +539,44 @@ def merge_products(existing: list[dict[str, Any]], observations: list[dict[str, 
     return result[:MAX_PRODUCTS]
 
 
-def promotion_active(row: dict[str, Any], today: date) -> bool:
+def title_date_is_current(title: str, today: date) -> bool:
+    matches = TITLE_DAY_RE.findall(title or "")
+    if not matches:
+        return True
+    parsed: list[date] = []
+    for month_text, day_text in matches:
+        try:
+            parsed.append(date(today.year, int(month_text), int(day_text)))
+        except ValueError:
+            pass
+    return not parsed or max(parsed) >= today
+
+
+def promotion_active(row: dict[str, Any], today: date, now: datetime) -> bool:
     start = parse_day(row.get("startDate"))
     end = parse_day(row.get("endDate"))
     if start and today < start:
         return False
     if end and today > end:
         return False
-    if not start and not end:
+    if row.get("sourceType") == "secondary-discovery" and not start and not end:
         published = parse_dt(row.get("publishedAt")) or parse_dt(row.get("discoveredAt"))
-        if row.get("sourceType") == "secondary-discovery" and published and published < utcnow() - timedelta(days=14):
+        if published and published < now - timedelta(days=7):
+            return False
+        if not title_date_is_current(str(row.get("title") or ""), today):
             return False
     return True
 
 
 def merge_promotions(existing: list[dict[str, Any]], discovered: list[dict[str, Any]], now: datetime) -> list[dict[str, Any]]:
+    fresh_discovery_ids = {str(x.get("id")) for x in discovered if x.get("id")}
     rows: dict[str, dict[str, Any]] = {}
     for item in existing:
-        if isinstance(item, dict) and item.get("id"):
-            rows[str(item["id"])] = dict(item)
+        if not isinstance(item, dict) or not item.get("id"):
+            continue
+        if item.get("sourceType") == "secondary-discovery" and str(item.get("id")) not in fresh_discovery_ids:
+            continue
+        rows[str(item["id"])] = dict(item)
     for item in discovered:
         if item.get("id"):
             old = rows.get(str(item["id"]), {})
@@ -446,16 +585,14 @@ def merge_promotions(existing: list[dict[str, Any]], discovered: list[dict[str, 
             merged["discoveredAt"] = old.get("discoveredAt") or item.get("discoveredAt") or iso(now)
             rows[str(item["id"])] = merged
     today = now.astimezone(HKT).date()
-    cutoff = now - timedelta(days=45)
     out: list[dict[str, Any]] = []
     for row in rows.values():
-        row["active"] = promotion_active(row, today)
-        seen = parse_dt(row.get("publishedAt")) or parse_dt(row.get("discoveredAt"))
-        end = parse_day(row.get("endDate"))
-        if row["active"] or (end and end >= today - timedelta(days=14)) or (seen and seen >= cutoff) or row.get("sourceType") == "official-promotions":
-            out.append(row)
+        row["active"] = promotion_active(row, today, now)
+        if row.get("sourceType") == "secondary-discovery" and row["active"] is False:
+            continue
+        out.append(row)
     out.sort(key=lambda x: (not bool(x.get("active")), str(x.get("endDate") or "9999-12-31"), str(x.get("title") or "")))
-    return out[:100]
+    return out[:50]
 
 
 def merge_sources(existing: list[dict[str, Any]], fresh: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -475,7 +612,7 @@ def build(output: Path) -> dict[str, Any]:
     sources = merge_sources(existing.get("sources", []), official_sources + [discovery_health])
     data = {
         "schemaVersion": 1,
-        "collectorVersion": "1.0.0",
+        "collectorVersion": "1.1.0",
         "generatedAt": iso(now),
         "generatedAtHkt": now.astimezone(HKT).strftime("%Y-%m-%d %H:%M HKT"),
         "products": products,
