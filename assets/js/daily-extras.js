@@ -127,6 +127,10 @@
     }
     console.warn("Daily vocab unavailable", lastError);
   }
-  async function init() { normalizeFinanceLabels(); try { const data = await getEditionData(); await loadDailyVocab(data.date || document.body.dataset.edition); setTimeout(normalizeFinanceLabels, 400); setTimeout(normalizeFinanceLabels, 1200); } catch (err) { console.warn("Daily extras unavailable", err); } }
+  function hongKongDate() {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en", { timeZone: "Asia/Hong_Kong", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date()).map(({ type, value }) => [type, value]));
+    return `${parts.year}-${parts.month}-${parts.day}`;
+  }
+  async function init() { normalizeFinanceLabels(); try { await getEditionData(); const vocabDate = document.body.dataset.edition || hongKongDate(); await loadDailyVocab(vocabDate); setTimeout(normalizeFinanceLabels, 400); setTimeout(normalizeFinanceLabels, 1200); } catch (err) { console.warn("Daily extras unavailable", err); } }
   window.addEventListener("pagehide", stopVocabAudio, { once: true }); init();
 })();
