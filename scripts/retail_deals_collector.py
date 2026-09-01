@@ -27,7 +27,7 @@ from typing import Any, Iterable
 HKT = timezone(timedelta(hours=8))
 USER_AGENT = "DailyBriefRetailTracker/1.1 (+https://github.com/kanuli/daily-brief-newspaper)"
 HISTORY_DAYS = 180
-MAX_PRODUCTS = 180
+MAX_PRODUCTS = 300
 MAX_DISCOVERY_PROMOS = 24
 DISCOVERY_PER_RETAILER = 6
 
