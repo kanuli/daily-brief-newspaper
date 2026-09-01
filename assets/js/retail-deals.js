@@ -160,12 +160,13 @@
       if (!data || data.schemaVersion !== 3 || !Array.isArray(data.promotions) || !Array.isArray(data.sources)) throw new Error('invalid promotion-only schema');
       state.data = data;
       $('retail-generated').textContent = `資料時間：${when(data.generatedAt)}`;
-      $('retail-checked').textContent = `UPDATED ${when(data.generatedAt)}`;
+      $('retail-checked').textContent = `最後資料更新：${when(data.generatedAt)}`;
       populateRetailers(data);
       render();
     } catch (err) {
       const message = `最新推廣資料暫時無法載入：${esc(err.message || err)}`;
       $('retail-generated').textContent = '資料暫時未能載入';
+      $('retail-checked').textContent = '最後資料更新：暫時未能讀取';
       $('promotion-list').innerHTML = `<p class="notice">${message}</p>`;
       $('source-health').innerHTML = '<p class="notice">請稍後重新整理頁面；其他新聞版面不受影響。</p>';
     }
