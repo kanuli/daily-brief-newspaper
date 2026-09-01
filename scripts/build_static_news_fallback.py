@@ -78,200 +78,88 @@ def render_story_card(story: dict, feature: bool = False) -> str:
     )
 
 
-def render_lead(latest: dict) -> str:
-    articles = {a.get("id"): a for a in latest.get("articles", []) if isinstance(a, dict)}
-    story = articles.get(latest.get("leadId")) or next(iter(articles.values()), {})
-    if not story:
-        return '<p>今日頭條暫時未能顯示。</p>'
-    return (
-        f'<div class="eyebrow">{esc(story.get("deskLabel") or story.get("desk"))}</div>'
-        f'<h2>{esc(story.get("title"))}</h2>'
-        f'<p class="lead-deck">{esc(story.get("summary") or story.get("dek"))}</p>'
-        f'<p class="story-meta">{esc(story.get("timeLabel") or story.get("publishedAt"))}</p>'
-        f'<div class="story-body"><p>{esc(story.get("body"))}</p></div>'
-        f'<div class="why-box"><strong>為何重要：</strong> {esc(story.get("why") or story.get("whyItMatters"))}</div>'
-        f'{source_link(story)}'
-    )
+def render_index(latest: dict, live: dict, desk: dict) -> str:
+    lead = latest.get("lead") if isinstance(latest.get("lead"), dict) else {}
+    top = latest.get("topFive") if isinstance(latest.get("topFive"), list) else []
+    cards = []
+    if lead:
+        cards.append(render_story_card(lead, True))
+    for story in top:
+        if isinstance(story, dict) and story.get("id") != lead.get("id"):
+            cards.append(render_story_card(story))
+    return "".join(cards)
 
 
-def render_top_five(latest: dict) -> str:
-    articles = {a.get("id"): a for a in latest.get("articles", []) if isinstance(a, dict)}
-    rows = []
-    for story_id in latest.get("topFiveIds", [])[:5]:
-        story = articles.get(story_id)
-        if not story:
-            continue
-        rows.append(
-            '<article class="top-card"><div>'
-            f'<h3>{esc(story.get("title"))}</h3>'
-            f'<p>{esc(story.get("summary") or story.get("dek"))}</p>'
-            f'{source_link(story)}</div></article>'
-        )
-    return "".join(rows)
+def render_live(live: dict) -> str:
+    items = live.get("items") if isinstance(live.get("items"), list) else []
+    return "".join(render_story_card(x, i == 0) for i, x in enumerate(items) if isinstance(x, dict))
 
 
-def render_live_summary(live: dict) -> str:
-    items = live.get("items") or []
-    if not items:
-        return '<div class="live-loading">目前沒有新增 Live 卡片；08:00 Daily Edition 仍然有效。</div>'
-    cards = "".join(
-        f'<article class="live-summary-card"><div class="tag">{esc(item.get("deskLabel") or item.get("desk"))}</div>'
-        f'<h3>{esc(item.get("title"))}</h3><p>{esc(item.get("summary") or item.get("dek"))}</p>'
-        f'{source_link(item)}</article>'
-        for item in items[:6]
-    )
-    return f'<div class="section-heading"><h2>Live Update</h2><span>{esc(live.get("windowLabel") or live.get("lastUpdatedLabel"))}</span></div><div class="story-grid">{cards}</div>'
+def render_topic(slug: str, title: str, desk: dict) -> tuple[str, str]:
+    stories = ((desk.get("desks") or {}).get(slug) or []) if isinstance(desk, dict) else []
+    cards = "".join(render_story_card(x, i == 0) for i, x in enumerate(stories) if isinstance(x, dict))
+    return str(len(stories)), cards
 
 
-def render_desk_latest(desk: dict) -> str:
-    rows = []
-    for slug, title, _ in DESKS:
-        stories = (desk.get("desks") or {}).get(slug) or []
-        if not stories:
-            continue
-        story = stories[0]
-        rows.append(
-            '<article class="story-card">'
-            f'<div class="tag">{esc(title)}</div><h3>{esc(story.get("title"))}</h3>'
-            f'<p>{esc(story.get("summary") or story.get("dek"))}</p>{source_link(story)}</article>'
-        )
-    return '<div class="section-heading"><h2>各版最新</h2><span>DESK LATEST</span></div><div class="story-grid">' + "".join(rows) + '</div>'
+def stock_freshness(stocks: dict) -> str:
+    status = esc(stocks.get("collectionStatus") or "N/V")
+    checked = esc(stocks.get("lastCheckedAt") or stocks.get("generatedAt") or "N/V")
+    return f'<strong>{status}</strong><span>最後檢查：{checked}</span>'
 
 
-def render_daily_sections(latest: dict) -> str:
-    articles = {a.get("id"): a for a in latest.get("articles", []) if isinstance(a, dict)}
-    groups = []
-    for section in latest.get("sections", []):
-        if not isinstance(section, dict):
-            continue
-        stories = [articles.get(i) for i in section.get("articleIds", [])]
-        stories = [s for s in stories if s]
-        if not stories:
-            continue
-        groups.append(
-            '<section class="section-block">'
-            f'<div class="section-heading"><h2>{esc(section.get("title"))}</h2><span>{esc(section.get("label"))}</span></div>'
-            '<div class="story-grid">' + "".join(render_story_card(s, i == 0 and len(stories) > 3) for i, s in enumerate(stories)) + '</div></section>'
-        )
-    return "".join(groups)
-
-
-def render_live_page(live: dict):
-    items = live.get("items") or []
-    stats = (
-        f'<div><strong>{len(items)}</strong><span>本輪 Live</span></div>'
-        f'<div><strong>{esc(live.get("windowLabel") or live.get("lastUpdatedLabel"))}</strong><span>更新時段</span></div>'
-        f'<div><strong>{esc(live.get("nextUpdateLabel"))}</strong><span>下一輪</span></div>'
-    )
-    audit = f'<p><strong>Publication mode：</strong>{esc(live.get("mode"))} · 最後更新 {esc(live.get("lastUpdatedLabel") or live.get("lastUpdated"))}</p>'
-    if not items:
-        stories = '<p class="notice">目前沒有新增 Live 卡片；Daily Edition / 各版最新仍然保留。</p>'
-    else:
-        stories = "".join(
-            '<article class="live-card">'
-            f'<div class="tag">{esc(item.get("deskLabel") or item.get("desk"))}</div>'
-            f'<h2>{esc(item.get("title"))}</h2><p>{esc(item.get("summary") or item.get("dek"))}</p>'
-            f'{source_link(item)}</article>' for item in items
-        )
-    return stats, audit, stories
-
-
-def stock_freshness(data: dict) -> str:
-    status = str(data.get("collectionStatus") or "").upper()
-    discovered = int(data.get("discoveredThisCheck") or 0)
-    reservoir = int(data.get("discoveryCandidateCount") or 0)
-    if status == "COLLECTION_FAILURE":
-        return '<p class="notice"><strong>⚠️ Stock News 搜集失敗：</strong>最近一次檢查沒有取得 fresh candidate。現有稿件仍保留為最近已核實內容。</p>'
-    if status == "INCOMPLETE":
-        return f'<p class="notice"><strong>⚠️ Stock News 搜集未達完整度：</strong>本輪找到 {discovered} 則 fresh discovery candidate，但未達 breadth floor。</p>'
-    depth = f'；rolling candidate reservoir {reservoir} 則' if reservoir else ''
-    return f'<p class="notice"><strong>Newsroom freshness：</strong>本輪已完成搜集{esc(depth)}。頁頂「最後檢查」代表掃描時間；「最近已核實內容更新」只有在真正有新材料通過核實時才會改變。</p>'
-
-
-def render_stock_source(story: dict) -> str:
-    sources = story.get("sources") or []
-    if not sources and story.get("sourceUrl"):
-        sources = [{"name": story.get("sourceName") or "原文", "url": story.get("sourceUrl")}]
-    links = " · ".join(
-        f'<a href="{esc(s.get("url"))}" target="_blank" rel="noopener noreferrer">{esc(s.get("name") or "原文")} ↗</a>'
-        for s in sources if isinstance(s, dict) and s.get("url")
-    )
-    return f'<div class="stock-sources"><strong>核實來源：</strong> {links}</div>' if links else ""
-
-
-def render_stock_story(story: dict, index: int) -> str:
-    paras = [p.strip() for p in re.split(r'\n\s*\n', str(story.get("body") or "")) if p.strip()]
-    impact = story.get("impact") or "↔"
-    cls = "stock-impact-up" if impact == "↑" else "stock-impact-down" if impact == "↓" else "stock-impact-neutral"
-    return (
-        f'<article class="stock-story {"featured" if index == 0 else ""}">'
-        f'<div class="tag"><span class="stock-impact {cls}">{esc(impact)} {esc(story.get("impactLabel") or "READ-THROUGH")}</span>{esc(story.get("storyType") or "LATEST")}</div>'
-        f'<h2>{esc(story.get("title"))}</h2>'
-        + (f'<p class="stock-story-dek">{esc(story.get("dek"))}</p>' if story.get("dek") else "")
-        + (f'<p class="stock-summary"><strong>摘要：</strong>{esc(story.get("summary"))}</p>' if story.get("summary") else "")
-        + '<div class="stock-story-body">' + "".join(f'<p>{esc(p)}</p>' for p in paras) + '</div>'
-        + '<div class="stock-info-grid stock-info-grid-three">'
-        + f'<div class="stock-info-card"><strong>背景</strong><p>{esc(story.get("context"))}</p></div>'
-        + f'<div class="stock-info-card"><strong>為何重要</strong><p>{esc(story.get("why"))}</p></div>'
-        + f'<div class="stock-info-card"><strong>下一步</strong><p>{esc(story.get("watchNext"))}</p></div></div>'
-        + f'<div class="stock-story-meta">{esc(story.get("timeLabel"))}{(" · " + esc(story.get("sourceName"))) if story.get("sourceName") else ""}</div>'
-        + render_stock_source(story) + '</article>'
-    )
-
-
-def render_stocks(data: dict):
-    order = data.get("tracked") or ["NVDA", "AAPL", "TSM", "PLTR", "MSFT", "GOOG", "EMXC", "EWY", "VT"]
-    nav = "".join(f'<a href="#stock-{esc(t.lower())}">{esc(t)}</a>' for t in order)
+def render_stocks(stocks: dict) -> tuple[str, str]:
+    tickers = stocks.get("tickers") if isinstance(stocks.get("tickers"), list) else []
+    nav = []
     sections = []
-    for ticker in order:
-        block = (data.get("tickers") or {}).get(ticker) or {}
-        stories = block.get("stories") or []
-        body = "".join(render_stock_story(s, i) for i, s in enumerate(stories)) if stories else '<div class="stock-empty">暫未有已核實的新稿；本節會保留最近有效新聞並在下一輪繼續檢查。</div>'
-        sections.append(
-            f'<section class="stock-section" id="stock-{esc(ticker.lower())}">'
-            f'<div class="stock-section-head"><div><div class="stock-symbol">{esc(ticker)}</div><div class="stock-name">{esc(block.get("name"))}</div></div><div class="stock-asset-type">{esc(block.get("assetType") or "SECURITY")}</div></div>{body}</section>'
-        )
-    return nav, "".join(sections)
+    for ticker in tickers:
+        if not isinstance(ticker, dict):
+            continue
+        symbol = esc(ticker.get("symbol") or ticker.get("ticker"))
+        if not symbol:
+            continue
+        nav.append(f'<a href="#stock-{symbol}">{symbol}</a>')
+        stories = ticker.get("stories") if isinstance(ticker.get("stories"), list) else []
+        body = "".join(render_story_card(s) for s in stories if isinstance(s, dict))
+        sections.append(f'<section id="stock-{symbol}" class="stock-section"><h2>{symbol}</h2>{body}</section>')
+    return "".join(nav), "".join(sections)
 
 
-def render_topic(slug: str, title: str, desk: dict):
-    stories = (desk.get("desks") or {}).get(slug) or []
-    cards = "".join(render_story_card(s, i == 0) for i, s in enumerate(stories))
-    return len(stories), cards or '<p class="notice">暫時未有可顯示內容。</p>'
-
-
-def render_archive(data: dict) -> str:
-    return "".join(
-        f'<a class="archive-item" href="{esc(item.get("url") or item.get("href") or "#")}">'
-        f'<div class="archive-date">{esc(item.get("shortDate"))}</div><div>'
-        f'<div class="archive-title">{esc(item.get("headline"))}</div>'
-        f'<div class="archive-topics">{esc(" · ".join(item.get("topics") or []))}</div>'
-        '</div><div>閱讀 →</div></a>'
-        for item in data.get("editions", []) if isinstance(item, dict)
-    )
+def render_archive(archive: dict) -> str:
+    rows = archive.get("issues") if isinstance(archive.get("issues"), list) else archive.get("items")
+    if not isinstance(rows, list):
+        rows = []
+    output = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        date = esc(row.get("date") or row.get("dateLabel"))
+        title = esc(row.get("title") or row.get("label") or date)
+        href = esc(row.get("href") or row.get("url") or "#")
+        output.append(f'<article class="archive-item"><h3><a href="{href}">{title}</a></h3><p>{date}</p></article>')
+    return "".join(output)
 
 
 def build_index(latest: dict, live: dict, desk: dict) -> None:
     path = ROOT / "index.html"
     text = ensure_marker(path.read_text(encoding="utf-8"), "index")
-    text = re.sub(r'(<span\s+data-edition-date>).*?(</span>)', lambda m: m.group(1) + esc(latest.get("dateLabel") or latest.get("date")) + m.group(2), text, count=1, flags=re.S)
-    text = re.sub(r'(<span\s+data-edition-number>).*?(</span>)', lambda m: m.group(1) + esc(latest.get("editionNumber") or "001") + m.group(2), text, count=1, flags=re.S)
-    text = replace_element(text, "article", "lead-story", render_lead(latest))
-    text = replace_element(text, "div", "top-five", render_top_five(latest))
-    text = replace_element(text, "section", "live-summary", render_live_summary(live))
-    text = replace_element(text, "section", "desk-latest-summary", render_desk_latest(desk))
-    text = replace_element(text, "div", "dynamic-sections", render_daily_sections(latest))
+    content = render_index(latest, live, desk)
+    # Existing site templates have evolved over time.  Prefer the stable
+    # prerender target if present; otherwise leave the JS-enhanced page intact.
+    for candidate in ("daily-news-list", "daily-edition-items", "daily-edition"):
+        if re.search(rf'<div\b(?=[^>]*\bid=["\']{candidate}["\'])', text, flags=re.I):
+            text = replace_element(text, "div", candidate, content)
+            break
     path.write_text(text, encoding="utf-8")
 
 
 def build_live(live: dict) -> None:
     path = ROOT / "live.html"
     text = ensure_marker(path.read_text(encoding="utf-8"), "live")
-    stats, audit, stories = render_live_page(live)
-    text = replace_text(text, "span", "live-header-time", live.get("lastUpdatedLabel") or live.get("windowLabel") or "Live")
-    text = replace_element(text, "div", "live-page-stats", stats)
-    text = replace_element(text, "div", "live-audit", audit)
-    text = replace_element(text, "section", "live-page-items", stories)
+    content = render_live(live)
+    for candidate in ("live-items", "live-list"):
+        if re.search(rf'<div\b(?=[^>]*\bid=["\']{candidate}["\'])', text, flags=re.I):
+            text = replace_element(text, "div", candidate, content)
+            break
     path.write_text(text, encoding="utf-8")
 
 
@@ -280,9 +168,6 @@ def build_stock_page(stocks: dict) -> None:
     text = ensure_marker(path.read_text(encoding="utf-8"), "stocks")
     nav, sections = render_stocks(stocks)
     text = replace_element(text, "div", "stock-ticker-nav", nav)
-    # The latest scan/check timestamp now lives in the utility bar and is
-    # hydrated by page-updated-time.js. Keep the no-JS prerender focused on the
-    # separate verified-content timestamp so the two semantics cannot merge.
     text = replace_text(text, "strong", "stock-updated", stocks.get("lastUpdatedLabel") or stocks.get("generatedAt") or "N/V")
     text = replace_element(text, "div", "stock-freshness", stock_freshness(stocks))
     text = replace_element(text, "div", "stock-sections", sections)
@@ -304,7 +189,16 @@ def build_topics(desk: dict) -> None:
 def build_archive(archive: dict) -> None:
     path = ROOT / "archive.html"
     text = ensure_marker(path.read_text(encoding="utf-8"), "archive")
-    text = replace_element(text, "div", "archive-list", render_archive(archive))
+    rendered = render_archive(archive)
+    # archive-list now wraps archive-items.  Replacing the outer div with a
+    # non-nesting regex was brittle and could consume the inner closing tag.
+    # Target the leaf container first; keep compatibility with older templates.
+    if re.search(r'<div\b(?=[^>]*\bid=["\']archive-items["\'])', text, flags=re.I):
+        text = replace_element(text, "div", "archive-items", rendered)
+    elif re.search(r'<div\b(?=[^>]*\bid=["\']archive-list["\'])', text, flags=re.I):
+        text = replace_element(text, "div", "archive-list", rendered)
+    else:
+        raise RuntimeError("archive page has no supported prerender target")
     path.write_text(text, encoding="utf-8")
 
 
