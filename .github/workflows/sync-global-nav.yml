@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: sync-global-navigation
@@ -111,3 +112,12 @@ jobs:
           git add '*.html' assets/css/newspaper.css
           git commit -m 'Synchronize latest promotions across all navbars'
           git push origin HEAD:main
+
+      - name: Explicitly deploy latest main to Pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run pages.yml --repo "${GITHUB_REPOSITORY}" --ref main
+          echo 'GLOBAL_NAV_PAGES_DISPATCHED'
