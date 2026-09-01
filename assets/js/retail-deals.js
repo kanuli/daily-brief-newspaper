@@ -43,12 +43,13 @@
   function sourceClass(type) {
     const t = String(type || '').toLowerCase();
     if (t.includes('official')) return 'official';
-    if (t.includes('social')) return 'social';
+    if (t.includes('social') || t.includes('facebook')) return 'social';
     return 'secondary';
   }
   function sourceLabel(type) {
     const t = String(type || '').toLowerCase();
     if (t.includes('official')) return 'OFFICIAL';
+    if (t.includes('facebook')) return 'FACEBOOK';
     if (t.includes('social')) return 'SOCIAL';
     if (t.includes('secondary')) return 'SECONDARY';
     return 'SOURCE';
