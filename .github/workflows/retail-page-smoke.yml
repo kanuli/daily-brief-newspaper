@@ -15,49 +15,56 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Verify public navbar order and promotion page
+      - name: Verify latest promotions in every public navbar
         shell: bash
         run: |
           python - <<'PY'
           import json, re, time, urllib.request
 
           base='https://kanuli.github.io/daily-brief-newspaper/'
+          pages=[
+              'index.html','live.html','world.html','asia.html','hong-kong.html','japan.html',
+              'finance.html','stocks.html','technology.html','manga-anime.html',
+              'manchester-united.html','football.html','retail-deals.html','archive.html'
+          ]
+          nav_re=re.compile(r'<nav\b[^>]*class=["\'][^"\']*section-nav[^"\']*["\'][^>]*>(.*?)</nav>', re.I|re.S)
+          retail_re=re.compile(r'<a\b[^>]*href=["\'][^"\']*retail-deals\.html[^"\']*["\'][^>]*>.*?</a>', re.I|re.S)
+
+          def get(url):
+              req=urllib.request.Request(url, headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-retail-smoke'})
+              with urllib.request.urlopen(req, timeout=15) as r:
+                  if r.status != 200:
+                      raise RuntimeError(f'{url} HTTP {r.status}')
+                  return r.read().decode('utf-8','replace')
+
           last=None
           for attempt in range(12):
               try:
                   stamp=str(int(time.time()))
-                  req=urllib.request.Request(base+'?v='+stamp, headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-retail-smoke'})
-                  with urllib.request.urlopen(req, timeout=15) as r:
-                      home=r.read().decode('utf-8','replace')
-                      if r.status != 200:
-                          raise RuntimeError(f'homepage HTTP {r.status}')
+                  checked=[]
+                  for page_name in pages:
+                      html=get(base+page_name+'?v='+stamp)
+                      match=nav_re.search(html)
+                      if not match:
+                          raise RuntimeError(f'{page_name}: section-nav not found')
+                      nav=match.group(1)
+                      retail_links=retail_re.findall(nav)
+                      if len(retail_links) != 1 or '最新優惠' not in retail_links[0]:
+                          raise RuntimeError(f'{page_name}: expected exactly one 最新優惠 retail link; found={len(retail_links)}')
+                      retail=nav.find('retail-deals.html')
+                      archive=nav.find('archive.html')
+                      if min(retail, archive) < 0 or not retail < archive:
+                          raise RuntimeError(f'{page_name}: 最新優惠 must be before Archive')
+                      football=nav.find('football.html')
+                      if football >= 0 and not football < retail:
+                          raise RuntimeError(f'{page_name}: navbar order must be Football -> 最新優惠 -> Archive')
+                      checked.append(page_name)
 
-                  nav_match=re.search(r'<nav\b[^>]*class=["\'][^"\']*section-nav[^"\']*["\'][^>]*>(.*?)</nav>', home, re.I|re.S)
-                  if not nav_match:
-                      raise RuntimeError('homepage section-nav not found')
-                  nav=nav_match.group(1)
-                  retail_links=re.findall(r'<a\b[^>]*href=["\'][^"\']*retail-deals\.html[^"\']*["\'][^>]*>.*?</a>', nav, re.I|re.S)
-                  if len(retail_links) != 1 or '最新優惠' not in retail_links[0]:
-                      raise RuntimeError(f'navbar must contain exactly one 最新優惠 retail link; found={len(retail_links)}')
-                  football=nav.find('football.html')
-                  retail=nav.find('retail-deals.html')
-                  archive=nav.find('archive.html')
-                  if min(football, retail, archive) < 0 or not (football < retail < archive):
-                      raise RuntimeError('navbar order must be Football -> 最新優惠 -> Archive')
-                  if re.search(r'archive\.html[^<]*</a>\s*<a[^>]+retail-deals\.html', nav, re.I|re.S):
-                      raise RuntimeError('最新優惠 appears after Archive')
-
-                  req=urllib.request.Request(base+'retail-deals.html?v='+stamp, headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-retail-smoke'})
-                  with urllib.request.urlopen(req, timeout=15) as r:
-                      page=r.read().decode('utf-8','replace')
-                      if r.status != 200:
-                          raise RuntimeError(f'retail page HTTP {r.status}')
-                  if '香港最新優惠' not in page or 'retail-deals.js' not in page:
+                  retail_page=get(base+'retail-deals.html?v='+stamp)
+                  if '香港最新優惠' not in retail_page or 'retail-deals.js' not in retail_page:
                       raise RuntimeError('retail promotion page content incomplete')
 
-                  req=urllib.request.Request(base+'data/retail-deals.json?v='+stamp, headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-retail-smoke'})
-                  with urllib.request.urlopen(req, timeout=15) as r:
-                      data=json.loads(r.read().decode('utf-8'))
+                  data=json.loads(get(base+'data/retail-deals.json?v='+stamp))
                   if data.get('schemaVersion') != 3 or not isinstance(data.get('promotions'), list):
                       raise RuntimeError('promotion dataset invalid')
                   forbidden={'offers','products','currentPrice','regularPrice','priceHistory'}
@@ -66,7 +73,7 @@ jobs:
                       if f'"{key}"' in text:
                           raise RuntimeError(f'forbidden price field published: {key}')
 
-                  print('RETAIL_NAV_PUBLIC_SMOKE_OK', 'order', 'Football>最新優惠>Archive', 'promotions', len(data['promotions']), 'generated', data.get('generatedAt'))
+                  print('RETAIL_NAV_ALL_PUBLIC_PAGES_OK', 'pages', len(checked), 'order', 'Football>最新優惠>Archive', 'promotions', len(data['promotions']), 'generated', data.get('generatedAt'))
                   raise SystemExit(0)
               except Exception as exc:
                   last=exc
