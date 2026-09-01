@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: "retail-deals-collector"
@@ -61,6 +62,7 @@ jobs:
           PY
 
       - name: Commit tracker update
+        id: publish
         shell: bash
         run: |
           set -euo pipefail
@@ -69,6 +71,7 @@ jobs:
           git add -- data/retail-deals.json
           if git diff --cached --quiet; then
             echo "No retail data changes"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git commit -m "Update retail prices and promotions"
@@ -83,9 +86,20 @@ jobs:
             fi
             if git push origin HEAD:main; then
               echo "RETAIL_TRACKER_PUBLISHED"
+              echo "changed=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             sleep 4
           done
           echo "Unable to publish retail tracker after 3 attempts" >&2
           exit 1
+
+      - name: Redeploy Pages with the refreshed retail dataset
+        if: steps.publish.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run pages.yml --ref main
+          echo "RETAIL_PAGES_REDEPLOY_DISPATCHED"
