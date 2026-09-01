@@ -66,11 +66,6 @@
   }
 
   function loadDisplayLocalization() {
-    // The deploy workflow builds data/hktrad-localization.json from the same
-    // HK mixed-language terminology policy used by production TTS.  Do not
-    // load the legacy embedded fallback in parallel: it contains historical
-    // forced translations such as OpenAI -> 開放人工智能公司 and can race the
-    // authoritative shared map.
     inject("assets/js/hktrad-display-sync.js?v=20260831-hk-mixed-v1", "data-hktrad-display-sync");
   }
 
@@ -86,11 +81,11 @@
 
   function loadSiteTTS() {
     if (document.body.dataset.page === "archive") return;
-    inject("assets/js/site-tts-canto-nano.js?v=20260825-cnf1", "data-site-tts");
+    inject("assets/js/site-tts-canto-nano.js?v=20260901-cnf4-playback-v1", "data-site-tts");
   }
 
   function loadVoiceProductionStatus() {
-    inject("assets/js/voice-production-status.js?v=20260825-canto-nano-cnf1", "data-voice-production-status");
+    inject("assets/js/voice-production-status.js?v=20260901-cnf4-playback-v1", "data-voice-production-status");
   }
 
   function loadNewsPipelineStatus() {
@@ -130,7 +125,7 @@
     button.innerHTML = '<span class="system-status-dot" aria-hidden="true"></span><span class="system-status-label">SYSTEM</span>';
     const panel = document.createElement("aside");
     panel.id = "system-status-panel"; panel.className = "system-status-panel"; panel.hidden = true;
-    panel.innerHTML = `<div class="system-panel-head"><div><strong>System Status</strong><span>Maintenance & Monitoring</span></div><button type="button" class="system-panel-close" aria-label="關閉">×</button></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Website</strong><small>Static safe mode · publication layers monitored independently</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>Daily / Live / Stocks</strong><small>News Pipeline below separates background discovery, verified draft, main Live and public Pages</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>Cantonese Voice</strong><small>canto-tts-nano · verified young female reference · Jyutping Cantonese-first · semantic-unit HK news-anchor pauses</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>GitHub Pages / Discord</strong><small>Pages deployment has automatic main/public convergence repair</small></div></div><div class="system-panel-links"><a href="https://github.com/kanuli/daily-brief-newspaper/actions" target="_blank" rel="noopener noreferrer">GitHub Actions ↗</a><a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">Repository ↗</a></div>`;
+    panel.innerHTML = `<div class="system-panel-head"><div><strong>System Status</strong><span>Maintenance & Monitoring</span></div><button type="button" class="system-panel-close" aria-label="關閉">×</button></div><div class="system-panel-row status-ok"><span class="status-dot"></span><div><strong>Website</strong><small>Static safe mode · publication layers monitored independently</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>Daily / Live / Stocks</strong><small>News Pipeline below separates background discovery, verified draft, main Live and public Pages</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>Cantonese Voice</strong><small>canto-tts-nano cnf4 · verified young female reference · HK Cantonese-English mixed-language · semantic-unit HK news-anchor pauses</small></div></div><div class="system-panel-row status-check"><span class="status-dot"></span><div><strong>GitHub Pages / Discord</strong><small>Pages deployment has automatic main/public convergence repair</small></div></div><div class="system-panel-links"><a href="https://github.com/kanuli/daily-brief-newspaper/actions" target="_blank" rel="noopener noreferrer">GitHub Actions ↗</a><a href="https://github.com/kanuli/daily-brief-newspaper" target="_blank" rel="noopener noreferrer">Repository ↗</a></div>`;
     function setOpen(open) { panel.hidden = !open; button.setAttribute("aria-expanded", String(open)); }
     button.addEventListener("click", () => setOpen(panel.hidden));
     panel.querySelector(".system-panel-close")?.addEventListener("click", () => setOpen(false));
