@@ -1,4 +1,4 @@
-name: Retail Deals Collector
+name: Retail Promotion Collector
 
 on:
   push:
@@ -15,7 +15,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: "retail-deals-collector"
+  group: "retail-promotion-collector"
   cancel-in-progress: false
 
 jobs:
@@ -37,33 +37,47 @@ jobs:
       - name: Validate collector syntax
         run: python -m py_compile scripts/retail_deals_collector.py
 
-      - name: Collect latest public retail deals
+      - name: Collect latest public retail promotions only
         run: python scripts/retail_deals_collector.py --output data/retail-deals.json
 
-      - name: Validate public retail dataset
+      - name: Validate promotion-only public dataset
         shell: bash
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          path=Path('data/retail-deals.json')
-          data=json.loads(path.read_text(encoding='utf-8'))
-          version=data.get('schemaVersion')
-          if version not in (1,2):
-              raise SystemExit('bad retail schema version')
-          required=('offers','promotions','sources') if version == 2 else ('products','promotions','sources')
-          for key in required:
-              if not isinstance(data.get(key), list):
-                  raise SystemExit(f'{key} must be an array')
+
+          path = Path('data/retail-deals.json')
+          data = json.loads(path.read_text(encoding='utf-8'))
+          if data.get('schemaVersion') != 3:
+              raise SystemExit('retail promotion schema must be version 3')
+          if not isinstance(data.get('promotions'), list):
+              raise SystemExit('promotions must be an array')
+          if not isinstance(data.get('sources'), list) or not data['sources']:
+              raise SystemExit('sources must be a non-empty array')
           if not data.get('generatedAt'):
-              raise SystemExit('retail generatedAt missing')
-          if not data['sources']:
-              raise SystemExit('retail source-health rows missing')
-          primary='offers' if version == 2 else 'products'
-          print('RETAIL_PUBLIC_DATA_OK', version, len(data[primary]), len(data['promotions']), len(data['sources']), data['generatedAt'])
+              raise SystemExit('generatedAt missing')
+
+          forbidden = {
+              'offers', 'products', 'currentPrice', 'regularPrice', 'priceHistory',
+              'historicalLow', 'historicalHigh', 'previousObservedPrice', 'changePct'
+          }
+
+          def walk(value, path='root'):
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      if key in forbidden:
+                          raise SystemExit(f'FORBIDDEN_PRICE_FIELD {path}.{key}')
+                      walk(child, f'{path}.{key}')
+              elif isinstance(value, list):
+                  for idx, child in enumerate(value):
+                      walk(child, f'{path}[{idx}]')
+
+          walk(data)
+          print('RETAIL_PROMOTION_ONLY_OK', len(data['promotions']), len(data['sources']), data['generatedAt'])
           PY
 
-      - name: Commit latest retail deals
+      - name: Commit latest retail promotions
         id: publish
         shell: bash
         run: |
@@ -72,11 +86,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- scripts/retail_deals_collector.py data/retail-deals.json
           if git diff --cached --quiet; then
-            echo "No retail deal changes"
+            echo "No retail promotion changes"
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git commit -m "Update latest retail deals"
+          git commit -m "Update latest retail promotions"
 
           for attempt in 1 2 3; do
             echo "Publish attempt ${attempt}"
@@ -87,16 +101,16 @@ jobs:
               continue
             fi
             if git push origin HEAD:main; then
-              echo "RETAIL_DEALS_PUBLISHED"
+              echo "RETAIL_PROMOTIONS_PUBLISHED"
               echo "changed=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             sleep 4
           done
-          echo "Unable to publish retail deals after 3 attempts" >&2
+          echo "Unable to publish retail promotions after 3 attempts" >&2
           exit 1
 
-      - name: Redeploy Pages with refreshed retail deals
+      - name: Redeploy Pages with refreshed promotions
         if: steps.publish.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -104,4 +118,4 @@ jobs:
         run: |
           set -euo pipefail
           gh workflow run pages.yml --ref main
-          echo "RETAIL_PAGES_REDEPLOY_DISPATCHED"
+          echo "RETAIL_PROMOTION_PAGES_REDEPLOY_DISPATCHED"
