@@ -41,6 +41,8 @@ jobs:
           node --check assets/js/hktrad-display.js
           node --check assets/js/hktrad-display-sync.js
           node --check assets/js/system-panel.js
+          node --check assets/js/page-updated-time.js
+          node --check assets/js/retail-deals.js
           node --check assets/js/news-pipeline-status.js
           node --check assets/js/voice-production-status.js
           node --check assets/js/site-tts-canto-nano.js
@@ -58,26 +60,65 @@ jobs:
           changed=0
           for path in Path('.').rglob('*.html'):
               text=path.read_text(encoding='utf-8')
-              new=re.sub(r'assets/js/system-panel\.js\?v=[^"\']+', 'assets/js/system-panel.js?v=20260901-retail-nav-runtime-v1', text)
+              new=re.sub(r'assets/js/system-panel\.js\?v=[^"\']+', 'assets/js/system-panel.js?v=20260901-nav-icons-time-v1', text)
               if new != text:
                   path.write_text(new, encoding='utf-8')
                   changed += 1
           print('SELF_HEAL_CLIENT_CACHE_BUST_OK pages', changed)
           PY
 
-      - name: Verify runtime navbar keeps latest promotions
+      - name: Verify runtime navbar icon contract
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
           js=Path('assets/js/system-panel.js').read_text(encoding='utf-8')
-          required=['["football.html", "Football"]','["retail-deals.html", "🛒 最新優惠", "retail-nav"]','["archive.html", "Archive"]']
-          for item in required:
-              if item not in js:
-                  raise SystemExit('runtime navbar missing required entry: '+item)
-          if not (js.index(required[0]) < js.index(required[1]) < js.index(required[2])):
+          required=[
+            '🔴 Live','📰 頭版','🌍 世界','🌏 亞洲','🇭🇰 香港','🇯🇵 日本',
+            '📈 財經','📊 Stock News','🤖 AI / 科技','📚 漫畫 / Anime',
+            '🏟️ Manchester United','⚽ Football','🛒 最新優惠','🗂️ Archive'
+          ]
+          missing=[label for label in required if label not in js]
+          if missing:
+              raise SystemExit('runtime navbar missing icon labels: '+repr(missing))
+          football=js.index('["football.html", "⚽ Football"]')
+          retail=js.index('["retail-deals.html", "🛒 最新優惠", "retail-nav"]')
+          archive=js.index('["archive.html", "🗂️ Archive"]')
+          if not football < retail < archive:
               raise SystemExit('runtime navbar order must be Football -> 最新優惠 -> Archive')
-          print('RUNTIME_RETAIL_NAV_OK Football>最新優惠>Archive')
+          print('RUNTIME_NAV_ICON_CONTRACT_OK', len(required), 'Football>最新優惠>Archive')
+          PY
+
+      - name: Verify page update-time and Stock copy contracts
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          pages=['index.html','live.html','world.html','asia.html','hong-kong.html','japan.html',
+                 'finance.html','stocks.html','technology.html','manga-anime.html','manchester-united.html',
+                 'football.html','retail-deals.html','archive.html']
+          for page in pages:
+              text=Path(page).read_text(encoding='utf-8')
+              if 'assets/js/page-updated-time.js' not in text:
+                  raise SystemExit(f'{page}: missing page update-time client')
+
+          stock=json.loads(Path('data/stocks-latest.json').read_text(encoding='utf-8'))
+          stock_text=json.dumps(stock,ensure_ascii=False)
+          forbidden=[
+            '自動核實器只在官方／監管來源出現後才升格為已核實新聞',
+            'Stock News的自動核實器不會因搜尋結果、社交平台貼文或預測文章出現相似標題'
+          ]
+          for phrase in forbidden:
+              if phrase in stock_text:
+                  raise SystemExit('Stock News repeated verifier boilerplate remains: '+phrase)
+          if '最近已核實內容更新' not in Path('stocks.html').read_text(encoding='utf-8'):
+              raise SystemExit('stocks.html missing distinct verified-content timestamp label')
+
+          retail_js=Path('assets/js/retail-deals.js').read_text(encoding='utf-8')
+          if '最後資料更新' not in retail_js or "UPDATED ${when(data.generatedAt)}" in retail_js:
+              raise SystemExit('retail update-time wording contract failed')
+          print('PAGE_TIME_STOCK_RETAIL_CONTRACT_OK pages',len(pages))
           PY
 
       - name: Availability gate — JSON readable and publication mode valid
@@ -202,7 +243,7 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: Verify deployed publication snapshot matches main
+      - name: Verify deployed publication snapshot and UI contracts
         env:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
         shell: bash
@@ -214,21 +255,46 @@ jobs:
           expected_mode=str(local.get('mode') or '').upper()
           expected_items=len(local.get('items') or [])
           base=os.environ['PAGE_URL'].rstrip('/')+'/'
+          icon_labels=['🔴 Live','📰 頭版','🌍 世界','🌏 亞洲','🇭🇰 香港','🇯🇵 日本','📈 財經','📊 Stock News','🤖 AI / 科技','📚 漫畫 / Anime','🏟️ Manchester United','⚽ Football','🛒 最新優惠','🗂️ Archive']
+          forbidden=['自動核實器只在官方／監管來源出現後才升格為已核實新聞','Stock News的自動核實器不會因搜尋結果、社交平台貼文或預測文章出現相似標題']
           last_error=None
+          def get(path):
+              req=urllib.request.Request(base+path+('?v=' if '?' not in path else '&v=')+str(int(time.time())),headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-pages-check'})
+              with urllib.request.urlopen(req,timeout=15) as response:
+                  return response.read().decode('utf-8','replace')
           for attempt in range(12):
-              url=base+'data/live.json?v='+str(int(time.time()))
               try:
-                  req=urllib.request.Request(url,headers={'Cache-Control':'no-cache','User-Agent':'daily-brief-pages-check'})
-                  with urllib.request.urlopen(req,timeout=15) as response:
-                      remote=json.loads(response.read().decode('utf-8'))
+                  remote=json.loads(get('data/live.json'))
                   remote_mode=str(remote.get('mode') or '').upper()
                   remote_items=len(remote.get('items') or [])
-                  if remote.get('lastUpdated')==expected and remote_mode==expected_mode and remote_items==expected_items:
-                      print('PAGES_PUBLICATION_SNAPSHOT_MATCH', expected, 'mode', expected_mode, 'items', expected_items)
-                      raise SystemExit(0)
-                  last_error=f"remote lastUpdated={remote.get('lastUpdated')} mode={remote_mode} items={remote_items}; expected={expected} mode={expected_mode} items={expected_items}"
+                  if not (remote.get('lastUpdated')==expected and remote_mode==expected_mode and remote_items==expected_items):
+                      raise RuntimeError(f"remote snapshot mismatch: {remote.get('lastUpdated')} {remote_mode} {remote_items}")
+
+                  runtime=get('assets/js/system-panel.js')
+                  missing=[label for label in icon_labels if label not in runtime]
+                  if missing:
+                      raise RuntimeError('public runtime navbar icons missing: '+repr(missing))
+                  if not (runtime.index('⚽ Football') < runtime.index('🛒 最新優惠') < runtime.index('🗂️ Archive')):
+                      raise RuntimeError('public runtime nav order wrong')
+
+                  page_time=get('assets/js/page-updated-time.js')
+                  for label in ['最後內容更新','最後 Live 更新','最後檢查','最後資料更新']:
+                      if label not in page_time:
+                          raise RuntimeError('public page-time client missing label '+label)
+
+                  stock_text=get('data/stocks-latest.json')
+                  for phrase in forbidden:
+                      if phrase in stock_text:
+                          raise RuntimeError('public Stock News boilerplate remains')
+
+                  retail_js=get('assets/js/retail-deals.js')
+                  if '最後資料更新' not in retail_js or 'UPDATED ${when(data.generatedAt)}' in retail_js:
+                      raise RuntimeError('public retail timestamp wording stale')
+
+                  print('PAGES_PUBLIC_UI_CONTRACTS_OK', expected, 'mode', expected_mode, 'items', expected_items, 'icons', len(icon_labels))
+                  raise SystemExit(0)
               except Exception as exc:
                   last_error=str(exc)
               time.sleep(5)
-          raise SystemExit('GitHub Pages publication snapshot did not converge: '+str(last_error))
+          raise SystemExit('GitHub Pages public UI contracts did not converge: '+str(last_error))
           PY
