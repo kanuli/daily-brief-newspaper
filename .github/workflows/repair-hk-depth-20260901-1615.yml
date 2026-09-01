@@ -1,0 +1,116 @@
+name: Repair Hong Kong rolling desk depth 2026-09-01 16:15
+on:
+  push:
+    paths:
+      - '.github/workflows/repair-hk-depth-20260901-1615.yml'
+permissions:
+  contents: write
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Patch Hong Kong desk only
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          p = Path('data/desk-latest.json')
+          data = json.loads(p.read_text(encoding='utf-8'))
+          desks = data.setdefault('desks', {})
+          hk = desks.setdefault('hong-kong', [])
+
+          # Remove superseded same-event rewrites and clearly stale >~24h items.
+          remove_ids = {
+              'hk-shein-ipo-debut-20260901-0800',
+              'hk-school-start-transport-20260901-0800',
+              'hk-saudel-signal-one-20260901-0000',
+              'hk-saudel-rainstorm-warning-20260831-1000',
+              'hk-longsys-ipo-launch-20260831-1100',
+          }
+          hk = [x for x in hk if x.get('id') not in remove_ids]
+
+          additions = [
+            {
+              'id': 'hk-bughunting-campaign-2026-20260901-1615',
+              'desk': 'hong-kong',
+              'status': 'NEW',
+              'title': '警隊與Cyberbay啟動BugHunting Campaign 2026　加入Agentic AI漏洞檢測',
+              'dek': '計劃即日起接受申請，10月至明年2月為本地機構免費檢測系統漏洞；今年特別覆蓋聊天機械人、工作流程自動化及可調用工具的AI代理。',
+              'summary': '香港警務處網絡安全及科技罪案調查科與Cyberbay 9月1日宣布BugHunting Campaign 2026接受報名，擴大至Agentic AI相關應用的漏洞檢測與風險評估。',
+              'body': '香港警務處網絡安全及科技罪案調查科與本地眾包網絡安全平台Cyberbay於9月1日宣布，BugHunting Campaign 2026即日起接受報名，活動期由今年10月至明年2月，並繼續為中小企及其他本地機構提供免費漏洞檢測。\n\n今年計劃因應Agentic AI普及，新增針對聊天機械人、工作流程自動化、內部知識庫及可調用工具的AI代理等應用的安全審視。官方資料指，2025年活動共有185間機構參與，找出223個系統漏洞。',
+              'context': '生成式AI及自主代理逐步接入企業內部系統和工具，令資料外洩、權限濫用與社交工程風險由傳統網站漏洞延伸至AI工作流程。',
+              'why': '這是香港本地網絡安全治理與AI應用風險管理的最新實務措施，直接涉及中小企及機構採用AI時的安全要求。',
+              'watchNext': '留意10月活動展開後的參與機構數目、發現漏洞類型，以及香港對Agentic AI安全測試和治理要求是否進一步制度化。',
+              'sourceName': '香港特區政府新聞公報／香港警務處',
+              'sourceUrl': 'https://www.info.gov.hk/gia/general/202609/01/P2026090100422.htm',
+              'timeLabel': '9月1日16:15 HKT前核實',
+              'sources': [
+                {'name':'香港特區政府新聞公報／香港警務處','url':'https://www.info.gov.hk/gia/general/202609/01/P2026090100422.htm'}
+              ],
+              'deskSlugs': ['hong-kong','ai-tech'],
+              'section': '香港｜網絡安全／人工智能',
+              'sectionLabel': '香港',
+              'image': None
+            },
+            {
+              'id': 'hk-jollibee-international-hk-listing-20260901-1615',
+              'desk': 'hong-kong',
+              'status': 'NEW',
+              'title': 'Jollibee改選香港上市國際業務　棄原定美國掛牌方案',
+              'dek': '菲律賓餐飲集團稱香港更切合其亞洲品牌基礎，並可接觸全球及區內投資者；國際業務將分拆為JFCI。',
+              'summary': 'Jollibee Foods 9月1日表示，計劃把國際業務分拆後改於香港交易所主板上市，不再按早前方案赴美掛牌。',
+              'body': '菲律賓餐飲集團Jollibee Foods於9月1日表示，正推進把國際業務Jollibee Foods Corporation International（JFCI）分拆，並計劃改在香港交易所主板上市，取代今年初提出的美國上市方案。\n\n公司指，JFCI在亞洲已有品牌知名度和業務基礎，香港能提供全球及區內投資者群，也有較多亞洲消費及餐飲企業作估值參考。Richard Chong Woo Shin將出任JFCI行政總裁。',
+              'context': '香港今年新股市場活動回升；Jollibee的選址轉變緊接SHEIN在港掛牌，為香港吸引非中國企業及亞洲消費品牌上市再添一個案例。',
+              'why': '大型東南亞消費集團由美國轉向香港上市，對香港作為區域集資中心的競爭力及新股市場國際化具有指標作用。',
+              'watchNext': '留意JFCI正式遞交上市申請、分拆時間表、集資規模、估值及香港交易所審批進度。',
+              'sourceName': 'Reuters／Jollibee公司聲明',
+              'sourceUrl': 'https://www.reuters.com/world/asia-pacific/jollibee-says-planning-pick-hong-kong-over-us-list-international-unit-2026-09-01/',
+              'timeLabel': '9月1日16:15 HKT前核實',
+              'sources': [
+                {'name':'Reuters','url':'https://www.reuters.com/world/asia-pacific/jollibee-says-planning-pick-hong-kong-over-us-list-international-unit-2026-09-01/'},
+                {'name':'QSR Media Asia（引述Jollibee 9月1日公司聲明）','url':'https://qsrmedia.asia/news/jollibee-picks-hong-kong-spin-off-listing'}
+              ],
+              'deskSlugs': ['hong-kong','market-economy'],
+              'section': '香港｜新股市場／企業上市',
+              'sectionLabel': '香港',
+              'image': None
+            }
+          ]
+          existing = {x.get('id') for x in hk}
+          for item in additions:
+              if item['id'] not in existing:
+                  hk.append(item)
+          desks['hong-kong'] = hk
+          data['generatedAt'] = '2026-09-01T16:15:00+08:00'
+          data['editorialStandardVersion'] = 3
+          data['contentVersion'] = 3
+
+          # Hard assertion: six distinct current Hong Kong event families after cleanup.
+          expected = {
+              'hong-kong-saudel-signal-20260901-0600',
+              'hk-shein-ipo-debut-20260901-1300',
+              'hk-first-school-day-traffic-20260901-1100',
+              'hk-retail-sales-july-2026-20260901-1015',
+              'hk-bughunting-campaign-2026-20260901-1615',
+              'hk-jollibee-international-hk-listing-20260901-1615',
+          }
+          ids = {x.get('id') for x in hk}
+          missing = expected - ids
+          if missing:
+              raise SystemExit(f'Missing expected HK current event IDs: {sorted(missing)}')
+          if len(hk) < 6:
+              raise SystemExit(f'HK desk depth still below floor: {len(hk)}')
+
+          p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+      - name: Commit repaired desk
+        run: |
+          git config user.name 'daily-brief-recovery-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add data/desk-latest.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'repair: restore Hong Kong unique desk depth'
+          git push origin HEAD:main
