@@ -15,26 +15,39 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Verify homepage link and promotion page are public
+      - name: Verify public navbar order and promotion page
         shell: bash
         run: |
           python - <<'PY'
-          import json, time, urllib.request
+          import json, re, time, urllib.request
 
           base='https://kanuli.github.io/daily-brief-newspaper/'
           last=None
           for attempt in range(12):
               try:
                   stamp=str(int(time.time()))
-                  req=urllib.request.Request(base+'?v='+stamp, headers={'Cache-Control':'no-cache','User-Agent':'daily-brief-retail-smoke'})
+                  req=urllib.request.Request(base+'?v='+stamp, headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-retail-smoke'})
                   with urllib.request.urlopen(req, timeout=15) as r:
                       home=r.read().decode('utf-8','replace')
                       if r.status != 200:
                           raise RuntimeError(f'homepage HTTP {r.status}')
-                  if 'retail-deals.html' not in home or '最新優惠' not in home:
-                      raise RuntimeError('homepage missing latest-promotion link')
 
-                  req=urllib.request.Request(base+'retail-deals.html?v='+stamp, headers={'Cache-Control':'no-cache','User-Agent':'daily-brief-retail-smoke'})
+                  nav_match=re.search(r'<nav\b[^>]*class=["\'][^"\']*section-nav[^"\']*["\'][^>]*>(.*?)</nav>', home, re.I|re.S)
+                  if not nav_match:
+                      raise RuntimeError('homepage section-nav not found')
+                  nav=nav_match.group(1)
+                  retail_links=re.findall(r'<a\b[^>]*href=["\'][^"\']*retail-deals\.html[^"\']*["\'][^>]*>.*?</a>', nav, re.I|re.S)
+                  if len(retail_links) != 1 or '最新優惠' not in retail_links[0]:
+                      raise RuntimeError(f'navbar must contain exactly one 最新優惠 retail link; found={len(retail_links)}')
+                  football=nav.find('football.html')
+                  retail=nav.find('retail-deals.html')
+                  archive=nav.find('archive.html')
+                  if min(football, retail, archive) < 0 or not (football < retail < archive):
+                      raise RuntimeError('navbar order must be Football -> 最新優惠 -> Archive')
+                  if re.search(r'archive\.html[^<]*</a>\s*<a[^>]+retail-deals\.html', nav, re.I|re.S):
+                      raise RuntimeError('最新優惠 appears after Archive')
+
+                  req=urllib.request.Request(base+'retail-deals.html?v='+stamp, headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-retail-smoke'})
                   with urllib.request.urlopen(req, timeout=15) as r:
                       page=r.read().decode('utf-8','replace')
                       if r.status != 200:
@@ -42,7 +55,7 @@ jobs:
                   if '香港最新優惠' not in page or 'retail-deals.js' not in page:
                       raise RuntimeError('retail promotion page content incomplete')
 
-                  req=urllib.request.Request(base+'data/retail-deals.json?v='+stamp, headers={'Cache-Control':'no-cache','User-Agent':'daily-brief-retail-smoke'})
+                  req=urllib.request.Request(base+'data/retail-deals.json?v='+stamp, headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-retail-smoke'})
                   with urllib.request.urlopen(req, timeout=15) as r:
                       data=json.loads(r.read().decode('utf-8'))
                   if data.get('schemaVersion') != 3 or not isinstance(data.get('promotions'), list):
@@ -52,7 +65,8 @@ jobs:
                   for key in forbidden:
                       if f'"{key}"' in text:
                           raise RuntimeError(f'forbidden price field published: {key}')
-                  print('RETAIL_PUBLIC_SMOKE_OK', 'promotions', len(data['promotions']), 'generated', data.get('generatedAt'))
+
+                  print('RETAIL_NAV_PUBLIC_SMOKE_OK', 'order', 'Football>最新優惠>Archive', 'promotions', len(data['promotions']), 'generated', data.get('generatedAt'))
                   raise SystemExit(0)
               except Exception as exc:
                   last=exc
