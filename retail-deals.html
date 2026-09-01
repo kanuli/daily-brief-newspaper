@@ -3,56 +3,50 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="香港超市及零售格價與優惠追蹤：惠康、佳寶、DAISO／AEON 等的價格、優惠、歷史變化及來源狀態。">
+  <meta name="description" content="香港最新零售優惠：惠康、佳寶、DAISO／AEON、百佳及其他零售商的最新推廣、優惠價、有效期與來源。">
   <meta name="theme-color" content="#111111">
-  <title>香港格價・優惠｜每日晨報 Daily Brief</title>
+  <title>香港最新優惠｜每日晨報 Daily Brief</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Noto+Serif+TC:wght@600;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/css/newspaper.css?v=20260820-1915">
-  <link rel="stylesheet" href="assets/css/retail-deals.css?v=20260901-v1">
+  <link rel="stylesheet" href="assets/css/retail-deals.css?v=20260901-v2">
 </head>
 <body>
   <div class="paper">
-    <div class="utility-bar"><span>RETAIL PRICE DESK · HONG KONG</span><span id="retail-checked">正在載入…</span></div>
+    <div class="utility-bar"><span>RETAIL DEALS DESK · HONG KONG</span><span id="retail-checked">正在載入…</span></div>
     <header class="masthead">
-      <div class="masthead-side">超市 · 家品 · 零售<br>價格 · 優惠 · 歷史</div>
+      <div class="masthead-side">超市 · 家品 · 零售<br>最新優惠 · 推廣 · 減價</div>
       <div class="brand"><div class="brand-kicker">個 人 化 電 子 報</div><h1>每日晨報</h1><div class="brand-en">DAILY BRIEF</div></div>
-      <div class="masthead-side right">PRICE WATCH<br>TRADITIONAL CHINESE</div>
+      <div class="masthead-side right">LATEST DEALS<br>TRADITIONAL CHINESE</div>
     </header>
-    <nav class="section-nav" aria-label="新聞分版"><a class="live-nav" href="live.html">Live</a><a href="index.html#daily-edition">頭版</a><a href="world.html">世界</a><a href="asia.html">亞洲</a><a href="hong-kong.html">香港</a><a href="japan.html">日本</a><a href="finance.html">📈 財經</a><a href="stocks.html">📊 Stock News</a><a href="technology.html">AI / 科技</a><a href="manga-anime.html">漫畫 / Anime</a><a href="manchester-united.html">Manchester United</a><a href="football.html">Football</a><a href="retail-deals.html" aria-current="page">🛒 格價 / 優惠</a><a href="archive.html">Archive</a></nav>
+    <nav class="section-nav" aria-label="新聞分版"><a class="live-nav" href="live.html">Live</a><a href="index.html#daily-edition">頭版</a><a href="world.html">世界</a><a href="asia.html">亞洲</a><a href="hong-kong.html">香港</a><a href="japan.html">日本</a><a href="finance.html">📈 財經</a><a href="stocks.html">📊 Stock News</a><a href="technology.html">AI / 科技</a><a href="manga-anime.html">漫畫 / Anime</a><a href="manchester-united.html">Manchester United</a><a href="football.html">Football</a><a href="retail-deals.html" aria-current="page">🛒 最新優惠</a><a href="archive.html">Archive</a></nav>
     <main>
       <section class="retail-head">
-        <div class="retail-kicker">PRICE & PROMOTION TRACKER</div>
-        <h1>🛒 香港格價・優惠</h1>
-        <p>追蹤香港零售商的公開網上價格與推廣，包括惠康、佳寶、DAISO／AEON，並逐步加入百佳及其他零售商。每筆資料保留來源及檢查時間；「廣告優惠」與「實際歷史價格變動」分開計算。</p>
+        <div class="retail-kicker">LATEST RETAIL PROMOTIONS</div>
+        <h1>🛒 香港最新優惠</h1>
+        <p>集中顯示香港零售商最新公開優惠，包括惠康、佳寶、DAISO／AEON、百佳及其他商店。商品優惠價會直接放入最新優惠，不再提供價格歷史、升跌追蹤或價格走勢。</p>
       </section>
 
-      <div class="retail-meta"><span id="retail-generated">資料時間：載入中…</span><span id="retail-mode">公開來源 · 自動追蹤</span></div>
+      <div class="retail-meta"><span id="retail-generated">資料時間：載入中…</span><span id="retail-mode">公開來源 · 每兩小時更新</span></div>
 
-      <section class="retail-summary-grid" id="retail-summary" aria-label="追蹤摘要">
-        <div class="retail-stat"><strong>—</strong><span>價格項目</span></div>
-        <div class="retail-stat"><strong>—</strong><span>有效優惠</span></div>
-        <div class="retail-stat"><strong>—</strong><span>實測減價</span></div>
+      <section class="retail-summary-grid" id="retail-summary" aria-label="最新優惠摘要">
+        <div class="retail-stat"><strong>—</strong><span>最新優惠</span></div>
+        <div class="retail-stat"><strong>—</strong><span>涵蓋商店</span></div>
         <div class="retail-stat"><strong>—</strong><span>來源正常</span></div>
+        <div class="retail-stat"><strong>—</strong><span>最後更新</span></div>
       </section>
 
-      <section class="retail-toolbar" aria-label="篩選格價資料">
-        <label>搜尋<input id="retail-search" type="search" inputmode="search" placeholder="產品、品牌、優惠…" autocomplete="off"></label>
+      <section class="retail-toolbar" aria-label="篩選最新優惠">
+        <label>搜尋<input id="retail-search" type="search" inputmode="search" placeholder="產品、品牌、商店、優惠…" autocomplete="off"></label>
         <label>商店<select id="retailer-filter"><option value="">全部商店</option></select></label>
-        <label>顯示<select id="type-filter"><option value="all">全部</option><option value="prices">價格</option><option value="promotions">優惠</option></select></label>
-        <label>排序<select id="sort-filter"><option value="latest">最新檢查</option><option value="discount">優惠幅度</option><option value="price-low">價格由低至高</option></select></label>
+        <label>排序<select id="sort-filter"><option value="latest">最新發現</option><option value="ending">即將完結</option><option value="discount">最大折扣</option></select></label>
         <label class="watch-filter"><input id="watch-only" type="checkbox"> 只看 ⭐ 關注</label>
       </section>
 
-      <section class="retail-section" id="prices-section">
-        <div class="section-heading"><h2>價格追蹤</h2><span id="price-count">PRICE HISTORY</span></div>
-        <div id="price-list" class="retail-price-list"><p class="notice">正在載入價格資料…</p></div>
-      </section>
-
       <section class="retail-section" id="promotions-section">
-        <div class="section-heading"><h2>最新優惠</h2><span id="promo-count">PROMOTIONS</span></div>
-        <div id="promotion-list" class="promo-grid"><p class="notice">正在載入優惠資料…</p></div>
+        <div class="section-heading"><h2>最新優惠</h2><span id="promo-count">LATEST PROMOTIONS</span></div>
+        <div id="promotion-list" class="promo-grid"><p class="notice">正在載入最新優惠…</p></div>
       </section>
 
       <section class="retail-section">
@@ -61,11 +55,11 @@
       </section>
 
       <div class="retail-methodology">
-        <strong>計算方法：</strong>「優惠幅度」只比較商店當下顯示的優惠價與參考／原價；「實測變動」只比較本追蹤器不同時間真正觀察到的售價。會員價、新客價、多件價、信用卡優惠等會另外標示，不會假裝成一般貨架減價。Facebook／社交平台若無法穩定直接讀取，只會作發現線索，並標示來源層級，不會令整個追蹤器失效。
+        <strong>顯示原則：</strong>最新優惠優先。官方商品頁若顯示優惠價、原價、新客價、多件價或 Fresh Deal，會直接成為優惠卡片；新聞／社交平台資料只作優惠發現線索，並清楚標示來源層級。已沒有價格歷史、實測升跌、歷史高低價或價格走勢功能。
       </div>
     </main>
-    <footer class="footer"><span>每日晨報 · 香港格價・優惠</span><span><a href="index.html#daily-edition">返回頭版</a> · <a href="hong-kong.html">香港版</a> · <a href="archive.html">歷史日報</a></span></footer>
+    <footer class="footer"><span>每日晨報 · 香港最新優惠</span><span><a href="index.html#daily-edition">返回頭版</a> · <a href="hong-kong.html">香港版</a> · <a href="archive.html">歷史日報</a></span></footer>
   </div>
-  <script src="assets/js/retail-deals.js?v=20260901-v1" defer></script>
+  <script src="assets/js/retail-deals.js?v=20260901-v2" defer></script>
 </body>
 </html>
