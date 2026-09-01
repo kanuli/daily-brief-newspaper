@@ -1,4 +1,4 @@
-name: Retail Price and Promotion Tracker
+name: Retail Deals Collector
 
 on:
   push:
@@ -7,7 +7,6 @@ on:
       - "scripts/retail_deals_collector.py"
       - ".github/workflows/retail-deals.yml"
   schedule:
-    # Every two hours. GitHub cron is UTC; tracker timestamps are also displayed in HKT.
     - cron: "17 */2 * * *"
   workflow_dispatch:
 
@@ -35,25 +34,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Keep the complete currently discovered catalog
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('scripts/retail_deals_collector.py')
-          text = path.read_text(encoding='utf-8')
-          new = text.replace('MAX_PRODUCTS = 180', 'MAX_PRODUCTS = 300', 1)
-          if new != text:
-              path.write_text(new, encoding='utf-8')
-              print('RETAIL_PRODUCT_CAP_UPDATED 300')
-          else:
-              print('RETAIL_PRODUCT_CAP_OK')
-          PY
-
       - name: Validate collector syntax
         run: python -m py_compile scripts/retail_deals_collector.py
 
-      - name: Collect public retail prices and promotions
+      - name: Collect latest public retail deals
         run: python scripts/retail_deals_collector.py --output data/retail-deals.json
 
       - name: Validate public retail dataset
@@ -64,19 +48,22 @@ jobs:
           from pathlib import Path
           path=Path('data/retail-deals.json')
           data=json.loads(path.read_text(encoding='utf-8'))
-          if data.get('schemaVersion') != 1:
+          version=data.get('schemaVersion')
+          if version not in (1,2):
               raise SystemExit('bad retail schema version')
-          for key in ('products','promotions','sources'):
+          required=('offers','promotions','sources') if version == 2 else ('products','promotions','sources')
+          for key in required:
               if not isinstance(data.get(key), list):
                   raise SystemExit(f'{key} must be an array')
           if not data.get('generatedAt'):
               raise SystemExit('retail generatedAt missing')
           if not data['sources']:
               raise SystemExit('retail source-health rows missing')
-          print('RETAIL_PUBLIC_DATA_OK', len(data['products']), len(data['promotions']), len(data['sources']), data['generatedAt'])
+          primary='offers' if version == 2 else 'products'
+          print('RETAIL_PUBLIC_DATA_OK', version, len(data[primary]), len(data['promotions']), len(data['sources']), data['generatedAt'])
           PY
 
-      - name: Commit tracker update
+      - name: Commit latest retail deals
         id: publish
         shell: bash
         run: |
@@ -85,11 +72,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- scripts/retail_deals_collector.py data/retail-deals.json
           if git diff --cached --quiet; then
-            echo "No retail data changes"
+            echo "No retail deal changes"
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git commit -m "Update retail prices and promotions"
+          git commit -m "Update latest retail deals"
 
           for attempt in 1 2 3; do
             echo "Publish attempt ${attempt}"
@@ -100,16 +87,16 @@ jobs:
               continue
             fi
             if git push origin HEAD:main; then
-              echo "RETAIL_TRACKER_PUBLISHED"
+              echo "RETAIL_DEALS_PUBLISHED"
               echo "changed=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             sleep 4
           done
-          echo "Unable to publish retail tracker after 3 attempts" >&2
+          echo "Unable to publish retail deals after 3 attempts" >&2
           exit 1
 
-      - name: Redeploy Pages with the refreshed retail dataset
+      - name: Redeploy Pages with refreshed retail deals
         if: steps.publish.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
