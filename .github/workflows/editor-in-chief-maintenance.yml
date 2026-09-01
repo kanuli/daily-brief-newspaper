@@ -5,6 +5,7 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/editor-in-chief-maintenance.yml"
+      - ".github/workflows/canto-nano-watchdog.yml"
       - "scripts/editor_in_chief.py"
       - "scripts/test_editor_in_chief.py"
       - "scripts/desk_freshness_policy.py"
@@ -76,6 +77,102 @@ jobs:
           [ -s /tmp/search-staging.json ] && args+=(--staging /tmp/search-staging.json)
           [ -s /tmp/previous-editor-status.json ] && args+=(--previous-status /tmp/previous-editor-status.json)
           python scripts/editor_in_chief.py "${args[@]}"
+
+      - name: Audit voice workflow ownership and inject safe repair
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run list --repo "${GITHUB_REPOSITORY}" --workflow canto-nano-production.yml --limit 30 \
+            --json databaseId,status,conclusion,createdAt,updatedAt,event > /tmp/editor-voice-runs.json
+
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          status_path=Path('/tmp/editor-in-chief-status.json')
+          data=json.loads(status_path.read_text(encoding='utf-8'))
+          tts=json.loads(Path('data/tts-manifest.json').read_text(encoding='utf-8'))
+          runs=json.loads(Path('/tmp/editor-voice-runs.json').read_text(encoding='utf-8'))
+          now=datetime.now(timezone.utc)
+
+          pending=int(tts.get('pendingArticleCount') or 0)
+          available=int(tts.get('availableArticleCount') or 0)
+          collected=int(tts.get('collectedStoryCount') or 0)
+          complete=bool(tts.get('coverageComplete')) and pending == 0 and available >= collected
+          active=[r for r in runs if r.get('status') != 'completed']
+          latest=runs[0] if runs else None
+
+          last_voice=tts.get('lastVoicePublishedAt') or tts.get('generatedAt')
+          voice_age=999999.0
+          if last_voice:
+              try:
+                  dt=datetime.fromisoformat(str(last_voice).replace('Z','+00:00')).astimezone(timezone.utc)
+                  voice_age=max(0.0,(now-dt).total_seconds()/60.0)
+              except Exception:
+                  pass
+
+          stale=[]
+          for r in active:
+              try:
+                  created=datetime.fromisoformat(str(r.get('createdAt')).replace('Z','+00:00')).astimezone(timezone.utc)
+              except Exception:
+                  continue
+              run_age=(now-created).total_seconds()/60.0
+              if run_age > 110 and voice_age > 45:
+                  stale.append(int(r['databaseId']))
+
+          data['voiceWorkflowAudit']={
+              'coverageComplete': complete,
+              'availableArticleCount': available,
+              'collectedStoryCount': collected,
+              'pendingArticleCount': pending,
+              'activeRunIds': [r.get('databaseId') for r in active],
+              'staleRunIds': stale,
+              'latestRunId': latest.get('databaseId') if latest else None,
+              'latestRunStatus': latest.get('status') if latest else None,
+              'latestRunConclusion': latest.get('conclusion') if latest else None,
+              'voiceAgeMinutes': round(voice_age,1),
+          }
+
+          code=None
+          message=None
+          if not complete and stale:
+              code='VOICE_WORKFLOW_STALLED'
+              message=f'Voice backlog has {pending} pending article(s); active production run(s) {stale} are stale and no manifest progress was seen for {voice_age:.1f} minutes.'
+          elif not complete and not active:
+              conclusion=(latest or {}).get('conclusion')
+              if conclusion in {'failure','cancelled','timed_out'}:
+                  code='VOICE_WORKFLOW_INTERRUPTED'
+                  message=f'Voice production ended as {conclusion} with {pending} pending article(s) and no active recovery owner.'
+              else:
+                  code='VOICE_BACKLOG_UNOWNED'
+                  message=f'Voice manifest is incomplete ({available}/{collected}, {pending} pending) and no Canto Nano production run is active.'
+
+          if code:
+              if not any(isinstance(f,dict) and f.get('code')==code for f in data.get('findings') or []):
+                  data.setdefault('findings',[]).append({
+                      'code':code,
+                      'severity':'critical',
+                      'area':'voice',
+                      'message':message,
+                      'repair':'voice',
+                  })
+                  summary=data.setdefault('summary',{})
+                  summary['criticalCount']=int(summary.get('criticalCount',0))+1
+                  summary['findingCount']=int(summary.get('findingCount',0))+1
+              plan=data.setdefault('repairPlan',[])
+              if not any(isinstance(x,dict) and x.get('workflow')=='canto-nano-production.yml' for x in plan):
+                  plan.append({'area':'voice','workflow':'canto-nano-production.yml'})
+                  data['summary']['repairWorkflowCount']=int(data['summary'].get('repairWorkflowCount',0))+1
+              if data.get('status') != 'EDITORIAL_ATTENTION_REQUIRED':
+                  data['status']='AUTO_REPAIRING'
+
+          status_path.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print(json.dumps(data.get('voiceWorkflowAudit'),ensure_ascii=False))
+          PY
 
       - name: Run newsroom validators without hiding failures
         id: validators
@@ -166,6 +263,24 @@ jobs:
 
           while IFS= read -r wf; do
             [ -n "$wf" ] || continue
+
+            # Voice is a long-running progressive pipeline.  If the supervisory
+            # audit proved an active run stale, cancel only those stale IDs before
+            # normal active-owner protection.  Healthy active runs are never killed.
+            if [ "$wf" = "canto-nano-production.yml" ]; then
+              stale_ids=$(python - <<'PY'
+          import json
+          d=json.load(open('/tmp/editor-in-chief-status.json',encoding='utf-8'))
+          print(' '.join(str(x) for x in (d.get('voiceWorkflowAudit') or {}).get('staleRunIds') or []))
+          PY
+              )
+              for run_id in $stale_ids; do
+                echo "Editor-in-Chief cancelling stale voice run ${run_id}"
+                gh run cancel "$run_id" --repo "${GITHUB_REPOSITORY}" || true
+              done
+              [ -z "$stale_ids" ] || sleep 5
+            fi
+
             active=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow "$wf" --limit 10 --json status --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
             if [ "${active:-0}" -gt 0 ]; then
               printf '{"workflow":"%s","dispatched":false,"reason":"already-active"}\n' "$wf" >> /tmp/editor-repairs.jsonl
