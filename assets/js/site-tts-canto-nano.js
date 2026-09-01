@@ -1,7 +1,12 @@
 (() => {
   "use strict";
 
-  const MANIFEST_URL = "data/tts-manifest.json";
+  const scriptUrl = (() => {
+    try { return new URL(document.currentScript?.src || "", document.baseURI); }
+    catch (_) { return null; }
+  })();
+  const SITE_ROOT = scriptUrl ? new URL("../../", scriptUrl) : new URL("./", document.baseURI);
+  const MANIFEST_URL = new URL("data/tts-manifest.json", SITE_ROOT).href;
   const ENGINE = "typangaa/canto-tts-nano";
   const ENGINE_VERSION = "canto-tts-nano-v1";
   const VOICE = "verified-female-reference";
@@ -15,7 +20,8 @@
   const TEMPO = "native-model-rate-no-post-stretch";
   const QUALITY = "duration_filter";
   const MODE = "full";
-  const NAMESPACE = "-cnf1-";
+  const ASSET_NAMESPACE = "cnf4";
+  const LANGUAGE_GATE = "hk-cantonese-english-codeswitch-allowed";
   const READY = "🔊 廣東話朗讀";
   const STOP = "■ 停止朗讀";
   const PENDING = "⏳ 廣東話女聲準備中";
@@ -28,13 +34,15 @@
 
   function validEntry(e) {
     const segments = Number(e?.segmentCount || 0);
-    return !!(e?.audio && String(e.audio).includes(NAMESPACE) &&
+    return !!(e?.audio && String(e.audio).includes(`-${ASSET_NAMESPACE}-`) &&
       e.prosodyPolicy === POLICY && e.engineVersion === ENGINE_VERSION &&
       e.speakerMode === SPEAKER && e.referenceAsset === REF_ASSET &&
-      e.pronunciationPolicy === PRON && e.languageGate === "residual-latin-zero-before-synthesis" &&
+      e.pronunciationPolicy === PRON && e.languageGate === LANGUAGE_GATE &&
       e.segmentPolicy === SEGMENT && e.pacingPolicy === PACING &&
       e.pacingTarget === TARGET && e.tempoPolicy === TEMPO &&
       e.quality === QUALITY && e.sampleMode === MODE &&
+      e.contentCoveragePolicy === "full-visible-article-no-truncation-v1" &&
+      e.contentComplete === true &&
       segments >= 1 && Number(e.semanticUnitCount || segments) === segments &&
       e.femalePromptCodesSha256 && e.defaultPromptCodesSha256 &&
       e.femalePromptCodesSha256 !== e.defaultPromptCodesSha256);
@@ -47,7 +55,8 @@
       m?.referenceAsset === REF_ASSET && m?.pronunciationPolicy === PRON &&
       m?.segmentPolicy === SEGMENT && m?.pacingPolicy === PACING &&
       m?.pacingTarget === TARGET && m?.tempoPolicy === TEMPO &&
-      m?.quality === QUALITY && m?.sampleMode === MODE && m?.assetNamespace === "cnf1");
+      m?.quality === QUALITY && m?.sampleMode === MODE &&
+      m?.assetNamespace === ASSET_NAMESPACE);
   }
 
   function ensureUi() {
@@ -61,7 +70,7 @@
       const panel = document.createElement("div");
       panel.id = "site-tts-player";
       panel.dataset.open = "false";
-      panel.innerHTML = '<div class="site-tts-player-row"><div class="site-tts-status" id="site-tts-status">canto-tts-nano · verified female · HK news pacing</div><button type="button" class="site-tts-stop" id="site-tts-stop">■ 停止</button></div><audio class="site-tts-audio" id="site-tts-audio" controls preload="metadata" playsinline></audio>';
+      panel.innerHTML = '<div class="site-tts-player-row"><div class="site-tts-status" id="site-tts-status">canto-tts-nano · verified female · HK mixed-language news pacing</div><button type="button" class="site-tts-stop" id="site-tts-stop">■ 停止</button></div><audio class="site-tts-audio" id="site-tts-audio" controls preload="metadata" playsinline></audio>';
       document.body.appendChild(panel);
       $("#site-tts-stop")?.addEventListener("click", stopAll);
       $("#site-tts-audio")?.addEventListener("ended", finish);
@@ -133,8 +142,8 @@
   }
 
   function audioUrl(entry) {
-    const url = new URL(entry.audio, document.baseURI);
-    url.searchParams.set("voicev", encodeURIComponent(`${entry.prosodyPolicy}|${entry.publishedAt || ""}|${entry.contentSha256 || ""}`));
+    const url = new URL(entry.audio, SITE_ROOT);
+    url.searchParams.set("voicev", `${entry.prosodyPolicy}|${entry.publishedAt || ""}|${entry.contentSha256 || ""}`);
     return url.href;
   }
   function play(entry, button = null) {
@@ -144,8 +153,13 @@
     const audio = $("#site-tts-audio");
     audio.src = audioUrl(entry); audio.dataset.ready = "true"; activeButton = button;
     if (button) { button.dataset.speaking = "true"; button.textContent = STOP; }
-    status("使用中：canto-tts-nano 年輕女聲 · 香港新聞主播節奏");
-    audio.play()?.catch?.((error) => { console.warn("canto nano playback rejected", error); finish(); });
+    status("使用中：canto-tts-nano 年輕女聲 · 香港廣東話／英文自然混讀");
+    const p = audio.play();
+    if (p?.catch) p.catch((error) => {
+      console.warn("canto nano playback rejected", error);
+      status("音檔已存在，但瀏覽器未能播放。請再按一次播放。", true);
+      resetButton(activeButton); activeButton = null;
+    });
     return true;
   }
 
@@ -164,11 +178,11 @@
     button.onclick = null; button.dataset.speaking = "false";
     if (validEntry(entry)) {
       button.disabled = false; button.textContent = READY; button.dataset.ttsState = "ready";
-      button.title = "canto-tts-nano verified female · Jyutping Cantonese · semantic news-anchor pauses";
+      button.title = "canto-tts-nano verified female · HK Cantonese-English mixed-language playback";
       button.onclick = () => play(entry, button);
     } else {
       button.disabled = true; button.textContent = PENDING; button.dataset.ttsState = "pending";
-      button.title = "目前頁面未能把這則新聞對應到最新 canto-tts-nano 女聲音檔；系統會自動重新檢查。";
+      button.title = "目前文章尚未有對應的 cnf4 廣東話音檔；系統會自動重新檢查。";
     }
   }
 
@@ -180,10 +194,12 @@
   }
   async function refreshManifest() {
     try {
-      const url = new URL(MANIFEST_URL, document.baseURI); url.searchParams.set("v", String(Date.now()));
+      const url = new URL(MANIFEST_URL); url.searchParams.set("v", String(Date.now()));
       const response = await fetch(url.href, { cache: "no-store" });
       if (!response.ok) throw new Error(`manifest HTTP ${response.status}`);
-      const fresh = await response.json(); manifest = validManifest(fresh) ? fresh : null;
+      const fresh = await response.json();
+      manifest = validManifest(fresh) ? fresh : null;
+      window.dispatchEvent(new CustomEvent("site-tts-manifest", { detail: { valid: !!manifest, namespace: fresh?.assetNamespace || null } }));
     } catch (error) {
       console.warn("canto nano manifest unavailable", error); manifest = null;
     }
@@ -198,7 +214,8 @@
   window.SiteTTS = {
     playLeadFromUserGesture() { const e = leadEntry(); return validEntry(e) ? play(e) : false; },
     stop: stopAll,
-    isReady() { return true; }
+    isReady() { return !!manifest; },
+    manifestNamespace() { return manifest?.assetNamespace || null; }
   };
   function boot() {
     ensureUi(); refreshButtons(); refreshManifest();
