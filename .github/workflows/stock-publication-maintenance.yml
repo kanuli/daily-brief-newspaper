@@ -9,6 +9,7 @@ on:
       - "scripts/stock_news_heartbeat.py"
       - "scripts/stock_verified_producer.py"
       - "scripts/stock_news_rules.py"
+      - "scripts/clean_stock_boilerplate.py"
       - "data/stock-verified-seeds.json"
   schedule:
     # HKT 06:00-24:00, five minutes after each hour. GitHub cron is UTC.
@@ -90,6 +91,12 @@ jobs:
           # path. The normal max-age/current checks prevent an old generic Live
           # draft from overwriting the new primary-source producer output.
           python scripts/promote_verified_stock_draft.py /tmp/prepublish.json
+
+      - name: Remove repeated verification boilerplate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/clean_stock_boilerplate.py
 
       - name: Validate Stock News contract
         shell: bash
