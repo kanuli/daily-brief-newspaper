@@ -5,13 +5,35 @@
   const paragraphs = (value='') => String(value || '').split(/\n\s*\n/).map(v=>v.trim()).filter(Boolean);
   const impactClass = (impact='↔') => impact === '↑' ? 'stock-impact-up' : impact === '↓' ? 'stock-impact-down' : 'stock-impact-neutral';
 
+  const AUTO_DEK_BOILERPLATE = '；自動核實器只在官方／監管來源出現後才升格為已核實新聞。';
+  const AUTO_BODY_BOILERPLATE = 'Stock News的自動核實器不會因搜尋結果、社交平台貼文或預測文章出現相似標題，就把未正式發布的消息當作公司事實。';
+
+  function formatHkt(value){
+    if(!value) return 'N/V';
+    const date = new Date(value);
+    if(Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat('zh-HK', {
+      timeZone:'Asia/Hong_Kong', year:'numeric', month:'2-digit', day:'2-digit',
+      hour:'2-digit', minute:'2-digit', hour12:false
+    }).format(date) + ' HKT';
+  }
+
+  function displayStory(story){
+    if(!story || story.verificationMode !== 'PRIMARY_SOURCE_AUTO') return story || {};
+    const copy = {...story};
+    copy.dek = String(copy.dek || '').replace(AUTO_DEK_BOILERPLATE, '。').replaceAll('。。','。').trim();
+    copy.body = String(copy.body || '').replaceAll(AUTO_BODY_BOILERPLATE, '').replaceAll('。。','。').trim();
+    return copy;
+  }
+
   function sourceMarkup(story){
     const sources = Array.isArray(story.sources) && story.sources.length ? story.sources : (story.sourceUrl ? [{name:story.sourceName||'原文',url:story.sourceUrl}] : []);
     if(!sources.length) return '';
     return `<div class="stock-sources"><strong>核實來源：</strong> ${sources.map(s=>`<a href="${esc(s.url||'#')}" target="_blank" rel="noopener noreferrer">${esc(s.name||'原文')} ↗</a>`).join(' · ')}</div>`;
   }
 
-  function renderStory(story,index){
+  function renderStory(rawStory,index){
+    const story = displayStory(rawStory);
     const body = paragraphs(story.body);
     return `<article class="stock-story ${index===0?'featured':''}">
       <div class="tag"><span class="stock-impact ${impactClass(story.impact)}">${esc(story.impact||'↔')} ${esc(story.impactLabel||'READ-THROUGH')}</span>${esc(story.storyType||'LATEST')}</div>
@@ -40,8 +62,8 @@
     const checked = document.querySelector('#stock-checked');
     const updated = document.querySelector('#stock-updated');
     const host = document.querySelector('#stock-freshness');
-    if(checked) checked.textContent = data.lastCheckedLabel || data.lastCheckedAt || '尚未建立獨立檢查時間';
-    if(updated) updated.textContent = data.lastUpdatedLabel || data.generatedAt || 'N/V';
+    if(checked) checked.textContent = data.lastCheckedLabel || formatHkt(data.lastCheckedAt) || '尚未建立獨立檢查時間';
+    if(updated) updated.textContent = data.lastUpdatedLabel || formatHkt(data.generatedAt) || 'N/V';
     if(!host) return;
 
     const status = String(data.collectionStatus || '').toUpperCase();
@@ -63,7 +85,7 @@
       const fresh = discovered > 0 ? `本輪找到 ${discovered} 則 fresh discovery candidate${depth}` : `本輪已完成搜集${depth}`;
       const oldCopy = contentAge !== null && contentAge > 24
         ? ' 現有已核實稿件的內容時間較舊，表示最近檢查未有新的材料通過核實／編輯門檻；舊稿不會被重新標示成新新聞。'
-        : ' 如「最後檢查」較「最近已核實內容更新」新，代表該輪已檢查但沒有需要改寫的已核實新稿。';
+        : ' 頁頂「最後檢查」代表掃描時間；「最近已核實內容更新」只有在真正有新材料通過核實時才會改變。';
       host.innerHTML = `<p class="notice"><strong>Newsroom freshness：</strong>${esc(fresh)}。${esc(oldCopy)}</p>`;
       return;
     }
