@@ -7,6 +7,7 @@
   const MANIFEST_REFRESH_MS = 15000;
   const WORKFLOW_REFRESH_MS = 45000;
   const ACTIVE = new Set(["in_progress", "queued", "waiting", "pending", "requested"]);
+  const ASSET_NAMESPACE = "cnf4";
   let manifestTimer = null, workflowTimer = null, latestManifest = null, latestRuns = [];
 
   function ensureStyles() {
@@ -27,7 +28,7 @@
   function manifestSnapshot() {
     const done = Number(latestManifest?.availableArticleCount ?? latestManifest?.articleCount ?? 0);
     const total = Math.max(done, Number(latestManifest?.collectedStoryCount ?? done));
-    const pending = Math.max(0, total - done);
+    const pending = Math.max(0, Number(latestManifest?.pendingArticleCount ?? total - done));
     const percent = total ? Math.min(100, Math.max(0, done / total * 100)) : 0;
     return { done, total, pending, percent };
   }
@@ -35,7 +36,7 @@
   function pageSnapshot() {
     const buttons = [...document.querySelectorAll("main article .site-tts-button")];
     if (!buttons.length) return null;
-    const done = buttons.filter((b) => b.dataset.ttsState === "ready" || (!b.disabled && !String(b.textContent || "").includes("準備中"))).length;
+    const done = buttons.filter((b) => b.dataset.ttsState === "ready").length;
     const total = buttons.length;
     const pending = Math.max(0, total - done);
     const percent = total ? Math.min(100, Math.max(0, done / total * 100)) : 0;
@@ -48,7 +49,7 @@
     const r = latestRuns[0];
     if (!r) return { state: "unknown", label: "Checking Canto Nano workers" };
     if (r.status === "completed" && r.conclusion === "success") return { state: "idle", label: "Latest Canto Nano worker run completed" };
-    if (r.status === "completed" && r.conclusion === "cancelled") return { state: "queued", label: "Previous run replaced; next Canto Nano run pending" };
+    if (r.status === "completed" && r.conclusion === "cancelled") return { state: "queued", label: "Previous run cancelled; self-healing watchdog owns recovery" };
     if (r.status === "completed" && r.conclusion) return { state: "failed", label: `Canto Nano worker ${r.conclusion}` };
     return { state: "unknown", label: r.status || "Checking Canto Nano workers" };
   }
@@ -59,11 +60,11 @@
     const m = manifestSnapshot(), p = pageSnapshot(), wf = runState();
     const visible = p && p.total > 0 ? p : null;
     const shown = visible || m;
-    const correctEngine = latestManifest.engine === "typangaa/canto-tts-nano" && latestManifest.voice === "verified-female-reference" && latestManifest.assetNamespace === "cnf1";
+    const correctEngine = latestManifest.engine === "typangaa/canto-tts-nano" && latestManifest.voice === "verified-female-reference" && latestManifest.assetNamespace === ASSET_NAMESPACE;
     let state = wf.state, label = wf.label;
 
     if (!correctEngine) {
-      state = "failed"; label = "Production manifest is not Canto Nano verified female";
+      state = "failed"; label = `Production manifest is not current Canto Nano ${ASSET_NAMESPACE}`;
     } else if (visible?.pending > 0) {
       state = wf.state === "active" ? "active" : "queued";
       label = `${visible.pending} visible article voice link${visible.pending === 1 ? "" : "s"} not playable yet`;
@@ -71,7 +72,7 @@
       state = "complete";
       label = visible ? "Visible page playable · current manifest snapshot complete" : "Current manifest snapshot complete";
     } else if (wf.state === "idle") {
-      state = "queued"; label = "Current manifest backlog remains; scheduled Canto Nano continuation enabled";
+      state = "queued"; label = "Current manifest backlog remains; self-healing continuation enabled";
     }
 
     row.classList.remove("status-ok", "status-check", "status-warn", "status-fail");
@@ -83,7 +84,7 @@
     const creating = wf.state === "active" ? Math.min(MAX_PARALLEL, m.pending) : 0;
     row.querySelector(".voice-creating").textContent = `Manifest ${m.done}/${m.total} · Creating ${creating}/${m.pending} pending`;
     const last = latestManifest.lastVoicePublishedAt || "not published yet";
-    row.querySelector(".voice-progress-detail").textContent = `${label} · canto-tts-nano verified female · Jyutping Cantonese-first · Last voice ${last}`;
+    row.querySelector(".voice-progress-detail").textContent = `${label} · ${ASSET_NAMESPACE} · HK Cantonese-English mixed-language · Last voice ${last}`;
   }
 
   async function loadManifest() {
