@@ -58,11 +58,26 @@ jobs:
           changed=0
           for path in Path('.').rglob('*.html'):
               text=path.read_text(encoding='utf-8')
-              new=re.sub(r'assets/js/system-panel\.js\?v=[^"\']+', 'assets/js/system-panel.js?v=20260831-hk-mixed-display-v1', text)
+              new=re.sub(r'assets/js/system-panel\.js\?v=[^"\']+', 'assets/js/system-panel.js?v=20260901-retail-nav-runtime-v1', text)
               if new != text:
                   path.write_text(new, encoding='utf-8')
                   changed += 1
           print('SELF_HEAL_CLIENT_CACHE_BUST_OK pages', changed)
+          PY
+
+      - name: Verify runtime navbar keeps latest promotions
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          js=Path('assets/js/system-panel.js').read_text(encoding='utf-8')
+          required=['["football.html", "Football"]','["retail-deals.html", "🛒 最新優惠", "retail-nav"]','["archive.html", "Archive"]']
+          for item in required:
+              if item not in js:
+                  raise SystemExit('runtime navbar missing required entry: '+item)
+          if not (js.index(required[0]) < js.index(required[1]) < js.index(required[2])):
+              raise SystemExit('runtime navbar order must be Football -> 最新優惠 -> Archive')
+          print('RUNTIME_RETAIL_NAV_OK Football>最新優惠>Archive')
           PY
 
       - name: Availability gate — JSON readable and publication mode valid
