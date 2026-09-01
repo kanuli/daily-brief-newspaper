@@ -2,10 +2,10 @@
   "use strict";
 
   const DESKS = [
-    ["world.html", "世界"], ["asia.html", "亞洲"], ["hong-kong.html", "香港"], ["japan.html", "日本"],
-    ["finance.html", "📈 財經"], ["stocks.html", "📊 Stock News"], ["technology.html", "AI / 科技"],
-    ["manga-anime.html", "漫畫 / Anime"], ["manchester-united.html", "Manchester United"], ["football.html", "Football"],
-    ["retail-deals.html", "🛒 最新優惠", "retail-nav"], ["archive.html", "Archive"]
+    ["world.html", "🌍 世界"], ["asia.html", "🌏 亞洲"], ["hong-kong.html", "🇭🇰 香港"], ["japan.html", "🇯🇵 日本"],
+    ["finance.html", "📈 財經"], ["stocks.html", "📊 Stock News"], ["technology.html", "🤖 AI / 科技"],
+    ["manga-anime.html", "📚 漫畫 / Anime"], ["manchester-united.html", "🏟️ Manchester United"], ["football.html", "⚽ Football"],
+    ["retail-deals.html", "🛒 最新優惠", "retail-nav"], ["archive.html", "🗂️ Archive"]
   ];
   const HOME_HREF = "index.html?v=20260822-2110homefix#daily-edition";
 
@@ -33,8 +33,8 @@
     const homeCurrent = page === "index.html";
     const liveCurrent = page === "live.html";
     const links = [
-      `<a class="live-nav" href="live.html"${liveCurrent ? ' aria-current="page"' : ""}>Live</a>`,
-      `<a class="home-nav" href="${HOME_HREF}"${homeCurrent ? ' aria-current="page"' : ""}>頭版</a>`,
+      `<a class="live-nav" href="live.html"${liveCurrent ? ' aria-current="page"' : ""}>🔴 Live</a>`,
+      `<a class="home-nav" href="${HOME_HREF}"${homeCurrent ? ' aria-current="page"' : ""}>📰 頭版</a>`,
       ...DESKS.map(([href, label, className]) => {
         const target = href.split("#")[0].toLowerCase();
         const classAttr = className ? ` class="${className}"` : "";
