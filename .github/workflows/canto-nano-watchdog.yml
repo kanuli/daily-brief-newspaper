@@ -1,6 +1,10 @@
 name: Canto Nano Voice Self-Healing Watchdog
 
 on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/canto-nano-watchdog.yml"
   schedule:
     - cron: "*/10 * * * *"
   workflow_run:
