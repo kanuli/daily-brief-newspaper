@@ -1,0 +1,91 @@
+name: Retail Price and Promotion Tracker
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "scripts/retail_deals_collector.py"
+      - ".github/workflows/retail-deals.yml"
+  schedule:
+    # Every two hours. GitHub cron is UTC; tracker timestamps are also displayed in HKT.
+    - cron: "17 */2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "retail-deals-collector"
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate collector syntax
+        run: python -m py_compile scripts/retail_deals_collector.py
+
+      - name: Collect public retail prices and promotions
+        run: python scripts/retail_deals_collector.py --output data/retail-deals.json
+
+      - name: Validate public retail dataset
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path('data/retail-deals.json')
+          data=json.loads(path.read_text(encoding='utf-8'))
+          if data.get('schemaVersion') != 1:
+              raise SystemExit('bad retail schema version')
+          for key in ('products','promotions','sources'):
+              if not isinstance(data.get(key), list):
+                  raise SystemExit(f'{key} must be an array')
+          if not data.get('generatedAt'):
+              raise SystemExit('retail generatedAt missing')
+          if not data['sources']:
+              raise SystemExit('retail source-health rows missing')
+          print('RETAIL_PUBLIC_DATA_OK', len(data['products']), len(data['promotions']), len(data['sources']), data['generatedAt'])
+          PY
+
+      - name: Commit tracker update
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- data/retail-deals.json
+          if git diff --cached --quiet; then
+            echo "No retail data changes"
+            exit 0
+          fi
+          git commit -m "Update retail prices and promotions"
+
+          for attempt in 1 2 3; do
+            echo "Publish attempt ${attempt}"
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              sleep 3
+              continue
+            fi
+            if git push origin HEAD:main; then
+              echo "RETAIL_TRACKER_PUBLISHED"
+              exit 0
+            fi
+            sleep 4
+          done
+          echo "Unable to publish retail tracker after 3 attempts" >&2
+          exit 1
