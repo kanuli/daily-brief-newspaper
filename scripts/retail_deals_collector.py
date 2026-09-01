@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 HKT = timezone(timedelta(hours=8))
-USER_AGENT = "DailyBriefRetailPromotions/3.0 (+https://github.com/kanuli/daily-brief-newspaper)"
+USER_AGENT = "DailyBriefRetailPromotions/3.1 (+https://github.com/kanuli/daily-brief-newspaper)"
 MAX_PROMOTIONS = 60
 MAX_OFFICIAL_PER_SOURCE = 12
 MAX_DISCOVERY_PER_RETAILER = 6
@@ -49,13 +49,17 @@ DISCOVERY_QUERIES = [
 ]
 
 PROMO_TERMS = re.compile(
-    r"優惠|推廣|推介|折扣|\d\s*折|全場|會員|優惠券|coupon|promotion|campaign|"
+    r"優惠|推廣|本週廣告|折扣|\d\s*折|全場|會員|優惠券|coupon|promotion|campaign|offers?|"
     r"抽獎|幸運大抽獎|換購|贈送|送禮|買.+送|禮遇|信用卡|visa|mastercard|"
     r"感謝日|reward|rewards|開學|中秋|月餅|限時|期間限定|著數",
     re.I,
 )
 PRICEISH = re.compile(r"\$\s*\d|HK\$\s*\d|原價|優惠價|每件|/件|\d+(?:\.\d+)?\s*(?:KG|GM|G|ML|LT|L|PCS?|PK)\b", re.I)
 NAV_JUNK = re.compile(r"^(home|首頁|登入|login|register|註冊|contact|聯絡|about|關於|store|分店|privacy|私隱|terms|條款|search|搜尋)$", re.I)
+GENERIC_PROMO_TITLE = re.compile(
+    r"^(推廣資訊|今期推廣|AEON會員卡|租戶優惠|AEON\s*推廣活動|會員尊享優惠|AEON\s*信用卡優惠|AEONCITY網購推廣)$",
+    re.I,
+)
 TITLE_DAY_RE = re.compile(r"(?<!\d)(1[0-2]|[1-9])月([0-3]?\d)日")
 FORBIDDEN_PRICE_KEYS = {"offers", "products", "currentPrice", "regularPrice", "priceHistory", "historicalLow", "historicalHigh", "previousObservedPrice", "changePct"}
 
@@ -153,16 +157,7 @@ def fetch_text(url: str, timeout: int = 20) -> str:
 
 
 def source_record(source_id: str, retailer: str, label: str, url: str, status: str, checked: datetime, detail: str) -> dict[str, Any]:
-    return {
-        "id": source_id,
-        "retailer": retailer,
-        "label": label,
-        "url": url,
-        "mode": "promotion-only",
-        "status": status,
-        "checkedAt": iso(checked),
-        "detail": detail,
-    }
+    return {"id": source_id, "retailer": retailer, "label": label, "url": url, "mode": "promotion-only", "status": status, "checkedAt": iso(checked), "detail": detail}
 
 
 def promotion_id(retailer: str, title: str, url: str) -> str:
@@ -181,7 +176,7 @@ def official_promotions(retailer: str, source_name: str, url: str, markup: str, 
         title = clean(title)
         if len(title) < 4 or len(title) > 140:
             continue
-        if NAV_JUNK.match(title) or PRICEISH.search(title) or not PROMO_TERMS.search(title):
+        if NAV_JUNK.match(title) or GENERIC_PROMO_TITLE.match(title) or PRICEISH.search(title) or not PROMO_TERMS.search(title):
             continue
         href_host = urllib.parse.urlparse(href).netloc.lower().removeprefix("www.")
         if href_host and source_host and not (href_host == source_host or href_host.endswith("." + source_host)):
@@ -190,24 +185,14 @@ def official_promotions(retailer: str, source_name: str, url: str, markup: str, 
         if not key or key in seen:
             continue
         seen.add(key)
-        rows.append(
-            {
-                "id": promotion_id(retailer, title, href),
-                "retailer": retailer,
-                "title": title,
-                "summary": "零售商官方公開推廣；活動內容及條款請查看官方頁面。",
-                "startDate": None,
-                "endDate": None,
-                "active": True,
-                "restriction": "以零售商官方最新條款、指定分店／會員／付款方式要求為準。",
-                "sourceType": "official-promotion",
-                "sourceName": source_name,
-                "sourceUrl": href,
-                "checkedAt": iso(now),
-                "publishedAt": None,
-                "discoveredAt": iso(now),
-            }
-        )
+        rows.append({
+            "id": promotion_id(retailer, title, href), "retailer": retailer, "title": title,
+            "summary": "零售商官方公開推廣；活動內容及條款請查看官方頁面。",
+            "startDate": None, "endDate": None, "active": True,
+            "restriction": "以零售商官方最新條款、指定分店／會員／付款方式要求為準。",
+            "sourceType": "official-promotion", "sourceName": source_name, "sourceUrl": href,
+            "checkedAt": iso(now), "publishedAt": None, "discoveredAt": iso(now),
+        })
         if len(rows) >= MAX_OFFICIAL_PER_SOURCE:
             break
     return rows
@@ -216,7 +201,6 @@ def official_promotions(retailer: str, source_name: str, url: str, markup: str, 
 def collect_official(now: datetime) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     promotions: list[dict[str, Any]] = []
     sources: list[dict[str, Any]] = []
-
     for source_id, retailer, label, url in OFFICIAL_SOURCES:
         try:
             markup = fetch_text(url)
@@ -224,10 +208,10 @@ def collect_official(now: datetime) -> tuple[list[dict[str, Any]], list[dict[str
             promotions.extend(rows)
             if rows:
                 status = "ok"
-                detail = f"本輪從官方公開頁辨識 {len(rows)} 個推廣活動；不收集商品價格。"
+                detail = f"本輪從官方公開頁辨識 {len(rows)} 個實際推廣活動；不收集商品價格。"
             else:
                 status = "limited"
-                detail = "官方頁可讀取，但本輪未辨識到可結構化的推廣活動；不會以商品價格代替。"
+                detail = "官方頁可讀取，但本輪未辨識到實際推廣活動；導航分類及商品價格不會當成 Promotion。"
             sources.append(source_record(source_id, retailer, label, url, status, now, detail))
         except Exception as exc:
             sources.append(source_record(source_id, retailer, label, url, "error", now, f"本輪讀取失敗：{clean(exc)}。"))
@@ -255,7 +239,6 @@ def discovery_promotions(now: datetime) -> tuple[list[dict[str, Any]], dict[str,
     rows: list[dict[str, Any]] = []
     failures = 0
     today = now.astimezone(HKT).date()
-
     for retailer, query in DISCOVERY_QUERIES:
         kept = 0
         try:
@@ -263,7 +246,6 @@ def discovery_promotions(now: datetime) -> tuple[list[dict[str, Any]], dict[str,
         except Exception:
             failures += 1
             continue
-
         for item in root.findall(".//item")[:25]:
             title = clean(item.findtext("title"))
             link = clean(item.findtext("link"))
@@ -277,38 +259,19 @@ def discovery_promotions(now: datetime) -> tuple[list[dict[str, Any]], dict[str,
             source_node = item.find("source")
             source_name = clean(source_node.text if source_node is not None else "") or "公開網上來源"
             clean_title = re.sub(r"\s+-\s+[^-]{2,80}$", "", title).strip()
-            rows.append(
-                {
-                    "id": promotion_id(retailer, clean_title, link),
-                    "retailer": retailer,
-                    "title": clean_title,
-                    "summary": "近期公開優惠／推廣消息；詳情以零售商最新官方公布為準。",
-                    "startDate": None,
-                    "endDate": None,
-                    "active": True,
-                    "restriction": "屬公開網上推廣發現；未核實細節不會當作官方條款。",
-                    "sourceType": "secondary-discovery",
-                    "sourceName": source_name,
-                    "sourceUrl": link,
-                    "checkedAt": iso(now),
-                    "publishedAt": iso(published) if published else None,
-                    "discoveredAt": iso(now),
-                }
-            )
+            rows.append({
+                "id": promotion_id(retailer, clean_title, link), "retailer": retailer, "title": clean_title,
+                "summary": "近期公開優惠／推廣消息；詳情以零售商最新官方公布為準。",
+                "startDate": None, "endDate": None, "active": True,
+                "restriction": "屬公開網上推廣發現；未核實細節不會當作官方條款。",
+                "sourceType": "secondary-discovery", "sourceName": source_name, "sourceUrl": link,
+                "checkedAt": iso(now), "publishedAt": iso(published) if published else None, "discoveredAt": iso(now),
+            })
             kept += 1
             if kept >= MAX_DISCOVERY_PER_RETAILER:
                 break
-
     health_status = "ok" if failures == 0 else "limited" if failures < len(DISCOVERY_QUERIES) else "error"
-    health = source_record(
-        "promotion-web-discovery",
-        "多個零售商",
-        "公開網頁／新聞／社交推廣發現",
-        "https://news.google.com/",
-        health_status,
-        now,
-        f"本輪保留 {len(rows)} 個近期 Promotion 線索；{failures} 個搜尋查詢失敗。",
-    )
+    health = source_record("promotion-web-discovery", "多個零售商", "公開網頁／新聞／社交推廣發現", "https://news.google.com/", health_status, now, f"本輪保留 {len(rows)} 個近期 Promotion 線索；{failures} 個搜尋查詢失敗。")
     return rows, health
 
 
@@ -319,10 +282,7 @@ def dedupe(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not key[0] or not key[1]:
             continue
         old = unique.get(key)
-        if old is None:
-            unique[key] = row
-            continue
-        if old.get("sourceType") != "official-promotion" and row.get("sourceType") == "official-promotion":
+        if old is None or (old.get("sourceType") != "official-promotion" and row.get("sourceType") == "official-promotion"):
             unique[key] = row
     out = list(unique.values())
     out.sort(key=lambda x: str(x.get("publishedAt") or x.get("discoveredAt") or x.get("checkedAt") or ""), reverse=True)
@@ -336,18 +296,10 @@ def build() -> dict[str, Any]:
     promotions = dedupe(official + discovered)
     sources = source_rows + [discovery_health]
     return {
-        "schemaVersion": 3,
-        "collectorVersion": "3.0.0",
-        "generatedAt": iso(now),
+        "schemaVersion": 3, "collectorVersion": "3.1.0", "generatedAt": iso(now),
         "generatedAtHkt": now.astimezone(HKT).strftime("%Y-%m-%d %H:%M HKT"),
-        "promotions": promotions,
-        "sources": sources,
-        "stats": {
-            "activePromotions": len(promotions),
-            "retailerCount": len({str(x.get("retailer")) for x in promotions if x.get("retailer")}),
-            "healthySources": sum(1 for x in sources if x.get("status") == "ok"),
-            "sourceCount": len(sources),
-        },
+        "promotions": promotions, "sources": sources,
+        "stats": {"activePromotions": len(promotions), "retailerCount": len({str(x.get("retailer")) for x in promotions if x.get("retailer")}), "healthySources": sum(1 for x in sources if x.get("status") == "ok"), "sourceCount": len(sources)},
     }
 
 
@@ -384,13 +336,7 @@ def main() -> int:
     tmp = output.with_suffix(output.suffix + ".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     tmp.replace(output)
-    print(
-        "RETAIL_PROMOTIONS_OK",
-        "promotions", data["stats"]["activePromotions"],
-        "retailers", data["stats"]["retailerCount"],
-        "sources_ok", data["stats"]["healthySources"],
-        "generated", data["generatedAt"],
-    )
+    print("RETAIL_PROMOTIONS_OK", "promotions", data["stats"]["activePromotions"], "retailers", data["stats"]["retailerCount"], "sources_ok", data["stats"]["healthySources"], "generated", data["generatedAt"])
     return 0
 
 
