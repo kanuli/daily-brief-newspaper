@@ -4,7 +4,8 @@
   const DESKS = [
     ["world.html", "世界"], ["asia.html", "亞洲"], ["hong-kong.html", "香港"], ["japan.html", "日本"],
     ["finance.html", "📈 財經"], ["stocks.html", "📊 Stock News"], ["technology.html", "AI / 科技"],
-    ["manga-anime.html", "漫畫 / Anime"], ["manchester-united.html", "Manchester United"], ["football.html", "Football"], ["archive.html", "Archive"]
+    ["manga-anime.html", "漫畫 / Anime"], ["manchester-united.html", "Manchester United"], ["football.html", "Football"],
+    ["retail-deals.html", "🛒 最新優惠", "retail-nav"], ["archive.html", "Archive"]
   ];
   const HOME_HREF = "index.html?v=20260822-2110homefix#daily-edition";
 
@@ -15,7 +16,9 @@
     style.textContent = `
       .section-nav a[aria-current="page"]{background:#b00016!important}
       .section-nav .live-nav:not([aria-current="page"]){background:transparent!important}
-      @media (max-width:620px){.section-nav{display:grid!important;grid-template-columns:repeat(7,minmax(0,1fr))!important;grid-auto-flow:row!important;overflow:visible!important;width:100%!important;flex-wrap:unset!important}.section-nav a{display:flex!important;align-items:center!important;justify-content:center!important;min-width:0!important;padding:7px 2px!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:center!important;font-size:9.5px!important;line-height:1.12!important;border-right:1px solid #444!important;border-bottom:1px solid #444!important}.section-nav a:nth-child(7n){border-right:0!important}.section-nav a:nth-last-child(-n+6){border-bottom:0!important}}
+      .section-nav .retail-nav:not([aria-current="page"]){background:#79000e!important}
+      .section-nav .retail-nav:hover{background:#b00016!important}
+      @media (max-width:620px){.section-nav{display:grid!important;grid-template-columns:repeat(7,minmax(0,1fr))!important;grid-auto-flow:row!important;overflow:visible!important;width:100%!important;flex-wrap:unset!important}.section-nav a{display:flex!important;align-items:center!important;justify-content:center!important;min-width:0!important;padding:7px 2px!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:center!important;font-size:9.5px!important;line-height:1.12!important;border-right:1px solid #444!important;border-bottom:1px solid #444!important}.section-nav a:nth-child(7n){border-right:0!important}.section-nav a:nth-last-child(-n+7){border-bottom:0!important}}
       #main-site-voice-button{position:fixed;right:14px;bottom:72px;z-index:9997;border:2px solid #111;background:#fff;color:#111;padding:10px 13px;border-radius:999px;font:800 12px/1.2 "Noto Sans TC",sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.18);cursor:pointer}
       #main-site-voice-button:hover{background:#111;color:#fff}#main-site-voice-button:disabled{opacity:.6;cursor:wait}
       @media(max-width:620px){#main-site-voice-button{right:10px;bottom:68px;padding:9px 11px;font-size:11px}}
@@ -32,9 +35,10 @@
     const links = [
       `<a class="live-nav" href="live.html"${liveCurrent ? ' aria-current="page"' : ""}>Live</a>`,
       `<a class="home-nav" href="${HOME_HREF}"${homeCurrent ? ' aria-current="page"' : ""}>頭版</a>`,
-      ...DESKS.map(([href, label]) => {
+      ...DESKS.map(([href, label, className]) => {
         const target = href.split("#")[0].toLowerCase();
-        return `<a href="${href}"${target === page ? ' aria-current="page"' : ""}>${label}</a>`;
+        const classAttr = className ? ` class="${className}"` : "";
+        return `<a${classAttr} href="${href}"${target === page ? ' aria-current="page"' : ""}>${label}</a>`;
       })
     ];
     nav.innerHTML = links.join("");
