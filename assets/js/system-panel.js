@@ -16,7 +16,7 @@
     style.textContent = `
       .section-nav a[aria-current="page"]{background:#b00016!important}
       .section-nav .live-nav:not([aria-current="page"]){background:transparent!important}
-      .section-nav .retail-nav:not([aria-current="page"]){background:#79000e!important}
+      .section-nav .retail-nav:not([aria-current="page"]){background:transparent!important}
       .section-nav .retail-nav:hover{background:#b00016!important}
       @media (max-width:620px){.section-nav{display:grid!important;grid-template-columns:repeat(7,minmax(0,1fr))!important;grid-auto-flow:row!important;overflow:visible!important;width:100%!important;flex-wrap:unset!important}.section-nav a{display:flex!important;align-items:center!important;justify-content:center!important;min-width:0!important;padding:7px 2px!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:center!important;font-size:9.5px!important;line-height:1.12!important;border-right:1px solid #444!important;border-bottom:1px solid #444!important}.section-nav a:nth-child(7n){border-right:0!important}.section-nav a:nth-last-child(-n+7){border-bottom:0!important}}
       #main-site-voice-button{position:fixed;right:14px;bottom:72px;z-index:9997;border:2px solid #111;background:#fff;color:#111;padding:10px 13px;border-radius:999px;font:800 12px/1.2 "Noto Sans TC",sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.18);cursor:pointer}
