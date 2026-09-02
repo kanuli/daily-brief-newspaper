@@ -12,6 +12,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build Daily Edition
         run: python scripts/publish_daily_20260902.py
+      - name: Clean World geography
+        run: python scripts/cleanup_world_20260902.py
       - name: Validate site schema
         run: python scripts/validate_site_data.py
       - name: Validate Daily v3
