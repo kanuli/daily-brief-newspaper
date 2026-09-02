@@ -5,14 +5,9 @@ on:
       - '.github/workflows/publish-daily-20260902.yml'
 permissions:
   contents: write
-  pages: write
-  id-token: write
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: Build Daily Edition
@@ -43,10 +38,3 @@ jobs:
           git add data/latest.json data/2026-09-02.json data/archive.json data/topic-more/2026-09-02.json data/desk-latest.json data/live.json editions/2026-09-02.html
           git commit -m 'Publish 2026-09-02 CANTONESE Daily Edition'
           git push
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: .
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
