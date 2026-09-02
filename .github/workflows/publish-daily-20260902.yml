@@ -1,0 +1,52 @@
+name: Publish 2026-09-02 Daily
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-daily-20260902.yml'
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Daily Edition
+        run: python scripts/publish_daily_20260902.py
+      - name: Validate site schema
+        run: python scripts/validate_site_data.py
+      - name: Validate Daily v3
+        run: python scripts/validate_daily_v3.py
+      - name: Validate editorial depth
+        run: python scripts/validate_editorial_v2.py
+      - name: Validate stock news
+        run: python scripts/validate_stock_news.py
+      - name: Verify user hard floors
+        run: |
+          python - <<'PY'
+          import json
+          d=json.load(open('data/desk-latest.json',encoding='utf-8'))['desks']
+          f={'world':8,'asia':8,'hong-kong':6,'japan':8,'market-economy':8,'ai-tech':6,'manga-anime':4,'manchester-united':4,'football':10}
+          counts={k:len(d[k]) for k in f}
+          print('COUNTS',counts)
+          assert all(counts[k]>=v for k,v in f.items()), (counts,f)
+          assert counts['japan']>=8
+          PY
+      - name: Commit publication artifacts
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/latest.json data/2026-09-02.json data/archive.json data/topic-more/2026-09-02.json data/desk-latest.json data/live.json editions/2026-09-02.html
+          git commit -m 'Publish 2026-09-02 CANTONESE Daily Edition'
+          git push
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
