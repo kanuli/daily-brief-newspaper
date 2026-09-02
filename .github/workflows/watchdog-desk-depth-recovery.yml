@@ -1,0 +1,64 @@
+name: Watchdog Desk Depth Recovery
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/watchdog-desk-depth-recovery.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: watchdog-desk-depth-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Recover Manga Anime topic depth only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/recover_manga_depth_20260902.py
+          python - <<'PY'
+          import json
+          d=json.load(open('data/desk-latest.json',encoding='utf-8'))
+          assert d.get('editorialStandardVersion') == 3
+          assert d.get('contentVersion') == 3
+          floors={'world':8,'asia':8,'hong-kong':6,'japan':8,'market-economy':8,'ai-tech':6,'manga-anime':4,'manchester-united':4,'football':10}
+          for slug,floor in floors.items():
+              n=len(d.get('desks',{}).get(slug,[]))
+              if n < floor:
+                  raise SystemExit(f'{slug} raw retained depth {n} below {floor}')
+          print('DESK_SCHEMA_AND_RAW_FLOORS_PASS')
+          PY
+
+      - name: Commit recovered Rolling Desk and self-remove recovery code
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/watchdog-desk-depth-recovery.yml scripts/recover_manga_depth_20260902.py
+          git add data/desk-latest.json
+          git commit -m "Recover Manga Anime rolling desk depth"
+          git push origin HEAD:main
+          gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main || true
