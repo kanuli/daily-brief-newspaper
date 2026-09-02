@@ -1,0 +1,109 @@
+name: MU desk depth recovery 2026-09-03
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/mu-desk-depth-recovery-20260903.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mu-desk-depth-recovery-20260903
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Repair current unique Manchester United desk depth
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          path=Path('data/desk-latest.json')
+          data=json.loads(path.read_text(encoding='utf-8'))
+          assert data.get('editorialStandardVersion') == 3
+          assert data.get('contentVersion') == 3
+          desks=data['desks']
+          mu=desks['manchester-united']
+
+          # Remove superseded same-event rewrites and items beyond the desk's ~48h current window.
+          remove_ids={
+            'mu-u21-leicester-4-1-20260831-2300',
+            'mu-dan-gore-luton-loan-20260831-2100',
+            'mu-jayce-fitzgerald-rotherham-loan-20260831-1900',
+            'manchester-united-football-ipswich-5-2-20260831-1800',
+            'mu-rashford-first-start-ipswich-20260830-2300',
+            'manchester-united-carrick-defends-fernandes-ipswich-20260830-1000',
+          }
+          mu=[x for x in mu if x.get('id') not in remove_ids]
+
+          story={
+            'id':'mu-zirkzee-everton-loan-rejected-20260903-0015',
+            'desk':'manchester-united',
+            'status':'LATEST',
+            'title':'曼聯拒絕愛華頓借用Zirkzee　轉會窗關閉後留隊補充前線深度',
+            'dek':'愛華頓在Balogun交易告吹後於死線前轉向Joshua Zirkzee，但曼聯拒絕外借方案，荷蘭前鋒最終留在奧脫福。',
+            'summary':'英格蘭夏季轉會窗最後階段，愛華頓曾嘗試借入曼聯前鋒Joshua Zirkzee；曼聯拒絕放人，令他在至少下一個轉會窗前繼續留隊。',
+            'body':'愛華頓在Folarin Balogun轉會於死線前出現問題後，曾向曼聯查詢借用Joshua Zirkzee。The Guardian報道，愛華頓對Zirkzee及Tammy Abraham的借用嘗試均被拒絕；talkSPORT亦報道，Zirkzee是Balogun交易告吹後愛華頓考慮的替代方案之一。\n\n這項決定令Zirkzee在夏季轉會窗關閉後繼續留在曼聯。對Michael Carrick而言，在Carlos Baleba仍受傷、球隊開季前線輪換尚未完全穩定之際，保留一名可踢中鋒及支點角色的球員，可避免死線日再造成陣容缺口。',
+            'context':'Zirkzee今夏曾多次與外借或離隊聯繫在一起，但曼聯在死線前未有同步完成替代前鋒交易，令放人風險上升。',
+            'why':'這是轉會窗關閉後已落實的陣容決定，直接影響曼聯前線深度及Zirkzee本季上陣競爭。',
+            'watchNext':'留意Carrick在對愛華頓及其後聯賽是否重新使用Zirkzee，以及球員在冬季轉會窗前的出場時間。',
+            'sourceName':'The Guardian／talkSPORT',
+            'sourceUrl':'https://www.theguardian.com/football/2026/sep/02/everton-in-late-scramble-to-complete-balogun-transfer-after-flurry-of-sales',
+            'timeLabel':'9月3日00:15 HKT核實',
+            'sources':[
+              {'name':'The Guardian','url':'https://www.theguardian.com/football/2026/sep/02/everton-in-late-scramble-to-complete-balogun-transfer-after-flurry-of-sales'},
+              {'name':'talkSPORT','url':'https://talksport.com/football/4552334/everton-resurrect-folarin-balogun-deal-abraham-zirkzee/'}
+            ],
+            'deskSlugs':['manchester-united','football'],
+            'section':'曼聯｜轉會／前鋒陣容',
+            'sectionLabel':'曼聯',
+            'mediaLabel':'Manchester United',
+            'image':None,
+          }
+          if not any(x.get('id')==story['id'] for x in mu):
+              mu.insert(0,story)
+          desks['manchester-united']=mu
+
+          football=[x for x in desks.get('football',[]) if x.get('id') not in remove_ids]
+          if not any(x.get('id')==story['id'] for x in football):
+              football.insert(0,story)
+          desks['football']=football
+
+          # Event-level current unique audit after cleanup: Zirkzee, WSL preview,
+          # Dan Gore loan, and Rashford/Ipswich post-match are four distinct events.
+          required={'mu-zirkzee-everton-loan-rejected-20260903-0015','mu-women-2026-wsl-preview-20260902-0900','manutd-dan-gore-luton-loan-20260901-0600','mu-rashford-return-ipswich-20260902-0600'}
+          ids={x.get('id') for x in desks['manchester-united']}
+          assert required <= ids, sorted(required-ids)
+          assert len(required) >= 4
+
+          now=datetime.now(ZoneInfo('Asia/Hong_Kong')).replace(microsecond=0)
+          data['date']=now.date().isoformat()
+          data['generatedAt']=now.isoformat()
+          path.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print('MU_CURRENT_UNIQUE_DEPTH=4')
+          PY
+      - name: Commit repaired rolling desk and remove one-off workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/mu-desk-depth-recovery-20260903.yml
+          git add data/desk-latest.json
+          git commit -m "fix: restore current Manchester United desk depth"
+          git pull --rebase origin main
+          git push origin HEAD:main
