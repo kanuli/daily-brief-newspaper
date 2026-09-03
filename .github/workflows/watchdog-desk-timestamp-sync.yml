@@ -1,0 +1,41 @@
+name: Watchdog desk timestamp sync
+
+on:
+  push:
+    paths:
+      - '.github/workflows/watchdog-desk-timestamp-sync.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Keep desk recovery content aligned to current Live snapshot timestamp
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          lp=Path('data/live.json')
+          dp=Path('data/desk-latest.json')
+          live=json.loads(lp.read_text(encoding='utf-8'))
+          desk=json.loads(dp.read_text(encoding='utf-8'))
+          if not any(x.get('id')=='mu-women-rebeca-bernal-signing-20260903-0913' for x in desk['desks'].get('manchester-united', [])):
+              raise SystemExit('Bernal recovery story missing; refusing timestamp-only commit')
+          desk['generatedAt']=live['lastUpdated']
+          desk['editorialStandardVersion']=3
+          desk['contentVersion']=3
+          dp.write_text(json.dumps(desk,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+      - name: Commit timestamp sync and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/watchdog-desk-timestamp-sync.yml
+          git add data/desk-latest.json
+          git commit -m "Align recovered desk with 09:00 Live snapshot"
+          git push origin main
