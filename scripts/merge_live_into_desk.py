@@ -208,13 +208,15 @@ def main():
     coverage = live.setdefault("coverage", {})
     coverage.pop("qaNote", None)
     depth_met = all(counts[slug] >= minimum for slug, minimum in FLOORS.items())
-    source_gate = bool(coverage.get("sourceGateMet", True))
-    geographic_gate = bool(coverage.get("geographicGateMet", True))
-    football_gate = counts["football"] >= FLOORS["football"] and bool(coverage.get("footballGateMet", True))
+    source_gate = bool(coverage.get("sourceGateMet", coverage.get("sourceGate", False)))
+    geographic_gate = bool(coverage.get("geographicGateMet", coverage.get("geographicGate", False)))
+    football_gate = counts["football"] >= FLOORS["football"] and bool(coverage.get("footballGateMet", coverage.get("footballGate", False)))
     publication_ready = depth_met and source_gate and geographic_gate and football_gate
     coverage["deskLatestStoryCounts"] = counts
     coverage["deskLatestDepthMet"] = depth_met
     coverage["japanCountVerified"] = counts["japan"]
+    coverage["sourceGateMet"] = source_gate
+    coverage["geographicGateMet"] = geographic_gate
     coverage["footballGateMet"] = football_gate
     coverage["publishingGateMet"] = publication_ready
     coverage["status"] = "DAILY_BASELINE" if str(live.get("mode") or "").upper() == "DAILY_BASELINE" else ("COMPLETE" if publication_ready else "INCOMPLETE")
