@@ -48,7 +48,7 @@ REQUIRED = (
     "sourceName", "sourceUrl", "timeLabel",
 )
 FORBIDDEN = re.compile(
-    r"本輪|本報訊|incremental|duplicate|重複刊登|coverage\s*(?:check|test)|"
+    r"本輪(?:發布|更新|檢查|搜尋|核實|候選|稿件|新聞)|本報訊|incremental|duplicate|重複刊登|coverage\s*(?:check|test)|"
     r"collection\s*(?:design|test)|這次重新檢查|之後每一輪|每一輪Football|"
     r"固定檢查HKFA|不應由全球搜尋排名決定", re.I,
 )
@@ -139,8 +139,6 @@ def main():
     desks = desk.setdefault("desks", {})
     expired_cross_posts = []
 
-    # The newest Live snapshot is authoritative for any event it contains. If an
-    # event's routing was corrected, remove stale copies from desks no longer listed.
     current_routes = {}
     for item in live.get("items", []):
         if isinstance(item, dict):
