@@ -10,7 +10,7 @@
 .desk-latest-card h3 a:focus-visible { color: var(--red-dark); text-decoration: underline; }
 .desk-latest-card .article-sources { margin-top: 8px; font-size: 10px; }
 
-/* Outer geometry comes only from the shared .section-block class. */
+/* The vocab section uses the same outer .section-block geometry as the news sections. */
 .daily-vocab {
   display: block;
   background: transparent;
@@ -18,21 +18,24 @@
 }
 .daily-vocab-heading { margin-top: 0; }
 .daily-vocab-intro { margin: 0 0 14px; font-size: 13px; }
+
+/* Match the visible vocabulary columns to the homepage .story-grid/.story-card widths exactly. */
 .vocab-level-grid {
   display: grid;
-  width: 100%;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-  padding: 12px;
-  border: 3px solid var(--ink);
-  box-sizing: border-box;
-  background: #fffaf0;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 16px;
 }
 .vocab-level-block {
+  grid-column: span 4;
   min-width: 0;
+  padding: 9px 15px 9px 0;
   border-top: 5px solid var(--ink);
-  background: var(--card);
-  padding: 9px;
+  border-right: 1px solid #8b8478;
+  background: transparent;
+}
+.vocab-level-block:nth-child(3n) {
+  border-right: 0;
+  padding-right: 0;
 }
 .vocab-level-title {
   font-family: Georgia, serif;
@@ -80,12 +83,30 @@
 .vocab-source-note a { color: var(--red-dark); font-weight: 900; }
 
 @media (max-width: 900px) {
-  .vocab-level-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vocab-level-block {
+    grid-column: span 6;
+    border-right: 1px solid #8b8478;
+    padding-right: 15px;
+  }
+  .vocab-level-block:nth-child(3n) {
+    border-right: 1px solid #8b8478;
+    padding-right: 15px;
+  }
+  .vocab-level-block:nth-child(2n) {
+    border-right: 0;
+    padding-right: 0;
+  }
 }
 
 @media (max-width: 620px) {
   .desk-latest-summary { margin-top: 14px; }
-  .vocab-level-grid { display: block; padding: 10px; }
-  .vocab-level-block { margin-bottom: 10px; }
+  .vocab-level-grid { display: block; }
+  .vocab-level-block,
+  .vocab-level-block:nth-child(2n),
+  .vocab-level-block:nth-child(3n) {
+    padding: 14px 0;
+    border-right: 0;
+    border-bottom: 1px solid #8b8478;
+  }
   .vocab-source-note { flex-direction: column; }
 }
