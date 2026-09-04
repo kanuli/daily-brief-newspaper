@@ -360,8 +360,9 @@ main { padding: 0 18px 26px; }
 }
 
 /* Global nav visibility contract: final items must remain visible on narrow screens. */
-.section-nav .retail-nav { background: var(--red-dark); }
+.section-nav .retail-nav:not([aria-current="page"]) { background: transparent; }
 .section-nav .retail-nav:hover { background: var(--red); }
+.section-nav a[aria-current="page"] { background: var(--red); }
 @media (max-width: 620px) {
   .section-nav { overflow-x: visible; flex-wrap: wrap; }
   .section-nav a { white-space: nowrap; padding: 8px 10px; font-size: 12px; }
