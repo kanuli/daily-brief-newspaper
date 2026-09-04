@@ -5,6 +5,14 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/canto-nano-watchdog.yml"
+      - "scripts/validate_voice_currentness.py"
+      - "data/latest.json"
+      - "data/desk-latest.json"
+      - "data/live.json"
+      - "data/stocks-latest.json"
+      - "data/topic-more/**"
+      - "data/editorial-overrides/**"
+      - "data/tts-manifest.json"
   schedule:
     - cron: "*/10 * * * *"
   workflow_run:
@@ -31,7 +39,14 @@ jobs:
           ref: main
           fetch-depth: 1
 
-      - name: Inspect manifest and workflow ownership
+      - name: Validate current-news voice outcome
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validate_voice_currentness.py --report /tmp/voice-currentness.json --allow-unhealthy
+          cat /tmp/voice-currentness.json
+
+      - name: Inspect current coverage and workflow ownership
         id: inspect
         env:
           GH_TOKEN: ${{ github.token }}
@@ -46,17 +61,20 @@ jobs:
           from datetime import datetime, timezone
           from pathlib import Path
 
-          p=Path('data/tts-manifest.json')
+          current=json.loads(Path('/tmp/voice-currentness.json').read_text(encoding='utf-8'))
           try:
-              d=json.loads(p.read_text(encoding='utf-8'))
+              d=json.loads(Path('data/tts-manifest.json').read_text(encoding='utf-8'))
           except Exception:
               d={}
-          pending=int(d.get('pendingArticleCount') or 0)
-          available=int(d.get('availableArticleCount') or 0)
-          collected=int(d.get('collectedStoryCount') or 0)
-          complete=bool(d.get('coverageComplete')) and pending == 0 and available >= collected
-          engine=str(d.get('engine') or '')
-          namespace=str(d.get('assetNamespace') or '')
+
+          complete=bool(current.get('healthy'))
+          expected=int(current.get('currentStoryCount') or 0)
+          playable=int(current.get('currentPlayableCount') or 0)
+          missing=int(current.get('missingCount') or 0)
+          stale_content=int(current.get('staleContentCount') or 0)
+          invalid=int(current.get('invalidEntryCount') or 0)
+          engine_ok=bool(current.get('engineOk'))
+          namespace_ok=str(current.get('expectedNamespace') or '') == 'cnf4'
           last=str(d.get('lastVoicePublishedAt') or d.get('generatedAt') or '')
           age=999999
           if last:
@@ -65,12 +83,15 @@ jobs:
                   age=max(0,int((datetime.now(timezone.utc)-dt.astimezone(timezone.utc)).total_seconds()//60))
               except Exception:
                   pass
-          print(f'PENDING={pending}')
-          print(f'AVAILABLE={available}')
-          print(f'COLLECTED={collected}')
-          print(f'COMPLETE={str(complete).lower()}')
-          print(f'ENGINE_OK={str(engine=="typangaa/canto-tts-nano").lower()}')
-          print(f'NAMESPACE_OK={str(namespace=="cnf4").lower()}')
+
+          print(f'CURRENT_COMPLETE={str(complete).lower()}')
+          print(f'EXPECTED={expected}')
+          print(f'PLAYABLE={playable}')
+          print(f'MISSING={missing}')
+          print(f'STALE_CONTENT={stale_content}')
+          print(f'INVALID={invalid}')
+          print(f'ENGINE_OK={str(engine_ok).lower()}')
+          print(f'NAMESPACE_OK={str(namespace_ok).lower()}')
           print(f'VOICE_AGE_MIN={age}')
           PY
           source /tmp/voice-manifest-health.env
@@ -100,9 +121,8 @@ jobs:
               except Exception:
                   continue
               run_age=(now-created).total_seconds()/60
-              # The production job itself has a 90-minute worker timeout.  Do not
-              # kill healthy long articles.  Only recover after the run is older
-              # than 110 minutes AND the manifest has made no progress for 45 min.
+              # Full-article synthesis is allowed to run for a long time.  Recover
+              # only when both the run and manifest progress are stale.
               if run_age > 110 and voice_age > 45:
                   out.append(str(r.get('databaseId')))
           print(' '.join(out))
@@ -127,10 +147,12 @@ jobs:
           PY
           )
 
-          echo "pending=$PENDING" >> "$GITHUB_OUTPUT"
-          echo "available=$AVAILABLE" >> "$GITHUB_OUTPUT"
-          echo "collected=$COLLECTED" >> "$GITHUB_OUTPUT"
-          echo "complete=$COMPLETE" >> "$GITHUB_OUTPUT"
+          echo "complete=$CURRENT_COMPLETE" >> "$GITHUB_OUTPUT"
+          echo "expected=$EXPECTED" >> "$GITHUB_OUTPUT"
+          echo "playable=$PLAYABLE" >> "$GITHUB_OUTPUT"
+          echo "missing=$MISSING" >> "$GITHUB_OUTPUT"
+          echo "stale_content=$STALE_CONTENT" >> "$GITHUB_OUTPUT"
+          echo "invalid=$INVALID" >> "$GITHUB_OUTPUT"
           echo "engine_ok=$ENGINE_OK" >> "$GITHUB_OUTPUT"
           echo "namespace_ok=$NAMESPACE_OK" >> "$GITHUB_OUTPUT"
           echo "voice_age_min=$VOICE_AGE_MIN" >> "$GITHUB_OUTPUT"
@@ -138,7 +160,7 @@ jobs:
           echo "stale_ids=$stale_ids" >> "$GITHUB_OUTPUT"
           echo "recent_bad=$recent_bad" >> "$GITHUB_OUTPUT"
 
-          echo "VOICE_WATCHDOG manifest available=${AVAILABLE}/${COLLECTED} pending=${PENDING} complete=${COMPLETE} active=${active} stale_ids='${stale_ids}' recent_bad=${recent_bad}"
+          echo "VOICE_WATCHDOG current playable=${PLAYABLE}/${EXPECTED} missing=${MISSING} staleContent=${STALE_CONTENT} invalid=${INVALID} complete=${CURRENT_COMPLETE} active=${active} stale_ids='${stale_ids}' recent_bad=${recent_bad}"
 
       - name: Recover stale active production
         if: steps.inspect.outputs.stale_ids != ''
@@ -166,7 +188,7 @@ jobs:
           echo "active=$active" >> "$GITHUB_OUTPUT"
           echo "Active Canto Nano owners after recovery: $active"
 
-      - name: Dispatch recovery when backlog has no owner
+      - name: Dispatch recovery when current news has no voice owner
         if: >-
           steps.inspect.outputs.complete != 'true' &&
           steps.owner.outputs.active == '0' &&
@@ -176,7 +198,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "Voice backlog is incomplete and has no active owner; dispatching recovery."
+          echo "Current published news is not fully covered by playable voice and has no active owner; dispatching recovery."
+          gh workflow enable canto-nano-production.yml --repo "${GITHUB_REPOSITORY}" || true
           gh workflow run canto-nano-production.yml --repo "${GITHUB_REPOSITORY}" --ref main
           echo "CANTO_NANO_AUTO_RECOVERY_DISPATCHED"
 
@@ -188,13 +211,15 @@ jobs:
         shell: bash
         run: |
           echo "Three or more failed/cancelled/timed-out voice runs occurred within 60 minutes." >&2
-          echo "Watchdog is applying a temporary circuit breaker instead of creating an infinite Actions loop." >&2
+          echo "Current published stories still lack current playable voice. Watchdog is applying a temporary circuit breaker instead of creating an infinite Actions loop." >&2
           exit 1
 
       - name: Healthy verdict
         if: steps.inspect.outputs.complete == 'true'
-        run: echo "CANTO_NANO_VOICE_HEALTHY coverage complete"
+        run: echo "CANTO_NANO_VOICE_HEALTHY every current published story has a current cnf4 playable manifest entry"
 
       - name: Active-progress verdict
         if: steps.inspect.outputs.complete != 'true' && steps.owner.outputs.active != '0'
-        run: echo "CANTO_NANO_VOICE_PROGRESSING backlog is owned by an active production run"
+        run: |
+          echo "CANTO_NANO_VOICE_PROGRESSING current-news gap is owned by an active production run"
+          echo "Expected=${{ steps.inspect.outputs.expected }} playable=${{ steps.inspect.outputs.playable }} missing=${{ steps.inspect.outputs.missing }} staleContent=${{ steps.inspect.outputs.stale_content }} invalid=${{ steps.inspect.outputs.invalid }}"
