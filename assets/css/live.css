@@ -1,84 +1,86 @@
 .section-nav a[aria-current="page"] { background: #b00016 !important; }
 
-/* Live now follows the same visible content geometry as topic pages. */
+/* Live shares topic.css geometry. This file only adds Live-specific presentation. */
+.live-masthead { border-bottom-color: #b00016; }
+.live-kicker { color: var(--red); }
+
 .live-page-head {
-  padding: 20px 0 12px;
-  border-bottom: 5px solid var(--ink);
+  display: block;
 }
-.live-page-head h2 {
-  margin: 4px 0 6px;
-  font-family: "Noto Serif TC", "PMingLiU", serif;
-  font-size: clamp(38px, 6vw, 68px);
+.live-page-head .live-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 14px;
+}
+.live-stats div {
+  border: 1px solid #111;
+  padding: 10px 8px;
+  text-align: center;
+  background: #fffdf7;
+}
+.live-stats strong {
+  display: block;
+  color: #b00016;
+  font-family: Georgia, serif;
+  font-size: 31px;
   line-height: 1;
 }
-.live-page-head p {
-  margin: 0;
-  max-width: 850px;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.6;
-}
-.live-kicker { color: var(--red); font-size: 11px; font-weight: 900; letter-spacing: .12em; }
-.live-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 12px; }
-.live-stats div { border: 1px solid #111; padding: 10px 8px; text-align: center; background: #fffdf7; }
-.live-stats strong { display: block; color: #b00016; font-family: Georgia, serif; font-size: 31px; line-height: 1; }
 .live-stats span { font-size: 9px; font-weight: 900; }
 .live-stats p { grid-column: 1 / -1; margin: 0; text-align: right; }
 
 .live-audit {
   margin: 0;
   padding: 8px 0;
-  border-top: 0;
   border-bottom: 1px solid var(--ink);
-  background: transparent;
   color: #5e584f;
   font-size: 12px;
   font-weight: 800;
 }
+.live-audit p { margin: 0; }
 
-.live-page-items {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 20px;
-  padding: 22px 0 6px;
-  border-bottom: 4px solid var(--ink);
-}
-.live-story {
-  grid-column: span 6;
-  min-width: 0;
-  padding: 0 18px 20px 0;
-  border-right: 1px solid #8b8478;
-  border-bottom: 1px dotted #8b8478;
-}
-.live-story:nth-child(2n) { border-right: 0; padding-right: 0; }
-.live-story:first-child {
-  grid-column: span 12;
-  border-right: 0;
-  padding-right: 0;
-  border-bottom: 3px solid #111;
-}
-.live-story-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: #6c665d; font-size: 11px; font-weight: 700; }
-.live-story h2 {
-  margin: 5px 0 9px;
-  font-family: "Noto Serif TC", "PMingLiU", serif;
-  font-size: 29px;
-  line-height: 1.15;
-}
-.live-story:first-child h2 { font-size: clamp(34px, 4.8vw, 52px); max-width: 1050px; }
-.live-article-dek { margin: 0 0 10px; max-width: 950px; font-size: 17px !important; font-weight: 800; line-height: 1.5 !important; }
-.live-article-body { max-width: 980px; }
-.live-story:first-child .live-article-body { column-count: 2; column-gap: 34px; column-rule: 1px solid #b7aea0; }
-.live-article-body p { break-inside: avoid; margin: 0 0 10px; font-size: 14px; line-height: 1.7; }
-.live-article-summary:first-child:first-letter { float: left; margin: 7px 7px 0 0; font-family: Georgia, serif; font-size: 44px; line-height: .78; font-weight: 800; }
-.live-article-context, .live-article-why, .live-article-next { border-top: 1px dotted #777; padding-top: 8px; font-size: 13px; }
-.article-sources { max-width: 980px; margin-top: 9px; padding-top: 8px; border-top: 1px solid #111; font-size: 11px; line-height: 1.7; }
-.article-sources .source-link { margin-right: 4px; }
+/* Prevent the legacy generic upgrader from visually creating a second Live body. */
+.live-story > .live-story-body,
+.live-story > .source-cluster { display: none !important; }
 
-.live-badge { display: inline-block; padding: 2px 6px; border: 1px solid #111; font-size: 9px; font-weight: 900; letter-spacing: .06em; }
+.live-story-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  color: #6c665d;
+  font-size: 11px;
+  font-weight: 700;
+}
+.live-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border: 1px solid #111;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .06em;
+}
 .live-new { color: #fff; background: #b00016; border-color: #b00016; }
 .live-updated { color: #fff; background: #111; }
 .live-developing { color: #79000e; background: #f1dfd3; border-color: #b00016; }
 .live-watch { background: #e9e2d3; }
+
+.live-article-summary:first-child:first-letter {
+  float: left;
+  margin: 7px 7px 0 0;
+  font-family: Georgia, serif;
+  font-size: 44px;
+  line-height: .78;
+  font-weight: 800;
+}
+.live-article-context,
+.live-article-why,
+.live-article-next {
+  border-top: 1px dotted #777;
+  padding-top: 8px;
+  font-size: 13px;
+}
+
 .live-summary { margin: 18px 0 8px; border: 3px solid #111; background: #fffdf7; }
 .live-summary-head { display: flex; justify-content: space-between; gap: 20px; align-items: end; padding: 14px 16px 12px; border-bottom: 5px solid #b00016; }
 .live-summary h2 { margin: 2px 0; font-family: "Noto Serif TC", "PMingLiU", serif; font-size: 32px; line-height: 1.05; }
@@ -97,24 +99,18 @@
 .live-loading { padding: 18px; font-size: 13px; }
 .edition-divider { display: flex; align-items: center; gap: 12px; margin: 22px 0 0; color: #6c665d; font-size: 11px; font-weight: 900; letter-spacing: .1em; }
 .edition-divider::before, .edition-divider::after { content: ""; height: 1px; background: #8b8478; flex: 1; }
-.live-masthead { border-bottom-color: #b00016; }
 
 @media (max-width: 900px) {
   .live-summary-grid { grid-template-columns: repeat(2, 1fr); }
   .live-mini-card:nth-child(2n) { border-right: 0; }
   .live-mini-card { border-bottom: 1px solid #8b8478; }
 }
-@media (max-width: 720px) {
-  .live-story, .live-story:first-child { grid-column: span 12; border-right: 0; padding-right: 0; }
-  .live-story:first-child .live-article-body { column-count: 1; }
-}
+
 @media (max-width: 620px) {
+  .live-page-head .live-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .live-summary-head { display: block; }
   .live-counts { justify-content: flex-start; margin-top: 10px; }
   .live-summary-grid { display: block; }
   .live-mini-card { border-right: 0; }
   .live-summary h2 { font-size: 27px; }
-  .live-stats { grid-template-columns: repeat(3, 1fr); }
-  .live-story h2 { font-size: 28px; }
-  .live-article-dek { font-size: 16px !important; }
 }
