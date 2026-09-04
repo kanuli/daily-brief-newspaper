@@ -69,5 +69,12 @@ for path in [DATA/'latest.json',DATA/f'{DATE}.json',DATA/'topic-more'/f'{DATE}.j
  if 'topFive' in o:
   o['topFive']=[i for i in o.get('topFive',[]) if i in amap]
  save(path,o)
-print('PUBLIC COPY + BODY + WHOLE ASIA REPAIR COMPLETE')
+# Synchronize 08:00 Daily baseline telemetry after all cleanup.
+lp=DATA/'live.json'; live=json.loads(lp.read_text(encoding='utf-8'))
+counts={slug:len(desks.get(slug,[])) for slug in FLOORS}
+live.setdefault('coverage',{})['deskLatestStoryCounts']=counts
+live['coverage']['deskLatestDepthMet']=all(counts[s]>=FLOORS[s] for s in FLOORS)
+live['coverage']['status']='DAILY_BASELINE'
+save(lp,live)
+print('PUBLIC COPY + BODY + WHOLE ASIA + TELEMETRY REPAIR COMPLETE')
 for slug in FLOORS: print(slug,len(desks[slug]))
