@@ -6,9 +6,15 @@ on:
     paths:
       - ".github/workflows/pages-probe.yml"
       - "assets/css/live.css"
+      - "assets/css/live-rebuild.css"
       - "assets/css/extras.css"
+      - "assets/js/live-rebuild.js"
+      - "assets/js/daily-extras.js"
+      - "assets/js/article-body-upgrade.js"
       - "assets/js/site-tts-canto-nano.js"
       - "assets/js/stocks.js"
+      - "live.html"
+      - "index.html"
       - "data/latest.json"
       - "data/live.json"
       - "data/stocks-latest.json"
@@ -56,7 +62,8 @@ jobs:
               'manchester-united.html','football.html','archive.html'
           ]
           runtime_files=[
-              'assets/css/live.css','assets/css/extras.css',
+              'assets/css/live.css','assets/css/live-rebuild.css','assets/css/extras.css',
+              'assets/js/live-rebuild.js','assets/js/daily-extras.js','assets/js/article-body-upgrade.js',
               'assets/js/site-tts-canto-nano.js','assets/js/system-panel.js','assets/js/live-article.js','assets/js/stocks.js'
           ]
           known_error_markers=['Error 500 (Server Error)', 'That’s an error', "That's an error", 'There was an error. Please try again later.']
@@ -165,11 +172,24 @@ jobs:
           stock_content_fresh=bool(stock_content_age is not None and stock_content_age<=36*60)
 
           page_checks={}
+          live_layout_contract=False
+          index_vocab_contract=False
           for page in core_pages:
               try:
                   status, content_type, body=request_bytes(root+page)
                   text=body.decode('utf-8','replace')
                   marker=next((m for m in known_error_markers if m in text), None)
+                  if page=='live.html':
+                      live_layout_contract=bool(
+                          'assets/css/topic.css' in text and
+                          'assets/css/live-rebuild.css?v=20260904-rebuild-v1' in text and
+                          'assets/js/live-rebuild.js?v=20260904-rebuild-v1' in text and
+                          'id="live-page-items" class="topic-story-grid"' in text and
+                          'assets/css/live.css' not in text and
+                          'assets/js/live-article.js' not in text
+                      )
+                  if page=='index.html':
+                      index_vocab_contract=bool('assets/css/extras.css?v=20260904-vocab-rebuild-v9' in text)
                   page_checks[page]={'ok':bool(status==200 and '<html' in text.lower() and not marker),'status':status,'contentType':content_type,'bytes':len(body),'errorMarker':marker}
               except Exception as exc:
                   page_checks[page]={'ok':False,'error':str(exc)}
@@ -187,17 +207,18 @@ jobs:
 
           tts_local=Path('assets/js/site-tts-canto-nano.js').read_text(encoding='utf-8')
           current_namespace=str(local_tts.get('assetNamespace') or '')
+          expected_namespace_literal=f'const NAMESPACE = "-{current_namespace}-";'
           tts_guard_ok=bool(
-              current_namespace=='cnf1' and
+              current_namespace and
               'const MANIFEST_URL = "data/tts-manifest.json";' in tts_local and
-              'const NAMESPACE = "-cnf1-";' in tts_local and
+              expected_namespace_literal in tts_local and
               'runtime-ref-audio-voice-clone-verified' in tts_local and
               'femalePromptCodesSha256 !== e.defaultPromptCodesSha256' in tts_local and
               'semantic-completeness-breathing-audience-processing' in tts_local and
               'new MutationObserver' in tts_local
           )
 
-          infrastructure_ok=bool(daily_match and live_match and desk_match and stock_match and voice_match and all_pages_ok and runtime_match and tts_guard_ok)
+          infrastructure_ok=bool(daily_match and live_match and desk_match and stock_match and voice_match and all_pages_ok and runtime_match and live_layout_contract and index_vocab_contract and tts_guard_ok)
           editorial_fresh=bool(live_fresh and stock_fresh and daily_fresh and stock_content_fresh)
           overall=bool(infrastructure_ok and editorial_fresh)
           payload={
@@ -218,6 +239,8 @@ jobs:
               'voiceEngine': local_tts.get('engine'),
               'voiceAvailableArticleCount': int(local_tts.get('availableArticleCount') or 0),
               'allCorePagesOk': all_pages_ok, 'pageChecks': page_checks,
+              'liveLayoutContract': live_layout_contract,
+              'indexVocabContract': index_vocab_contract,
               'runtimeMatch': runtime_match, 'runtimeChecks': runtime_checks,
               'ttsHangRegressionGuard': tts_guard_ok,
               'voiceAssetNamespace': current_namespace,
