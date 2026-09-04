@@ -207,10 +207,10 @@ jobs:
 
           tts_local=Path('assets/js/site-tts-canto-nano.js').read_text(encoding='utf-8')
           current_namespace=str(local_tts.get('assetNamespace') or '')
-          expected_namespace_literal=f'const NAMESPACE = "-{current_namespace}-";'
+          expected_namespace_literal=f'const ASSET_NAMESPACE = "{current_namespace}";'
           tts_guard_ok=bool(
               current_namespace and
-              'const MANIFEST_URL = "data/tts-manifest.json";' in tts_local and
+              'const MANIFEST_URL = new URL("data/tts-manifest.json", SITE_ROOT).href;' in tts_local and
               expected_namespace_literal in tts_local and
               'runtime-ref-audio-voice-clone-verified' in tts_local and
               'femalePromptCodesSha256 !== e.defaultPromptCodesSha256' in tts_local and
