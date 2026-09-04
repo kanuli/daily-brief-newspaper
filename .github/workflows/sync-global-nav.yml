@@ -13,7 +13,6 @@ on:
       - 'assets/js/daily-extras.js'
       - 'assets/js/system-panel.js'
       - 'assets/js/page-updated-time.js'
-      - '.github/workflows/pages.yml'
       - '.github/workflows/sync-global-nav.yml'
 
 permissions:
@@ -50,7 +49,6 @@ jobs:
           EXTRAS_CSS_RE = re.compile(r'assets/css/extras\.css\?v=[^"\']+', re.I)
           LIVE_ARTICLE_RE = re.compile(r'assets/js/live-article\.js\?v=[^"\']+', re.I)
           DAILY_EXTRAS_RE = re.compile(r'assets/js/daily-extras\.js\?v=[^"\']+', re.I)
-          SYSTEM_PANEL_RE = re.compile(r'assets/js/system-panel\.js\?v=[^"\']+', re.I)
           PAGE_TIME_RE = re.compile(r'<script\b[^>]*src=["\']assets/js/page-updated-time\.js(?:\?[^"\']*)?["\'][^>]*>\s*</script>\s*', re.I)
 
           labels = {
@@ -87,7 +85,6 @@ jobs:
               new_text=EXTRAS_CSS_RE.sub('assets/css/extras.css?v=20260904-section-width-v7', new_text)
               new_text=LIVE_ARTICLE_RE.sub('assets/js/live-article.js?v=20260904-topic-layout-v2', new_text)
               new_text=DAILY_EXTRAS_RE.sub('assets/js/daily-extras.js?v=20260904-section-width-v1', new_text)
-              new_text=SYSTEM_PANEL_RE.sub('assets/js/system-panel.js?v=20260904-layout-v8', new_text)
               new_text=PAGE_TIME_RE.sub('', new_text)
               script='<script src="assets/js/page-updated-time.js?v=20260901-page-time-v1" defer></script>\n'
               if '</body>' not in new_text.lower(): raise SystemExit(f'{path.name}: missing body close tag')
@@ -128,18 +125,6 @@ jobs:
           print('RUNTIME_NAV_ICON_SYNC_OK')
           PY
 
-      - name: Keep Pages runtime cache-bust aligned
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          p=Path('.github/workflows/pages.yml')
-          text=p.read_text(encoding='utf-8')
-          text=text.replace('assets/js/system-panel.js?v=20260901-cnf4-playback-v2','assets/js/system-panel.js?v=20260904-layout-v8')
-          p.write_text(text,encoding='utf-8')
-          print('PAGES_RUNTIME_CACHE_BUST_ALIGNED')
-          PY
-
       - name: Ensure responsive navbar remains visible without forcing retail active styling
         shell: bash
         run: |
@@ -160,7 +145,7 @@ jobs:
           if git diff --quiet; then echo 'GLOBAL_NAV_ALREADY_SYNCED'; exit 0; fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add '*.html' assets/css/newspaper.css assets/js/system-panel.js .github/workflows/pages.yml
+          git add '*.html' assets/css/newspaper.css assets/js/system-panel.js
           git commit -m 'Synchronize icons timestamps and layout cache versions'
           git push origin HEAD:main
 
