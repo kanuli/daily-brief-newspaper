@@ -1,0 +1,110 @@
+name: Editor-in-Chief Voice Outcome Guard
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/editor-in-chief-voice-outcome.yml"
+      - "scripts/validate_voice_currentness.py"
+      - "data/latest.json"
+      - "data/desk-latest.json"
+      - "data/live.json"
+      - "data/stocks-latest.json"
+      - "data/topic-more/**"
+      - "data/editorial-overrides/**"
+      - "data/tts-manifest.json"
+  schedule:
+    - cron: "5,35 * * * *"
+  workflow_run:
+    workflows: ["Publish Canto Nano Female Cantonese News Voice"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: "editor-in-chief-voice-outcome"
+  cancel-in-progress: true
+
+jobs:
+  audit-and-repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Audit actual current-news voice coverage
+        id: voice
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validate_voice_currentness.py --report /tmp/voice-currentness.json --allow-unhealthy
+          cat /tmp/voice-currentness.json
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          d=json.load(open('/tmp/voice-currentness.json',encoding='utf-8'))
+          print('healthy=' + str(bool(d.get('healthy'))).lower())
+          print('expected=' + str(int(d.get('currentStoryCount') or 0)))
+          print('playable=' + str(int(d.get('currentPlayableCount') or 0)))
+          print('missing=' + str(int(d.get('missingCount') or 0)))
+          print('stale=' + str(int(d.get('staleContentCount') or 0)))
+          print('invalid=' + str(int(d.get('invalidEntryCount') or 0)))
+          PY
+
+      - name: Inspect production owner
+        id: owner
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          active=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow canto-nano-production.yml --limit 20 --json status \
+            --jq '[.[] | select(.status != "completed")] | length')
+          latest_conclusion=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow canto-nano-production.yml --limit 1 --json conclusion \
+            --jq '.[0].conclusion // "none"')
+          echo "active=$active" >> "$GITHUB_OUTPUT"
+          echo "latest_conclusion=$latest_conclusion" >> "$GITHUB_OUTPUT"
+          echo "EDITOR_VOICE_OWNER active=${active} latestConclusion=${latest_conclusion}"
+
+      - name: Auto-repair current-news voice gap
+        if: steps.voice.outputs.healthy != 'true' && steps.owner.outputs.active == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "EDITOR_IN_CHIEF_VOICE_REPAIR current published stories are not fully playable and no production owner exists"
+          echo "expected=${{ steps.voice.outputs.expected }} playable=${{ steps.voice.outputs.playable }} missing=${{ steps.voice.outputs.missing }} stale=${{ steps.voice.outputs.stale }} invalid=${{ steps.voice.outputs.invalid }}"
+          gh workflow enable canto-nano-production.yml --repo "${GITHUB_REPOSITORY}" || true
+          gh workflow run canto-nano-production.yml --repo "${GITHUB_REPOSITORY}" --ref main
+          echo "EDITOR_IN_CHIEF_VOICE_REPAIR_DISPATCHED"
+
+      - name: Record active recovery
+        if: steps.voice.outputs.healthy != 'true' && steps.owner.outputs.active != '0'
+        run: |
+          echo "EDITOR_IN_CHIEF_VOICE_RECOVERY_IN_PROGRESS"
+          echo "Current-news voice gap is owned by an active production run."
+          echo "expected=${{ steps.voice.outputs.expected }} playable=${{ steps.voice.outputs.playable }} missing=${{ steps.voice.outputs.missing }} stale=${{ steps.voice.outputs.stale }} invalid=${{ steps.voice.outputs.invalid }}"
+
+      - name: Healthy editorial outcome
+        if: steps.voice.outputs.healthy == 'true'
+        run: |
+          echo "EDITOR_IN_CHIEF_VOICE_HEALTHY"
+          echo "Every current published newsroom story has a current cnf4 playable manifest entry."
+
+      - name: Stale-success blocker
+        if: steps.voice.outputs.healthy != 'true'
+        shell: bash
+        run: |
+          echo "EDITOR_IN_CHIEF_VOICE_NOT_HEALTHY" >&2
+          echo "A GitHub workflow success or old manifest coverageComplete flag cannot override current editorial outcome." >&2
+          echo "expected=${{ steps.voice.outputs.expected }} playable=${{ steps.voice.outputs.playable }} missing=${{ steps.voice.outputs.missing }} stale=${{ steps.voice.outputs.stale }} invalid=${{ steps.voice.outputs.invalid }}" >&2
+          # The repair was dispatched (or is already owned), but the supervisory
+          # outcome remains red until a later run proves current coverage.
+          exit 1
