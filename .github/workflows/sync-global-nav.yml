@@ -48,84 +48,54 @@ jobs:
           PAGE_TIME_RE = re.compile(r'<script\b[^>]*src=["\']assets/js/page-updated-time\.js(?:\?[^"\']*)?["\'][^>]*>\s*</script>\s*', re.I)
 
           labels = {
-              'live.html': '🔴 Live',
-              'index.html': '📰 頭版',
-              'world.html': '🌍 世界',
-              'asia.html': '🌏 亞洲',
-              'hong-kong.html': '🇭🇰 香港',
-              'japan.html': '🇯🇵 日本',
-              'finance.html': '📈 財經',
-              'stocks.html': '📊 Stock News',
-              'technology.html': '🤖 AI / 科技',
-              'manga-anime.html': '📚 漫畫 / Anime',
-              'manchester-united.html': '🏟️ Manchester United',
-              'football.html': '⚽ Football',
-              'retail-deals.html': '🛒 最新優惠',
-              'archive.html': '🗂️ Archive',
+              'live.html': '🔴 Live', 'index.html': '📰 頭版', 'world.html': '🌍 世界', 'asia.html': '🌏 亞洲',
+              'hong-kong.html': '🇭🇰 香港', 'japan.html': '🇯🇵 日本', 'finance.html': '📈 財經', 'stocks.html': '📊 Stock News',
+              'technology.html': '🤖 AI / 科技', 'manga-anime.html': '📚 漫畫 / Anime',
+              'manchester-united.html': '🏟️ Manchester United', 'football.html': '⚽ Football',
+              'retail-deals.html': '🛒 最新優惠', 'archive.html': '🗂️ Archive',
           }
 
           def relabel(inner):
               for href, label in labels.items():
-                  pattern = re.compile(
-                      r'(<a\b[^>]*href=["\'][^"\']*' + re.escape(href) + r'[^"\']*["\'][^>]*>).*?(</a>)',
-                      re.I | re.S,
-                  )
+                  pattern = re.compile(r'(<a\b[^>]*href=["\'][^"\']*' + re.escape(href) + r'[^"\']*["\'][^>]*>).*?(</a>)', re.I | re.S)
                   inner = pattern.sub(lambda m, label=label: m.group(1) + label + m.group(2), inner)
               return inner
 
-          changed = []
-          checked = []
+          changed=[]; checked=[]
           for path in sorted(Path('.').glob('*.html')):
-              text = path.read_text(encoding='utf-8')
-              match = NAV_RE.search(text)
-              if not match:
-                  continue
-
+              text=path.read_text(encoding='utf-8')
+              match=NAV_RE.search(text)
+              if not match: continue
               checked.append(path.name)
-              inner = RETAIL_RE.sub('', match.group(2))
-              archive = ARCHIVE_RE.search(inner)
-              if not archive:
-                  raise SystemExit(f'{path.name}: section-nav missing Archive link')
-
-              current = ' aria-current="page"' if path.name == 'retail-deals.html' else ''
-              retail = f'<a class="retail-nav" href="./retail-deals.html?v=20260904-content-width-v1"{current}>🛒 最新優惠</a>'
-              inner = inner[:archive.start()] + retail + inner[archive.start():]
-              inner = relabel(inner)
-
-              new_nav = match.group(1) + inner + match.group(3)
-              new_text = text[:match.start()] + new_nav + text[match.end():]
-              new_text = CSS_RE.sub('assets/css/newspaper.css?v=20260904-content-width-v1', new_text)
-              new_text = LIVE_CSS_RE.sub('assets/css/live.css?v=20260904-content-width-v5', new_text)
-              new_text = EXTRAS_CSS_RE.sub('assets/css/extras.css?v=20260904-content-width-v4', new_text)
-              new_text = PAGE_TIME_RE.sub('', new_text)
-              script = '<script src="assets/js/page-updated-time.js?v=20260901-page-time-v1" defer></script>\n'
-              if '</body>' not in new_text.lower():
-                  raise SystemExit(f'{path.name}: missing body close tag')
-              new_text = re.sub(r'</body>', script + '</body>', new_text, count=1, flags=re.I)
-
-              nav = NAV_RE.search(new_text).group(2)
-              links = RETAIL_RE.findall(nav)
-              football = nav.find('football.html')
-              retail_pos = nav.find('retail-deals.html')
-              archive_pos = nav.find('archive.html')
-              if len(links) != 1:
-                  raise SystemExit(f'{path.name}: expected exactly one retail nav link, found {len(links)}')
-              if football >= 0 and not (football < retail_pos < archive_pos):
-                  raise SystemExit(f'{path.name}: nav order must be Football -> 最新優惠 -> Archive')
-              if not (retail_pos < archive_pos):
-                  raise SystemExit(f'{path.name}: 最新優惠 must be before Archive')
-              for href, label in labels.items():
-                  if href in nav and label not in nav:
-                      raise SystemExit(f'{path.name}: missing icon label {label}')
-
-              if new_text != text:
-                  path.write_text(new_text, encoding='utf-8')
-                  changed.append(path.name)
-
-          if not checked:
-              raise SystemExit('No root section-nav pages found')
-          print('GLOBAL_NAV_CHECKED', len(checked), checked)
-          print('GLOBAL_NAV_CHANGED', len(changed), changed)
+              inner=RETAIL_RE.sub('', match.group(2))
+              archive=ARCHIVE_RE.search(inner)
+              if not archive: raise SystemExit(f'{path.name}: section-nav missing Archive link')
+              current=' aria-current="page"' if path.name=='retail-deals.html' else ''
+              retail=f'<a class="retail-nav" href="./retail-deals.html?v=20260904-content-width-v1"{current}>🛒 最新優惠</a>'
+              inner=inner[:archive.start()] + retail + inner[archive.start():]
+              inner=relabel(inner)
+              new_nav=match.group(1)+inner+match.group(3)
+              new_text=text[:match.start()]+new_nav+text[match.end():]
+              new_text=CSS_RE.sub('assets/css/newspaper.css?v=20260904-content-width-v1', new_text)
+              new_text=LIVE_CSS_RE.sub('assets/css/live.css?v=20260904-content-width-v6', new_text)
+              new_text=EXTRAS_CSS_RE.sub('assets/css/extras.css?v=20260904-content-width-v5', new_text)
+              new_text=PAGE_TIME_RE.sub('', new_text)
+              script='<script src="assets/js/page-updated-time.js?v=20260901-page-time-v1" defer></script>\n'
+              if '</body>' not in new_text.lower(): raise SystemExit(f'{path.name}: missing body close tag')
+              new_text=re.sub(r'</body>', script+'</body>', new_text, count=1, flags=re.I)
+              nav=NAV_RE.search(new_text).group(2)
+              links=RETAIL_RE.findall(nav)
+              football=nav.find('football.html'); retail_pos=nav.find('retail-deals.html'); archive_pos=nav.find('archive.html')
+              if len(links)!=1: raise SystemExit(f'{path.name}: expected exactly one retail nav link, found {len(links)}')
+              if football>=0 and not (football < retail_pos < archive_pos): raise SystemExit(f'{path.name}: nav order must be Football -> 最新優惠 -> Archive')
+              if not (retail_pos < archive_pos): raise SystemExit(f'{path.name}: 最新優惠 must be before Archive')
+              for href,label in labels.items():
+                  if href in nav and label not in nav: raise SystemExit(f'{path.name}: missing icon label {label}')
+              if new_text!=text:
+                  path.write_text(new_text,encoding='utf-8'); changed.append(path.name)
+          if not checked: raise SystemExit('No root section-nav pages found')
+          print('GLOBAL_NAV_CHECKED',len(checked),checked)
+          print('GLOBAL_NAV_CHANGED',len(changed),changed)
           PY
 
       - name: Keep runtime navbar labels identical
@@ -133,28 +103,19 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          p=Path('assets/js/system-panel.js')
-          text=p.read_text(encoding='utf-8')
+          p=Path('assets/js/system-panel.js'); text=p.read_text(encoding='utf-8')
           replacements={
-            '["world.html", "世界"]':'["world.html", "🌍 世界"]',
-            '["asia.html", "亞洲"]':'["asia.html", "🌏 亞洲"]',
-            '["hong-kong.html", "香港"]':'["hong-kong.html", "🇭🇰 香港"]',
-            '["japan.html", "日本"]':'["japan.html", "🇯🇵 日本"]',
-            '["technology.html", "AI / 科技"]':'["technology.html", "🤖 AI / 科技"]',
-            '["manga-anime.html", "漫畫 / Anime"]':'["manga-anime.html", "📚 漫畫 / Anime"]',
-            '["manchester-united.html", "Manchester United"]':'["manchester-united.html", "🏟️ Manchester United"]',
-            '["football.html", "Football"]':'["football.html", "⚽ Football"]',
-            '["archive.html", "Archive"]':'["archive.html", "🗂️ Archive"]',
-            '>Live</a>`':'>🔴 Live</a>`',
-            '>頭版</a>`':'>📰 頭版</a>`',
+            '["world.html", "世界"]':'["world.html", "🌍 世界"]','["asia.html", "亞洲"]':'["asia.html", "🌏 亞洲"]',
+            '["hong-kong.html", "香港"]':'["hong-kong.html", "🇭🇰 香港"]','["japan.html", "日本"]':'["japan.html", "🇯🇵 日本"]',
+            '["technology.html", "AI / 科技"]':'["technology.html", "🤖 AI / 科技"]','["manga-anime.html", "漫畫 / Anime"]':'["manga-anime.html", "📚 漫畫 / Anime"]',
+            '["manchester-united.html", "Manchester United"]':'["manchester-united.html", "🏟️ Manchester United"]','["football.html", "Football"]':'["football.html", "⚽ Football"]',
+            '["archive.html", "Archive"]':'["archive.html", "🗂️ Archive"]','>Live</a>`':'>🔴 Live</a>`','>頭版</a>`':'>📰 頭版</a>`',
           }
-          for old,new in replacements.items():
-              text=text.replace(old,new)
+          for old,new in replacements.items(): text=text.replace(old,new)
           required=['🌍 世界','🌏 亞洲','🇭🇰 香港','🇯🇵 日本','📈 財經','📊 Stock News','🤖 AI / 科技','📚 漫畫 / Anime','🏟️ Manchester United','⚽ Football','🛒 最新優惠','🗂️ Archive','🔴 Live','📰 頭版']
           missing=[x for x in required if x not in text]
-          if missing:
-              raise SystemExit('system-panel runtime icon labels missing: '+repr(missing))
-          p.write_text(text, encoding='utf-8')
+          if missing: raise SystemExit('system-panel runtime icon labels missing: '+repr(missing))
+          p.write_text(text,encoding='utf-8')
           print('RUNTIME_NAV_ICON_SYNC_OK')
           PY
 
@@ -163,29 +124,23 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          p=Path('assets/css/newspaper.css')
-          text=p.read_text(encoding='utf-8')
+          p=Path('assets/css/newspaper.css'); text=p.read_text(encoding='utf-8')
           block='''\n/* Global nav visibility contract: final items must remain visible on narrow screens. */\n.section-nav .retail-nav:not([aria-current="page"]) { background: transparent; }\n.section-nav .retail-nav:hover { background: var(--red); }\n.section-nav a[aria-current="page"] { background: var(--red); }\n@media (max-width: 620px) {\n  .section-nav { overflow-x: visible; flex-wrap: wrap; }\n  .section-nav a { white-space: nowrap; padding: 8px 10px; font-size: 12px; }\n}\n'''
           marker='/* Global nav visibility contract:'
-          if marker in text:
-              text=text[:text.index(marker)].rstrip()+"\n"+block
-          else:
-              text=text.rstrip()+"\n"+block
-          p.write_text(text, encoding='utf-8')
+          if marker in text: text=text[:text.index(marker)].rstrip()+"\n"+block
+          else: text=text.rstrip()+"\n"+block
+          p.write_text(text,encoding='utf-8')
           PY
 
       - name: Commit synchronized navbars
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet; then
-            echo 'GLOBAL_NAV_ALREADY_SYNCED'
-            exit 0
-          fi
+          if git diff --quiet; then echo 'GLOBAL_NAV_ALREADY_SYNCED'; exit 0; fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add '*.html' assets/css/newspaper.css assets/js/system-panel.js
-          git commit -m 'Synchronize icons timestamps and content-width CSS versions'
+          git commit -m 'Synchronize icons timestamps and section geometry CSS versions'
           git push origin HEAD:main
 
       - name: Explicitly deploy latest main to Pages
