@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """Build same-URL static fallbacks for the public newspaper.
 
-The browser JavaScript remains the enhancement/freshness layer.  This script
+The browser JavaScript remains the enhancement/freshness layer. This script
 pre-renders the current verified publication into the existing HTML so a
 GitHub Pages visitor does not see blank shells when JavaScript or a JSON fetch
 is slow/blocked.
+
+IMPORTANT: element replacement must be nesting-aware. Several public targets
+contain nested elements using the same tag (for example div#dynamic-sections,
+div#top-five and div#stock-sections). A non-greedy regex stops at the first
+inner closing tag and progressively corrupts the page DOM on repeated builds.
 """
 from __future__ import annotations
 
@@ -46,14 +51,33 @@ def ensure_marker(text: str, label: str) -> str:
 
 
 def replace_element(text: str, tag: str, element_id: str, inner: str) -> str:
-    pattern = re.compile(
-        rf'(<{tag}\b(?=[^>]*\bid=["\']{re.escape(element_id)}["\'])[^>]*>)(.*?)(</{tag}>)',
-        re.S | re.I,
+    """Replace one element's inner HTML while respecting nested same-name tags."""
+    opener = re.compile(
+        rf'<{tag}\b(?=[^>]*\bid=["\']{re.escape(element_id)}["\'])[^>]*>',
+        re.I,
     )
-    new, count = pattern.subn(lambda m: m.group(1) + inner + m.group(3), text, count=1)
-    if count != 1:
+    matches = list(opener.finditer(text))
+    if len(matches) != 1:
         raise RuntimeError(f"missing or duplicate {tag}#{element_id}")
-    return new
+
+    opening = matches[0]
+    token_re = re.compile(rf'</?{tag}\b[^>]*>', re.I)
+    depth = 1
+    closing = None
+    for token in token_re.finditer(text, opening.end()):
+        raw = token.group(0).lstrip()
+        if raw.startswith("</"):
+            depth -= 1
+            if depth == 0:
+                closing = token
+                break
+        elif not raw.rstrip().endswith("/>"):
+            depth += 1
+
+    if closing is None:
+        raise RuntimeError(f"unclosed {tag}#{element_id}")
+
+    return text[: opening.end()] + inner + text[closing.start() :]
 
 
 def replace_text(text: str, tag: str, element_id: str, value) -> str:
@@ -96,8 +120,9 @@ def render_lead(latest: dict) -> str:
 
 def render_top_five(latest: dict) -> str:
     articles = {a.get("id"): a for a in latest.get("articles", []) if isinstance(a, dict)}
+    ids = latest.get("topFiveIds") or latest.get("topFive") or []
     rows = []
-    for story_id in latest.get("topFiveIds", [])[:5]:
+    for story_id in ids[:5]:
         story = articles.get(story_id)
         if not story:
             continue
@@ -150,7 +175,7 @@ def render_daily_sections(latest: dict) -> str:
             continue
         groups.append(
             '<section class="section-block">'
-            f'<div class="section-heading"><h2>{esc(section.get("title"))}</h2><span>{esc(section.get("label"))}</span></div>'
+            f'<div class="section-heading"><h2>{esc(section.get("title"))}</h2><span>{esc(section.get("label") or section.get("subtitle"))}</span></div>'
             '<div class="story-grid">' + "".join(render_story_card(s, i == 0 and len(stories) > 3) for i, s in enumerate(stories)) + '</div></section>'
         )
     return "".join(groups)
@@ -302,9 +327,6 @@ def build_archive(archive: dict) -> None:
     path = ROOT / "archive.html"
     text = ensure_marker(path.read_text(encoding="utf-8"), "archive")
     rendered = render_archive(archive)
-    # Current archive template nests #archive-items inside #archive-list.
-    # Replace the leaf target so the generic non-nesting element helper cannot
-    # consume the inner closing div. Keep the legacy target as compatibility.
     if re.search(r'<div\b(?=[^>]*\bid=["\']archive-items["\'])', text, flags=re.I):
         text = replace_element(text, "div", "archive-items", rendered)
     else:
