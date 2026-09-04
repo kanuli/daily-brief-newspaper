@@ -1,0 +1,75 @@
+name: One-time Manga Anime depth recovery 2026-09-04 20:00
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/recover-manga-depth-20260904-2000.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Add verified current Manga Anime event
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from datetime import datetime, timezone, timedelta
+
+          p=Path('data/desk-latest.json')
+          d=json.loads(p.read_text(encoding='utf-8'))
+          assert d.get('editorialStandardVersion') == 3
+          assert d.get('contentVersion') == 3
+          desks=d.setdefault('desks',{})
+          arr=desks.setdefault('manga-anime',[])
+          sid='manga-anime-tanmoshi-season2-pv3-20260904-2000'
+          if not any(isinstance(x,dict) and x.get('id')==sid for x in arr):
+              story={
+                'id': sid,
+                'desk': 'manga-anime',
+                'status': 'LATEST',
+                'title': '《偵探已經，死了。Season2》公開第3彈PV　10月7日開播兼追加新聲優',
+                'dek': '最新PV首次公開主題曲部分音源，小宮山あかり及岡本信彦加入聲優陣容，TOKYO MX等10月7日起播出。',
+                'summary': '《探偵はもう、死んでいる。Season2》9月4日公開第3彈PV，確認10月7日起播出，並公布小宮山あかり及岡本信彦參演。',
+                'body': '電視動畫《探偵はもう、死んでいる。Season2》9月4日公開第3彈PV，最新影片首次披露片頭曲《この心臓に花束を》及片尾曲《白昼夢》的部分音源。日本媒體同日報道，新角色Mia Whitlock由小宮山あかり配音，Scarlet由岡本信彦配音。\n\n作品已確定10月7日起在TOKYO MX等頻道播出，dアニメストア同日晚較地面電視先行配信。官方網站此前已確認第二季改於2026年10月播出及主題曲資料；今次PV與新增聲優令秋季播出安排進一步落實。',
+                'context': '第二季原定7月播出，其後因製作安排延期至10月；官方近月持續公布角色、主題曲及先行上映活動。',
+                'why': '新PV、確實開播日期與新增主要聲優屬同一日正式更新，是日本秋季動畫檔期的獨立新事件。',
+                'watchNext': '留意9月6日先行上映反應、完整播放平台安排，以及開播前是否再公布新角色或集數資訊。',
+                'sourceName': '官方網站／ライブドアニュース',
+                'sourceUrl': 'https://tanmoshi-anime.jp/Season2/',
+                'timeLabel': '9月4日20:00 HKT核實',
+                'sources': [
+                  {'name':'《探偵はもう、死んでいる。Season2》官方網站','url':'https://tanmoshi-anime.jp/Season2/'},
+                  {'name':'ライブドアニュース','url':'https://news.livedoor.com/article/detail/32243193/'}
+                ],
+                'deskSlugs': ['manga-anime'],
+                'section': '漫畫／動畫｜秋季新番／偵探已經，死了。',
+                'sectionLabel': '漫畫／動畫',
+                'mediaLabel': '漫畫 / Anime',
+                'image': None
+              }
+              arr.insert(0,story)
+          d['generatedAt']='2026-09-04T20:15:00+08:00'
+          p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+          python scripts/validate_editorial_v2.py
+          python scripts/validate_desk_freshness.py
+      - name: Commit recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add data/desk-latest.json
+          git commit -m "Restore Manga Anime rolling desk depth"
+          git push origin HEAD:main
