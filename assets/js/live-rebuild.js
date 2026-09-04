@@ -13,9 +13,7 @@
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 
-  function clean(value = "") {
-    return String(value).trim();
-  }
+  const clean = (value = "") => String(value).trim();
 
   function paragraphs(value = "") {
     return String(value)
@@ -72,11 +70,10 @@
     const headerTime = document.querySelector("#live-header-time");
     if (headerTime) headerTime.textContent = data.lastUpdatedLabel || data.windowLabel || "Live";
 
-    const date = document.querySelector("#live-topic-date");
-    if (date) date.textContent = data.lastUpdatedLabel || data.windowLabel || data.lastUpdated || "Live";
-
-    const count = document.querySelector("#live-topic-count");
-    if (count) count.textContent = `${items.length} stories`;
+    const stats = document.querySelector("#live-page-stats");
+    if (stats) {
+      stats.innerHTML = `<span>${esc(data.lastUpdatedLabel || data.windowLabel || data.lastUpdated || "Live")}</span><span>${items.length} stories${data.nextUpdateLabel ? ` · ${esc(data.nextUpdateLabel)}` : ""}</span>`;
+    }
 
     const audit = document.querySelector("#live-audit");
     if (audit) audit.innerHTML = `<p>${esc(data.nextUpdateLabel || "")}</p>`;
