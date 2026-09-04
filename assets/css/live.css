@@ -1,15 +1,11 @@
 .section-nav a[aria-current="page"] { background: #b00016 !important; }
-/* Live content must use the same full main-column width as every other desk. */
+/* Match Live article typography/content width to the standard topic-page contract. */
 body[data-page="live"] main,
 .live-page-head,
 .live-audit,
 .live-page-items,
-.live-story,
-.live-article-dek,
-.live-article-body,
-.article-sources {
+.live-story {
   width: 100%;
-  max-width: none;
   margin-left: 0;
   margin-right: 0;
 }
@@ -50,13 +46,13 @@ body[data-page="live"] main,
 .live-page-items { padding: 0 0 10px; }
 .live-story { padding: 22px 0; border-bottom: 2px solid #111; }
 .live-story-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: #6c665d; font-size: 11px; font-weight: 700; }
-.live-story h2 { margin: 8px 0 8px; max-width: none; font-family: "Noto Serif TC", serif; font-size: clamp(30px, 4vw, 42px); line-height: 1.12; }
-.live-article-dek { margin-top: 0; margin-bottom: 12px !important; font-size: 18px !important; line-height: 1.45; font-weight: 800; color: #34302a; }
-.live-article-body { column-count: 2; column-gap: 34px; column-rule: 1px solid #b7aea0; }
+.live-story h2 { margin: 8px 0 8px; max-width: 1050px; font-family: "Noto Serif TC", serif; font-size: clamp(30px, 4vw, 42px); line-height: 1.12; }
+.live-article-dek { width: 100%; max-width: 950px; margin: 0 0 12px !important; font-size: 18px !important; line-height: 1.45; font-weight: 800; color: #34302a; }
+.live-article-body { width: 100%; max-width: 980px; column-count: 2; column-gap: 34px; column-rule: 1px solid #b7aea0; }
 .live-article-body p { break-inside: avoid; margin: 0 0 12px; font-size: 14px; line-height: 1.7; }
 .live-article-summary:first-child:first-letter { float: left; margin: 7px 7px 0 0; font-family: Georgia, serif; font-size: 46px; line-height: .75; font-weight: 800; }
 .live-article-context, .live-article-why, .live-article-next { padding-top: 8px; border-top: 1px dotted #8b8478; }
-.article-sources { margin-top: 12px; padding-top: 9px; border-top: 1px solid #111; font-size: 11px; line-height: 1.7; }
+.article-sources { width: 100%; max-width: 980px; margin-top: 12px; padding-top: 9px; border-top: 1px solid #111; font-size: 11px; line-height: 1.7; }
 .article-sources .source-link { margin-right: 4px; }
 
 @media (max-width: 900px) {
