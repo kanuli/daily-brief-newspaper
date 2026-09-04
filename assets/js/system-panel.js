@@ -7,7 +7,8 @@
     ["manga-anime.html", "📚 漫畫 / Anime"], ["manchester-united.html", "🏟️ Manchester United"], ["football.html", "⚽ Football"],
     ["retail-deals.html", "🛒 最新優惠", "retail-nav"], ["archive.html", "🗂️ Archive"]
   ];
-  const HOME_HREF = "index.html?v=20260822-2110homefix#daily-edition";
+  const LIVE_HREF = "live.html?v=20260904-layout-v8";
+  const HOME_HREF = "index.html?v=20260904-layout-v8#daily-edition";
 
   function injectNavStyle() {
     if (document.getElementById("mobile-two-row-nav-style")) return;
@@ -33,7 +34,7 @@
     const homeCurrent = page === "index.html";
     const liveCurrent = page === "live.html";
     const links = [
-      `<a class="live-nav" href="live.html"${liveCurrent ? ' aria-current="page"' : ""}>🔴 Live</a>`,
+      `<a class="live-nav" href="${LIVE_HREF}"${liveCurrent ? ' aria-current="page"' : ""}>🔴 Live</a>`,
       `<a class="home-nav" href="${HOME_HREF}"${homeCurrent ? ' aria-current="page"' : ""}>📰 頭版</a>`,
       ...DESKS.map(([href, label, className]) => {
         const target = href.split("#")[0].toLowerCase();
@@ -70,6 +71,7 @@
   }
 
   function loadArticleEnhancers() {
+    if (document.body.dataset.page === "live") return;
     if (document.body.dataset.page === "topic") {
       inject("assets/js/topic-longform.js?v=20260821-2020", "data-topic-longform");
       return;
