@@ -40,8 +40,7 @@
   }
 
   function upgradeArticle(article) {
-    // Live has its own renderer (live-article.js). Never create a second Live body.
-    if (article.classList.contains("live-story")) return;
+    if (article.classList.contains("live-story") || article.classList.contains("topic-live-story")) return;
 
     const title = article.querySelector("h2, h3")?.textContent?.trim();
     if (!title) return;
@@ -72,6 +71,8 @@
   }
 
   async function apply() {
+    // The rebuilt Live page has one renderer only: live-rebuild.js.
+    if (document.body?.dataset?.page === "live") return;
     await buildIndex();
     document.querySelectorAll(".topic-story, .story-card, .lead-story").forEach(upgradeArticle);
   }
