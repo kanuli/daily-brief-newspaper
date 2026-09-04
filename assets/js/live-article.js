@@ -42,10 +42,10 @@
       ? item.sources
       : (item.sourceUrl ? [{ name: item.sourceName || "原文", url: item.sourceUrl }] : []);
     if (!sources.length) return "";
-    return `<div class="article-sources topic-sources"><strong>核實來源：</strong> ${sources.map((source) => `<a class="source-link" href="${esc(source.url || "#")}" target="_blank" rel="noopener noreferrer">${esc(source.name || "原文")} ↗</a>`).join(" · ")}</div>`;
+    return `<div class="topic-sources"><strong>核實來源：</strong> ${sources.map((source) => `<a class="source-link" href="${esc(source.url || "#")}" target="_blank" rel="noopener noreferrer">${esc(source.name || "原文")} ↗</a>`).join(" · ")}</div>`;
   }
 
-  function paragraph(label, value, className) {
+  function detail(label, value, className) {
     const clean = cleanCopy(value);
     if (!clean) return "";
     return `<p class="${className}"><strong>${label}</strong>${esc(clean)}</p>`;
@@ -54,17 +54,18 @@
   function renderStory(item, index) {
     const body = bodyParagraphs(item.body || "");
     const feature = index === 0 ? " topic-feature" : "";
-    return `<article class="topic-story live-story live-story-rich${feature}">
-      <div class="live-story-meta">${badge(item.status)} <span>${esc(item.section || "Live")}</span> <span>${esc(item.timeLabel || "")}</span></div>
+    return `<article class="topic-story topic-live-story live-story${feature}">
+      <div class="tag">${badge(item.status)}${esc(item.section || item.deskLabel || "Live")}</div>
       <h2>${esc(item.title || "")}</h2>
-      ${item.dek ? `<p class="topic-dek live-article-dek">${esc(cleanCopy(item.dek))}</p>` : ""}
-      <div class="topic-article-body live-article-body">
-        ${paragraph("摘要：", item.summary, "live-article-summary")}
-        ${body ? `<div class="live-body-main">${body}</div>` : ""}
-        ${paragraph("背景：", item.context || item.background, "live-article-context")}
-        ${paragraph("為何重要：", item.why || item.whyImportant, "live-article-why")}
-        ${paragraph("下一步：", item.watchNext || item.nextStep, "live-article-next")}
+      ${item.dek ? `<p class="topic-dek">${esc(cleanCopy(item.dek))}</p>` : ""}
+      <div class="topic-article-body">
+        ${detail("最新：", item.summary, "topic-summary")}
+        ${body ? `<div class="topic-full-body">${body}</div>` : ""}
+        ${detail("背景：", item.context || item.background, "topic-context")}
+        ${detail("為何重要：", item.why || item.whyImportant, "why-mini")}
+        ${detail("下一步：", item.watchNext || item.nextStep, "topic-next")}
       </div>
+      <div class="story-meta">${esc(item.timeLabel || "")}${item.sourceName ? ` · ${esc(item.sourceName)}` : ""}</div>
       ${sourceMarkup(item)}
     </article>`;
   }
@@ -88,20 +89,12 @@
 
     const stats = document.querySelector("#live-page-stats");
     if (stats) {
-      stats.innerHTML = `<div><strong>${actual.NEW}</strong><span>NEW</span></div><div><strong>${actual.UPDATED}</strong><span>UPDATED</span></div><div><strong>${actual.DEVELOPING}</strong><span>DEVELOPING</span></div><p>${esc(data.nextUpdateLabel || "")}</p>`;
+      stats.innerHTML = `<div><strong>${items.length} stories</strong><span>${esc(data.windowLabel || data.lastUpdatedLabel || "Live")}</span></div><div><strong>${actual.NEW} NEW · ${actual.UPDATED} UPDATED · ${actual.DEVELOPING} DEVELOPING</strong><span>${esc(data.nextUpdateLabel || "")}</span></div>`;
     }
 
-    const coverage = data.coverage || {};
     const audit = document.querySelector("#live-audit");
     if (audit) {
-      const sourceCount = Number(coverage.sourceOrganizationCount || 0);
-      const searchCount = Number(coverage.freshSearchCount || 0);
-      const rawCount = Number(coverage.rawFreshCandidateCount || 0);
-      const verifiedCount = Number(coverage.verifiedCandidateCount || 0);
-      const incrementalCount = Number(coverage.incrementalCandidateCount || 0);
-      audit.innerHTML = sourceCount || searchCount || rawCount || verifiedCount || incrementalCount
-        ? `<strong>最新搜集：</strong>${sourceCount} 個新聞機構 · ${searchCount} 次 fresh searches · raw ${rawCount} · verified ${verifiedCount} · incremental ${incrementalCount}`
-        : `<strong>最新出版：</strong>${esc(data.lastUpdatedLabel || data.windowLabel || "已更新")}`;
+      audit.innerHTML = `<p>${esc(data.lastUpdatedLabel || data.windowLabel || "已更新")}</p>`;
     }
 
     host.innerHTML = items.length
