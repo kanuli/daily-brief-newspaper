@@ -1,0 +1,33 @@
+name: Publish 2026-09-04 Daily
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/_publish-20260904.yml'
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Publish Daily
+        run: python scripts/_publish_20260904.py
+      - name: Validate site data
+        run: python scripts/validate_site_data.py
+      - name: Validate Daily v3
+        run: python scripts/validate_daily_v3.py
+      - name: Validate editorial depth
+        run: python scripts/validate_editorial_v2.py
+      - name: Validate stock news
+        run: python scripts/validate_stock_news.py
+      - name: Commit publication and cleanup one-shot files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/latest.json data/2026-09-04.json data/archive.json data/topic-more/2026-09-04.json data/desk-latest.json data/live.json editions/2026-09-04.html
+          git rm scripts/_publish_20260904.py .github/workflows/_publish-20260904.yml
+          git commit -m 'Publish 2026-09-04 CANTONESE Daily Edition'
+          git push origin main
