@@ -43,6 +43,30 @@
 .live-story > .live-story-body,
 .live-story > .source-cluster { display: none !important; }
 
+/* Static fallback uses .live-card before live-article.js enhances it. Match topic geometry there too. */
+.live-page-items > .live-card {
+  grid-column: span 6;
+  min-width: 0;
+  padding: 0 18px 20px 0;
+  border-right: 1px solid #8b8478;
+  border-bottom: 1px dotted #8b8478;
+}
+.live-page-items > .live-card:nth-child(2n) { border-right: 0; padding-right: 0; }
+.live-page-items > .live-card:first-child {
+  grid-column: span 12;
+  border-right: 0;
+  padding-right: 0;
+  border-bottom: 3px solid #111;
+}
+.live-card h2 {
+  margin: 5px 0 9px;
+  font-family: "Noto Serif TC", "PMingLiU", serif;
+  font-size: 29px;
+  line-height: 1.15;
+}
+.live-card:first-child h2 { font-size: clamp(34px, 4.8vw, 52px); max-width: 1050px; }
+.live-card > p { margin: 0 0 10px; max-width: 980px; font-size: 14px; line-height: 1.7; }
+
 .live-story-meta {
   display: flex;
   gap: 8px;
@@ -104,6 +128,11 @@
   .live-summary-grid { grid-template-columns: repeat(2, 1fr); }
   .live-mini-card:nth-child(2n) { border-right: 0; }
   .live-mini-card { border-bottom: 1px solid #8b8478; }
+}
+
+@media (max-width: 720px) {
+  .live-page-items > .live-card,
+  .live-page-items > .live-card:first-child { grid-column: span 12; border-right: 0; padding-right: 0; }
 }
 
 @media (max-width: 620px) {
