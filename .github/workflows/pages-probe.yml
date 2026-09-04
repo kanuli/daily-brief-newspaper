@@ -5,6 +5,8 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/pages-probe.yml"
+      - "assets/css/live.css"
+      - "assets/css/extras.css"
       - "assets/js/site-tts-canto-nano.js"
       - "assets/js/stocks.js"
       - "data/latest.json"
@@ -53,7 +55,10 @@ jobs:
               'finance.html','stocks.html','technology.html','manga-anime.html',
               'manchester-united.html','football.html','archive.html'
           ]
-          runtime_files=['assets/js/site-tts-canto-nano.js','assets/js/system-panel.js','assets/js/live-article.js','assets/js/stocks.js']
+          runtime_files=[
+              'assets/css/live.css','assets/css/extras.css',
+              'assets/js/site-tts-canto-nano.js','assets/js/system-panel.js','assets/js/live-article.js','assets/js/stocks.js'
+          ]
           known_error_markers=['Error 500 (Server Error)', 'That’s an error', "That's an error", 'There was an error. Please try again later.']
           HKT=timezone(timedelta(hours=8))
           now=datetime.now(timezone.utc)
@@ -130,8 +135,6 @@ jobs:
           stock_match=bool(isinstance(remote_stocks,dict) and remote_stocks.get('generatedAt')==expected_stocks)
           voice_match=bool(isinstance(remote_tts,dict) and remote_tts.get('engine')==local_tts.get('engine') and remote_tts.get('assetNamespace')==local_tts.get('assetNamespace') and remote_tts.get('prosodyPolicy')==local_tts.get('prosodyPolicy') and int(remote_tts.get('availableArticleCount') or 0)==int(local_tts.get('availableArticleCount') or 0) and str(remote_tts.get('lastVoicePublishedAt') or '')==str(local_tts.get('lastVoicePublishedAt') or ''))
 
-          # Editorial freshness is separate from repository/public equality. Equal stale
-          # snapshots must never be reported as healthy.
           hour,minute=now_hkt.hour,now_hkt.minute
           live_age=age_minutes(remote_live.get('lastUpdated')) if isinstance(remote_live,dict) else None
           stock_check_value=(remote_stocks.get('lastCheckedAt') or remote_stocks.get('generatedAt')) if isinstance(remote_stocks,dict) else None
@@ -140,7 +143,7 @@ jobs:
 
           live_window=(hour==0 or 6<=hour<=7 or 9<=hour<=23)
           if hour==6 and minute<20:
-              live_fresh=True  # allow the 06:00 publisher its startup grace after the overnight gap
+              live_fresh=True
           elif hour==9 and minute<20:
               live_fresh=bool(live_age is not None and live_age<=155)
           elif live_window:
@@ -159,9 +162,6 @@ jobs:
 
           daily_required=(hour>8 or (hour==8 and minute>=15))
           daily_fresh=bool(not daily_required or (isinstance(remote_latest,dict) and remote_latest.get('date')==now_hkt.date().isoformat()))
-
-          # Across nine high-profile tracked securities, an unchanged verified-content
-          # pool beyond 36 hours is an editorial degradation even when hourly checks run.
           stock_content_fresh=bool(stock_content_age is not None and stock_content_age<=36*60)
 
           page_checks={}
