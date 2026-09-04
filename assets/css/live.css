@@ -34,6 +34,30 @@
 .live-developing { color: #79000e; background: #f1dfd3; border-color: #b00016; }
 .live-watch { background: #e9e2d3; }
 
+/* Deployment fallback is generated before JS runs. Give it the same topic-story geometry. */
+#live-page-items > .live-card {
+  grid-column: span 6;
+  min-width: 0;
+  padding: 0 18px 20px 0;
+  border-right: 1px solid #8b8478;
+  border-bottom: 1px dotted #8b8478;
+}
+#live-page-items > .live-card:nth-child(2n) { border-right: 0; padding-right: 0; }
+#live-page-items > .live-card:first-child {
+  grid-column: span 12;
+  border-right: 0;
+  padding-right: 0;
+  border-bottom: 3px solid #111;
+}
+#live-page-items > .live-card h2 {
+  margin: 5px 0 9px;
+  font-family: "Noto Serif TC", "PMingLiU", serif;
+  font-size: 29px;
+  line-height: 1.15;
+}
+#live-page-items > .live-card:first-child h2 { font-size: clamp(34px, 4.8vw, 52px); max-width: 1050px; }
+#live-page-items > .live-card > p { margin: 0 0 10px; max-width: 980px; font-size: 14px; line-height: 1.7; }
+
 /* Homepage Live summary remains a separate compact component. */
 .live-summary { margin: 18px 0 8px; border: 3px solid #111; background: #fffdf7; }
 .live-summary-head { display: flex; justify-content: space-between; gap: 20px; align-items: end; padding: 14px 16px 12px; border-bottom: 5px solid #b00016; }
@@ -62,6 +86,8 @@
 
 @media (max-width: 720px) {
   .live-audit { text-align: left; }
+  #live-page-items > .live-card,
+  #live-page-items > .live-card:first-child { grid-column: span 12; border-right: 0; padding-right: 0; }
 }
 
 @media (max-width: 620px) {
