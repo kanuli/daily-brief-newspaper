@@ -10,16 +10,17 @@
 .desk-latest-card h3 a:focus-visible { color: var(--red-dark); text-decoration: underline; }
 .desk-latest-card .article-sources { margin-top: 8px; font-size: 10px; }
 
-/* Keep the previous readable card treatment, but stop it stretching across the whole paper. */
+/* Exact homepage section geometry: same outer width/padding as .section-block above. */
 .daily-vocab {
   display: block;
-  width: 100%;
-  max-width: 980px;
-  margin: 18px auto 0;
-  padding: 18px;
-  border: 3px solid var(--ink);
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 20px 0 4px;
+  border: 0;
+  border-bottom: 3px solid var(--ink);
   box-sizing: border-box;
-  background: #fffaf0;
+  background: transparent;
   color: var(--ink);
 }
 .daily-vocab-heading { margin-top: 0; }
@@ -29,6 +30,10 @@
   width: 100%;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
+  padding: 12px;
+  border: 3px solid var(--ink);
+  box-sizing: border-box;
+  background: #fffaf0;
 }
 .vocab-level-block {
   min-width: 0;
@@ -84,10 +89,11 @@
 @media (max-width: 900px) {
   .vocab-level-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
 @media (max-width: 620px) {
   .desk-latest-summary { margin-top: 14px; }
-  .daily-vocab { width: 100%; max-width: none; padding: 12px 10px; margin-top: 14px; }
-  .vocab-level-grid { display: block; }
+  .daily-vocab { padding: 14px 0 4px; }
+  .vocab-level-grid { display: block; padding: 10px; }
   .vocab-level-block { margin-bottom: 10px; }
   .vocab-source-note { flex-direction: column; }
 }
