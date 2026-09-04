@@ -40,6 +40,9 @@
   }
 
   function upgradeArticle(article) {
+    // Live has its own renderer (live-article.js). Never create a second Live body.
+    if (article.classList.contains("live-story")) return;
+
     const title = article.querySelector("h2, h3")?.textContent?.trim();
     if (!title) return;
     const story = byTitle.get(title);
@@ -48,11 +51,11 @@
     const combined = `${story.summary || ""}${story.context || ""}${story.why || ""}${story.watchNext || ""}`;
     if (!body && combined.length < 100) return;
 
-    let host = article.querySelector(".topic-article-body, .story-body, .live-story-body");
+    let host = article.querySelector(".topic-article-body, .story-body");
     if (!host) {
       host = document.createElement("div");
-      host.className = article.classList.contains("live-story") ? "live-story-body" : "topic-article-body";
-      const meta = article.querySelector(".story-meta, .live-story-meta");
+      host.className = "topic-article-body";
+      const meta = article.querySelector(".story-meta");
       if (meta?.nextSibling) article.insertBefore(host, meta.nextSibling); else article.appendChild(host);
     }
 
@@ -70,7 +73,7 @@
 
   async function apply() {
     await buildIndex();
-    document.querySelectorAll(".topic-story, .live-story, .story-card, .lead-story").forEach(upgradeArticle);
+    document.querySelectorAll(".topic-story, .story-card, .lead-story").forEach(upgradeArticle);
   }
 
   [400, 1000, 2200].forEach((delay) => setTimeout(apply, delay));
