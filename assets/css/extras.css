@@ -10,43 +10,58 @@
 .desk-latest-card h3 a:focus-visible { color: var(--red-dark); text-decoration: underline; }
 .desk-latest-card .article-sources { margin-top: 8px; font-size: 10px; }
 
-/* Rebuilt vocab section: outer geometry is exactly the homepage .section-block. */
+/* Homepage vocab section: use exactly the same main content box as sections above. */
 .daily-vocab {
   display: block;
-  width: auto;
-  max-width: none;
+  width: 100%;
+  max-width: 100%;
   margin: 0;
+  box-sizing: border-box;
   background: transparent;
   color: var(--ink);
 }
 .daily-vocab-heading { margin-top: 0; }
 .daily-vocab-intro { margin: 0 0 14px; font-size: 13px; }
 
-/* Keep the original newspaper-style N1-N5 presentation without changing section width. */
+/* N1-N5 stay on one row on desktop and fill only the homepage content width. */
 .vocab-level-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: stretch;
   gap: 10px;
   width: 100%;
+  max-width: 100%;
   min-width: 0;
+  box-sizing: border-box;
 }
 .vocab-level-block {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
-  padding: 10px;
+  min-height: 380px;
+  height: 100%;
+  padding: 12px 10px 14px;
+  box-sizing: border-box;
   border: 1px solid #8b8478;
   border-top: 5px solid var(--ink);
   background: var(--card);
 }
 .vocab-level-title {
+  flex: 0 0 auto;
   margin-bottom: 7px;
-  padding-bottom: 4px;
+  padding-bottom: 6px;
   border-bottom: 1px solid #999;
   color: var(--red);
   font-family: Georgia, serif;
   font-size: 22px;
   font-weight: 900;
 }
-.vocab-card { padding: 8px 0; border-bottom: 1px dotted #8b8478; }
+.vocab-card {
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 14px 0;
+  border-bottom: 1px dotted #8b8478;
+}
 .vocab-card:last-child { border-bottom: 0; }
 .vocab-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .vocab-card-head > div { min-width: 0; }
@@ -58,8 +73,8 @@
   font-weight: 900;
   line-height: 1.25;
 }
-.vocab-meaning { margin-top: 4px; font-size: 13px; }
-.vocab-pos { margin-top: 3px; font-size: 10px; color: var(--muted); text-transform: uppercase; }
+.vocab-meaning { margin-top: 5px; font-size: 13px; line-height: 1.5; }
+.vocab-pos { margin-top: 4px; font-size: 10px; color: var(--muted); text-transform: uppercase; }
 .vocab-play {
   flex: 0 0 auto;
   appearance: none;
@@ -91,11 +106,13 @@
 
 @media (max-width: 1000px) {
   .vocab-level-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vocab-level-block { min-height: 330px; }
 }
 
 @media (max-width: 620px) {
   .desk-latest-summary { margin-top: 14px; }
   .vocab-level-grid { display: block; }
-  .vocab-level-block { margin-bottom: 10px; }
+  .vocab-level-block { min-height: 0; margin-bottom: 10px; }
+  .vocab-card { min-height: 120px; }
   .vocab-source-note { flex-direction: column; }
 }
