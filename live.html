@@ -11,36 +11,46 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Noto+Serif+TC:wght@600;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/css/newspaper.css?v=20260904-content-width-v1">
   <link rel="stylesheet" href="assets/css/topic.css?v=20260821-1555">
-  <link rel="stylesheet" href="assets/css/live.css?v=20260904-topic-layout-v10">
+  <link rel="stylesheet" href="assets/css/live-rebuild.css?v=20260904-rebuild-v1">
   <link rel="stylesheet" href="assets/css/monitoring.css?v=20260820-1845">
   <meta name="daily-brief-prerender" content="current-publication" data-page="live">
 </head>
 <body data-page="live">
   <div class="paper">
     <div class="utility-bar"><span>LIVE DESK · ROLLING NEWSPAPER</span><span>HOURLY · 06:00–24:00 HKT</span></div>
-    <header class="masthead live-masthead">
+    <header class="masthead">
       <div class="masthead-side">NEW · UPDATED · DEVELOPING<br>最新、完整、可信優先</div>
       <div class="brand"><div class="brand-kicker">即 時 更 新 版</div><h1>每日晨報</h1><div class="brand-en">DAILY BRIEF · LIVE</div></div>
-      <div class="masthead-side right"><span id="live-header-time">2026年9月3日 08:00 HKT</span><br>HONG KONG TIME</div>
+      <div class="masthead-side right"><span id="live-header-time">Live</span><br>HONG KONG TIME</div>
     </header>
     <nav class="section-nav" aria-label="新聞分版"><a class="live-nav" href="live.html" aria-current="page">🔴 Live</a><a href="index.html?v=20260822-2110homefix#daily-edition">📰 頭版</a><a href="world.html">🌍 世界</a><a href="asia.html">🌏 亞洲</a><a href="hong-kong.html">🇭🇰 香港</a><a href="japan.html">🇯🇵 日本</a><a href="finance.html">📈 財經</a><a href="stocks.html">📊 Stock News</a><a href="technology.html">🤖 AI / 科技</a><a href="manga-anime.html">📚 漫畫 / Anime</a><a href="manchester-united.html">🏟️ Manchester United</a><a href="football.html">⚽ Football</a><a class="retail-nav" href="./retail-deals.html?v=20260904-content-width-v1">🛒 最新優惠</a><a href="archive.html">🗂️ Archive</a></nav>
     <main>
       <section class="topic-page-head">
-        <div class="topic-page-kicker live-kicker">ROLLING NEWS DESK</div>
+        <div class="topic-page-kicker">ROLLING NEWS DESK</div>
         <h1>🔴 Live Update</h1>
-        <p>06:00–24:00 每小時更新；08:00 由 Daily Edition 取代。版面、欄寬、正文寬度及響應式規則與其他新聞分版共用同一套 Topic layout。</p>
+        <p>06:00–24:00 每小時更新；版面與世界、亞洲、香港、日本等新聞分版使用完全相同的 Topic layout。</p>
       </section>
-      <div class="topic-page-meta live-stats" id="live-page-stats"><div><strong>0</strong><span>本輪 Live</span></div><div><strong>08:00 HKT Daily Edition</strong><span>更新時段</span></div><div><strong>下一輪 Live 更新 09:00 HKT</strong><span>下一輪</span></div></div>
+
+      <div class="topic-page-meta" id="live-page-stats">
+        <span>Live</span><span>正在載入最新新聞</span>
+      </div>
+
       <section class="topic-section" id="live-news-section">
-        <div class="section-heading"><h2>最新 Live 新聞</h2><div id="live-audit" class="live-audit"><p><strong>Publication mode：</strong>DAILY_BASELINE · 最後更新 2026年9月3日 08:00 HKT</p></div></div>
-        <section id="live-page-items" class="topic-story-grid"><p class="notice">目前沒有新增 Live 卡片；Daily Edition / 各版最新仍然保留。</p></section>
+        <div class="section-heading">
+          <h2>最新 Live 新聞</h2>
+          <div id="live-audit" class="live-page-audit"><p>正在讀取最新 publication…</p></div>
+        </div>
+        <div id="live-page-items" class="topic-story-grid">
+          <p class="notice">正在載入最新 Live 新聞。</p>
+        </div>
       </section>
+
       <p class="notice">Live Update 是滾動版本，內容可隨下一輪核實而改寫；Daily Edition 會固定保存於 Archive。各分版亦會合併 Rolling Desk 最新內容。</p>
     </main>
-    <footer class="footer"><span>每日晨報 Daily Brief · Live Desk</span><span><a href="stocks.html">Stock News</a> · <a href="index.html?v=20260904-layout-v8#daily-edition">今日晨報</a> · <a href="archive.html">Archive</a></span></footer>
+    <footer class="footer"><span>每日晨報 Daily Brief · Live Desk</span><span><a href="stocks.html">Stock News</a> · <a href="index.html#daily-edition">今日晨報</a> · <a href="archive.html">Archive</a></span></footer>
   </div>
-  <!-- live-article.js is the single Live renderer. Topic CSS owns all Live content geometry. -->
-  <script src="assets/js/live-article.js?v=20260904-topic-layout-v3" defer></script>
+
+  <script src="assets/js/live-rebuild.js?v=20260904-rebuild-v1" defer></script>
   <script src="assets/js/system-panel.js?v=20260904-layout-v8" defer></script>
   <script src="assets/js/voice-production-status.js?v=20260823-1355rawmanifest" defer></script>
   <script src="assets/js/page-updated-time.js?v=20260901-page-time-v1" defer></script>
