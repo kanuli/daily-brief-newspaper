@@ -9,6 +9,7 @@ on:
       - 'assets/css/newspaper.css'
       - 'assets/css/live.css'
       - 'assets/css/extras.css'
+      - 'assets/js/live-article.js'
       - 'assets/js/system-panel.js'
       - 'assets/js/page-updated-time.js'
       - '.github/workflows/sync-global-nav.yml'
@@ -45,6 +46,7 @@ jobs:
           CSS_RE = re.compile(r'assets/css/newspaper\.css\?v=[^"\']+', re.I)
           LIVE_CSS_RE = re.compile(r'assets/css/live\.css\?v=[^"\']+', re.I)
           EXTRAS_CSS_RE = re.compile(r'assets/css/extras\.css\?v=[^"\']+', re.I)
+          LIVE_ARTICLE_RE = re.compile(r'assets/js/live-article\.js\?v=[^"\']+', re.I)
           PAGE_TIME_RE = re.compile(r'<script\b[^>]*src=["\']assets/js/page-updated-time\.js(?:\?[^"\']*)?["\'][^>]*>\s*</script>\s*', re.I)
 
           labels = {
@@ -77,8 +79,9 @@ jobs:
               new_nav=match.group(1)+inner+match.group(3)
               new_text=text[:match.start()]+new_nav+text[match.end():]
               new_text=CSS_RE.sub('assets/css/newspaper.css?v=20260904-content-width-v1', new_text)
-              new_text=LIVE_CSS_RE.sub('assets/css/live.css?v=20260904-content-width-v6', new_text)
-              new_text=EXTRAS_CSS_RE.sub('assets/css/extras.css?v=20260904-content-width-v5', new_text)
+              new_text=LIVE_CSS_RE.sub('assets/css/live.css?v=20260904-topic-layout-v7', new_text)
+              new_text=EXTRAS_CSS_RE.sub('assets/css/extras.css?v=20260904-section-width-v6', new_text)
+              new_text=LIVE_ARTICLE_RE.sub('assets/js/live-article.js?v=20260904-topic-layout-v1', new_text)
               new_text=PAGE_TIME_RE.sub('', new_text)
               script='<script src="assets/js/page-updated-time.js?v=20260901-page-time-v1" defer></script>\n'
               if '</body>' not in new_text.lower(): raise SystemExit(f'{path.name}: missing body close tag')
@@ -140,7 +143,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add '*.html' assets/css/newspaper.css assets/js/system-panel.js
-          git commit -m 'Synchronize icons timestamps and section geometry CSS versions'
+          git commit -m 'Synchronize icons timestamps and shared-layout cache versions'
           git push origin HEAD:main
 
       - name: Explicitly deploy latest main to Pages
