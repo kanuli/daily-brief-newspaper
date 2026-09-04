@@ -1,4 +1,18 @@
 .section-nav a[aria-current="page"] { background: #b00016 !important; }
+/* Live content must use the same full main-column width as every other desk. */
+body[data-page="live"] main,
+.live-page-head,
+.live-audit,
+.live-page-items,
+.live-story,
+.live-article-dek,
+.live-article-body,
+.article-sources {
+  width: 100%;
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
 .live-summary { margin: 18px 0 8px; border: 3px solid #111; background: #fffdf7; }
 .live-summary-head { display: flex; justify-content: space-between; gap: 20px; align-items: end; padding: 14px 16px 12px; border-bottom: 5px solid #b00016; }
 .live-kicker { color: #b00016; font-weight: 900; font-size: 12px; letter-spacing: .12em; }
@@ -32,17 +46,17 @@
 .live-stats strong { display: block; color: #b00016; font-family: Georgia, serif; font-size: 31px; line-height: 1; }
 .live-stats span { font-size: 9px; font-weight: 900; }
 .live-stats p { grid-column: 1 / -1; text-align: right; }
-.live-audit { margin: 14px 0 0; padding: 10px 12px; border-top: 1px solid #111; border-bottom: 1px solid #111; font-size: 11px; color: #5e584f; background: #f2ede2; }
+.live-audit { margin-top: 14px; padding: 10px 12px; border-top: 1px solid #111; border-bottom: 1px solid #111; font-size: 11px; color: #5e584f; background: #f2ede2; }
 .live-page-items { padding: 0 0 10px; }
 .live-story { padding: 22px 0; border-bottom: 2px solid #111; }
 .live-story-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: #6c665d; font-size: 11px; font-weight: 700; }
 .live-story h2 { margin: 8px 0 8px; max-width: none; font-family: "Noto Serif TC", serif; font-size: clamp(30px, 4vw, 42px); line-height: 1.12; }
-.live-article-dek { max-width: none; margin: 0 0 12px !important; font-size: 18px !important; line-height: 1.45; font-weight: 800; color: #34302a; }
-.live-article-body { max-width: none; column-count: 2; column-gap: 34px; column-rule: 1px solid #b7aea0; }
+.live-article-dek { margin-top: 0; margin-bottom: 12px !important; font-size: 18px !important; line-height: 1.45; font-weight: 800; color: #34302a; }
+.live-article-body { column-count: 2; column-gap: 34px; column-rule: 1px solid #b7aea0; }
 .live-article-body p { break-inside: avoid; margin: 0 0 12px; font-size: 14px; line-height: 1.7; }
 .live-article-summary:first-child:first-letter { float: left; margin: 7px 7px 0 0; font-family: Georgia, serif; font-size: 46px; line-height: .75; font-weight: 800; }
 .live-article-context, .live-article-why, .live-article-next { padding-top: 8px; border-top: 1px dotted #8b8478; }
-.article-sources { max-width: none; margin-top: 12px; padding-top: 9px; border-top: 1px solid #111; font-size: 11px; line-height: 1.7; }
+.article-sources { margin-top: 12px; padding-top: 9px; border-top: 1px solid #111; font-size: 11px; line-height: 1.7; }
 .article-sources .source-link { margin-right: 4px; }
 
 @media (max-width: 900px) {
