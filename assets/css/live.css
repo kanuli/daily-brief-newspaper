@@ -1,5 +1,5 @@
 .section-nav a[aria-current="page"] { background: #b00016 !important; }
-/* Live content width contract: align every visible Live block with the full main content column. */
+/* Live width contract: use the same natural main-column box model as the newspaper sections. */
 body[data-page="live"] main,
 .live-page-head,
 .live-audit,
@@ -9,12 +9,17 @@ body[data-page="live"] main,
 .live-article-dek,
 .live-article-body,
 .article-sources {
-  width: 100%;
+  width: auto;
   max-width: none;
   margin-left: 0;
   margin-right: 0;
   box-sizing: border-box;
 }
+body[data-page="live"] main { display: block; }
+.live-page-items,
+.live-story,
+.live-article-body,
+.article-sources { display: block; }
 .live-summary { margin: 18px 0 8px; border: 3px solid #111; background: #fffdf7; }
 .live-summary-head { display: flex; justify-content: space-between; gap: 20px; align-items: end; padding: 14px 16px 12px; border-bottom: 5px solid #b00016; }
 .live-kicker { color: #b00016; font-weight: 900; font-size: 12px; letter-spacing: .12em; }
