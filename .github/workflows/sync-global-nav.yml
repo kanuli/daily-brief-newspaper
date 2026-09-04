@@ -95,8 +95,8 @@ jobs:
               new_nav = match.group(1) + inner + match.group(3)
               new_text = text[:match.start()] + new_nav + text[match.end():]
               new_text = CSS_RE.sub('assets/css/newspaper.css?v=20260904-content-width-v1', new_text)
-              new_text = LIVE_CSS_RE.sub('assets/css/live.css?v=20260904-content-width-v2', new_text)
-              new_text = EXTRAS_CSS_RE.sub('assets/css/extras.css?v=20260904-content-width-v1', new_text)
+              new_text = LIVE_CSS_RE.sub('assets/css/live.css?v=20260904-content-width-v3', new_text)
+              new_text = EXTRAS_CSS_RE.sub('assets/css/extras.css?v=20260904-content-width-v2', new_text)
               new_text = PAGE_TIME_RE.sub('', new_text)
               script = '<script src="assets/js/page-updated-time.js?v=20260901-page-time-v1" defer></script>\n'
               if '</body>' not in new_text.lower():
