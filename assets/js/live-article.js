@@ -42,7 +42,7 @@
       ? item.sources
       : (item.sourceUrl ? [{ name: item.sourceName || "原文", url: item.sourceUrl }] : []);
     if (!sources.length) return "";
-    return `<div class="article-sources"><strong>核實來源：</strong> ${sources.map((source) => `<a class="source-link" href="${esc(source.url || "#")}" target="_blank" rel="noopener noreferrer">${esc(source.name || "原文")} ↗</a>`).join(" · ")}</div>`;
+    return `<div class="article-sources topic-sources"><strong>核實來源：</strong> ${sources.map((source) => `<a class="source-link" href="${esc(source.url || "#")}" target="_blank" rel="noopener noreferrer">${esc(source.name || "原文")} ↗</a>`).join(" · ")}</div>`;
   }
 
   function paragraph(label, value, className) {
@@ -51,13 +51,14 @@
     return `<p class="${className}"><strong>${label}</strong>${esc(clean)}</p>`;
   }
 
-  function renderStory(item) {
+  function renderStory(item, index) {
     const body = bodyParagraphs(item.body || "");
-    return `<article class="live-story live-story-rich">
+    const feature = index === 0 ? " topic-feature" : "";
+    return `<article class="topic-story live-story live-story-rich${feature}">
       <div class="live-story-meta">${badge(item.status)} <span>${esc(item.section || "Live")}</span> <span>${esc(item.timeLabel || "")}</span></div>
       <h2>${esc(item.title || "")}</h2>
-      ${item.dek ? `<p class="live-article-dek">${esc(cleanCopy(item.dek))}</p>` : ""}
-      <div class="live-article-body">
+      ${item.dek ? `<p class="topic-dek live-article-dek">${esc(cleanCopy(item.dek))}</p>` : ""}
+      <div class="topic-article-body live-article-body">
         ${paragraph("摘要：", item.summary, "live-article-summary")}
         ${body ? `<div class="live-body-main">${body}</div>` : ""}
         ${paragraph("背景：", item.context || item.background, "live-article-context")}
@@ -104,7 +105,7 @@
     }
 
     host.innerHTML = items.length
-      ? items.map(renderStory).join("")
+      ? items.map((item, index) => renderStory(item, index)).join("")
       : `<p class="notice">暫未能載入本小時新聞；系統會自動重新讀取最新 Live publication。</p>`;
   }
 
