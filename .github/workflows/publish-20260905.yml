@@ -1,0 +1,45 @@
+name: Publish 2026-09-05 Daily
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "scripts/publish_20260905.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-20260905
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build 08:00 Daily publication
+        run: python scripts/publish_20260905.py
+      - name: Validate site schema
+        run: python scripts/validate_site_data.py
+      - name: Validate Daily v3
+        run: python scripts/validate_daily_v3.py
+      - name: Validate editorial and desk depth
+        run: python scripts/validate_editorial_v2.py
+      - name: Validate Stock News
+        run: python scripts/validate_stock_news.py
+      - name: Commit publication
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/2026-09-05.json data/latest.json data/archive.json data/topic-more/2026-09-05.json data/desk-latest.json data/live.json editions/2026-09-05.html
+          if git diff --cached --quiet; then
+            echo "No publication changes to commit"
+          else
+            git commit -m "Publish 2026-09-05 CANTONESE Daily Edition"
+            git push origin HEAD:main
+          fi
