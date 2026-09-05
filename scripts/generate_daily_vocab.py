@@ -42,6 +42,13 @@ BLOCKED_DAILY_KEYS = {
     ("ビア", "ビア"),
 }
 
+# Verified semantic corrections for upstream vocabulary-list POS tags. Exact-key
+# overrides are deliberately narrow: they correct a known source annotation error
+# without guessing POS for any other headword.
+POS_OVERRIDES = {
+    ("しばらく", "しばらく"): "adv",
+}
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -214,7 +221,8 @@ def normalize_core(entries, audit, pos_lookup):
 
         shown = display or reading
         pos = (
-            pos_exact.get((reading, display))
+            POS_OVERRIDES.get((reading, shown))
+            or pos_exact.get((reading, display))
             or pos_exact.get((reading, shown))
             or (pos_by_entry_id.get(entry_id) if entry_id else None)
         )
