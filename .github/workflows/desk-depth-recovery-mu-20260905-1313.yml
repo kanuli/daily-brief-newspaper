@@ -1,0 +1,63 @@
+name: One-shot MU desk depth recovery
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/desk-depth-recovery-mu-20260905-1313.yml'
+permissions:
+  contents: write
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Expand rolling desk without touching Live
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/desk-latest.json')
+          data=json.loads(p.read_text(encoding='utf-8'))
+          story={
+            'id':'manchester-united-champions-league-squad-20260905-1313',
+            'desk':'manchester-united',
+            'status':'LATEST',
+            'title':'曼聯提交歐聯25人A名單　Mainoo與Yoro可循B名單繼續參賽',
+            'dek':'曼聯正式公布2026/27歐聯聯賽階段A名單；Mainoo與Yoro雖未列入25人名單，但因符合青年球員資格仍可透過B名單出戰。',
+            'summary':'Manchester United已向UEFA提交2026/27歐聯25人A名單，球隊下周主場對Sabah FK展開歐聯賽事；Kobbie Mainoo及Leny Yoro未列A名單，但仍符合B名單參賽資格。',
+            'body':'Manchester United在9月4日正式公布2026/27 UEFA Champions League聯賽階段A名單。球會確認已提交25人名單，為下周重返歐聯作準備；首戰將在奧脫福迎戰Sabah FK。\n\nKobbie Mainoo及Leny Yoro沒有列入A名單，但兩人因年齡及球會註冊年期符合UEFA的B名單規則，因此仍可在賽前加入B名單並代表曼聯出戰。這項正式註冊是獨立於今輪WSL開季、Biancheri轉會及Rebeca Bernal加盟的另一宗球會事件。',
+            'context':'曼聯今季重返歐聯，聯賽階段A名單提交後原則上鎖定至淘汰賽前；符合條件的年輕球員可透過B名單另行註冊。',
+            'why':'正式歐聯註冊直接界定曼聯聯賽階段可用的一隊陣容，也澄清Mainoo與Yoro未列A名單並不等於無資格參賽。',
+            'watchNext':'留意曼聯首輪對Sabah FK前提交的B名單，以及Mainoo、Yoro是否進入首場歐聯比賽名單。',
+            'sourceName':'Manchester United／Manchester Evening News',
+            'sourceUrl':'https://www.manutd.com/en/news/reds-submit-champions-league-squad-2026-27',
+            'timeLabel':'9月5日13:13 HKT核實',
+            'sources':[
+              {'name':'Manchester United','url':'https://www.manutd.com/en/news/reds-submit-champions-league-squad-2026-27'},
+              {'name':'Manchester Evening News via Yahoo Sports','url':'https://uk.sports.yahoo.com/news/manchester-united-confirm-25-man-081808845.html'}
+            ],
+            'deskSlugs':['manchester-united','football'],
+            'section':'曼聯｜歐聯／球員註冊',
+            'sectionLabel':'曼聯',
+            'mediaLabel':'Manchester United',
+            'image':None
+          }
+          for slug in ('manchester-united','football'):
+              arr=data.setdefault('desks',{}).setdefault(slug,[])
+              if not any(x.get('id')==story['id'] for x in arr):
+                  arr.insert(0,story.copy())
+          data['generatedAt']='2026-09-05T13:13:00+08:00'
+          data['date']='2026-09-05'
+          p.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+      - name: Commit recovery and remove one-shot workflow
+        run: |
+          rm -f .github/workflows/desk-depth-recovery-mu-20260905-1313.yml
+          git config user.name 'daily-brief-recovery-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add data/desk-latest.json .github/workflows/desk-depth-recovery-mu-20260905-1313.yml
+          git commit -m 'Restore Manchester United rolling-desk depth'
+          git push origin HEAD:main
