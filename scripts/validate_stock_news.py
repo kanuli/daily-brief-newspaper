@@ -1,19 +1,27 @@
 #!/usr/bin/env python3
 import json
 import pathlib
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PATH = ROOT / "data" / "stocks-latest.json"
-EXPECTED = ["NVDA", "AAPL", "TSM", "PLTR", "MSFT", "GOOG", "EMXC", "EWY", "VT"]
-ETF_TICKERS = {"EMXC", "EWY", "VT"}
+EXPECTED = ["GOOG", "GLDM", "ICE", "MCD", "EMXC", "GBTC", "DBA", "AAPL", "EWY", "META", "MSFT", "NVDA", "TSM", "PLTR", "VT"]
+ETF_TICKERS = {"GLDM", "EMXC", "GBTC", "DBA", "EWY", "VT"}
 REQUIRED = [
     "id", "storyType", "impact", "impactLabel", "title", "dek", "summary",
     "body", "context", "why", "watchNext", "sourceName", "sourceUrl", "timeLabel"
 ]
+PUBLIC_COPY_FIELDS = ("title", "dek", "summary", "body", "context", "why", "watchNext")
+BANNED_PUBLIC_FRAGMENTS = (
+    "第一手資料已通過Stock News核實",
+    "已通過Stock News核實",
+    "Stock News核實",
+    "Stock News 核實",
+)
 VALID_IMPACTS = {"↑", "↓", "↔"}
 VALID_COLLECTION_STATUS = {"COMPLETE", "INCOMPLETE", "COLLECTION_FAILURE"}
+MAX_SNAPSHOT_AGE_HOURS = 72
 
 
 def require(cond, msg):
@@ -32,14 +40,18 @@ def valid_http_url(value):
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
-def valid_timestamp(value):
+def parse_timestamp(value):
     if not text(value):
-        return False
+        return None
     try:
         dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return dt.tzinfo is not None
+        return dt if dt.tzinfo is not None else None
     except Exception:
-        return False
+        return None
+
+
+def valid_timestamp(value):
+    return parse_timestamp(value) is not None
 
 
 def main():
@@ -47,7 +59,13 @@ def main():
     data = json.loads(PATH.read_text(encoding="utf-8"))
     require(data.get("mode") == "TRACKED_STOCK_NEWS", "mode must be TRACKED_STOCK_NEWS")
     require(data.get("tracked") == EXPECTED, f"tracked list must be exactly {EXPECTED}")
-    require(valid_timestamp(data.get("generatedAt")), "generatedAt must be a timezone-aware ISO timestamp")
+    generated = parse_timestamp(data.get("generatedAt"))
+    require(generated is not None, "generatedAt must be a timezone-aware ISO timestamp")
+    generated_utc = generated.astimezone(timezone.utc)
+    age_hours = (datetime.now(timezone.utc) - generated_utc).total_seconds() / 3600.0
+    require(age_hours >= -1.0, "generatedAt must not be materially in the future")
+    require(age_hours <= MAX_SNAPSHOT_AGE_HOURS,
+            f"generatedAt is stale ({age_hours:.1f}h old; maximum {MAX_SNAPSHOT_AGE_HOURS}h)")
     require(text(data.get("lastUpdatedLabel")), "lastUpdatedLabel is required")
 
     # lastCheckedAt is deliberately distinct from generatedAt. It is optional for
@@ -83,6 +101,10 @@ def main():
             require(isinstance(story, dict), f"{label}: story must be object")
             for field in REQUIRED:
                 require(text(story.get(field)), f"{label}: {field} is required")
+            for field in PUBLIC_COPY_FIELDS:
+                public_text = str(story.get(field) or "")
+                require(not any(fragment in public_text for fragment in BANNED_PUBLIC_FRAGMENTS),
+                        f"{label}: {field} contains internal Stock News verification/process copy")
             require(story["id"] not in seen, f"duplicate story id {story['id']}")
             seen.add(story["id"])
 
