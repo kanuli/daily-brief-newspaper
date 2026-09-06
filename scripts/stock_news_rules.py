@@ -2,31 +2,72 @@
 """Shared Stock News matching, trust and event rules.
 
 The rolling collector is deliberately broad, but Stock News must not confuse
-short tickers with unrelated entities (for example VT=Virginia Tech or a bad
-publisher tag that labels Navitas Semiconductor as NVDA).  The verified
-producer imports the same rules so discovery and publication cannot disagree
-about ticker identity.
+short tickers with unrelated entities. The verified producer imports the same
+rules so discovery and publication cannot disagree about ticker identity.
 """
 from __future__ import annotations
 
 import re
 from typing import Iterable
 
-TRACKED = ("NVDA", "AAPL", "TSM", "PLTR", "MSFT", "GOOG", "EMXC", "EWY", "VT")
-ETF_TICKERS = {"EMXC", "EWY", "VT"}
+TRACKED = (
+    "GOOG", "GLDM", "ICE", "MCD", "EMXC", "GBTC", "DBA", "AAPL", "EWY",
+    "META", "MSFT", "NVDA", "TSM", "PLTR", "VT",
+)
+ETF_TICKERS = {"GLDM", "EMXC", "GBTC", "DBA", "EWY", "VT"}
 
-# Ordered patterns intentionally prefer explicit company names / finance-style
-# ticker notation.  VT is never accepted as a naked two-letter token.
 _PATTERNS = {
-    "NVDA": (
-        re.compile(r"\bNVIDIA\b", re.I),
-        re.compile(r"(?:NASDAQ\s*[:：]\s*NVDA|NVDA\s*[:：]\s*NASDAQ|\$NVDA\b|\(NVDA(?:\.[A-Z]+)?\))", re.I),
-        re.compile(r"\bNVDA\b", re.I),
+    "GOOG": (
+        re.compile(r"\bAlphabet\b|\bGoogle\b", re.I),
+        re.compile(r"(?:NASDAQ\s*[:：]\s*GOO?GL?|GOO?GL?\s*[:：]\s*NASDAQ|\$GOO?GL?\b|\(GOO?GL?(?:\.[A-Z]+)?\))", re.I),
+        re.compile(r"\bGOOG(?:L)?\b", re.I),
+    ),
+    "GLDM": (
+        re.compile(r"SPDR\s+Gold\s+MiniShares(?:\s+Trust)?|Gold\s+MiniShares", re.I),
+        re.compile(r"(?:NYSEARCA\s*[:：]\s*GLDM|GLDM\s*[:：]\s*NYSEARCA|\$GLDM\b|\bGLDM\s+ETF\b|\(GLDM(?:\.[A-Z]+)?\))", re.I),
+    ),
+    "ICE": (
+        re.compile(r"\bIntercontinental Exchange\b", re.I),
+        re.compile(r"(?:NYSE\s*[:：]\s*ICE|ICE\s*[:：]\s*NYSE|\$ICE\b|\(ICE(?:\.[A-Z]+)?\))", re.I),
+    ),
+    "MCD": (
+        re.compile(r"\bMcDonald(?:'|’)s\b|\bMcDonalds\b", re.I),
+        re.compile(r"(?:NYSE\s*[:：]\s*MCD|MCD\s*[:：]\s*NYSE|\$MCD\b|\(MCD(?:\.[A-Z]+)?\)|\bMCD\b)", re.I),
+    ),
+    "EMXC": (
+        re.compile(r"iShares MSCI Emerging Markets ex China|Emerging Markets ex China ETF", re.I),
+        re.compile(r"(?:NASDAQ\s*[:：]\s*EMXC|EMXC\s*[:：]\s*NASDAQ|\$EMXC\b|\bEMXC\s+ETF\b|\(EMXC(?:\.[A-Z]+)?\)|\bEMXC\b)", re.I),
+    ),
+    "GBTC": (
+        re.compile(r"\bGrayscale Bitcoin Trust\b", re.I),
+        re.compile(r"(?:NYSEARCA\s*[:：]\s*GBTC|GBTC\s*[:：]\s*NYSEARCA|\$GBTC\b|\bGBTC\s+(?:ETF|trust)\b|\(GBTC(?:\.[A-Z]+)?\)|\bGBTC\b)", re.I),
+    ),
+    "DBA": (
+        re.compile(r"\bInvesco DB Agriculture Fund\b|DB Agriculture Fund", re.I),
+        re.compile(r"(?:NYSEARCA\s*[:：]\s*DBA|DBA\s*[:：]\s*NYSEARCA|\$DBA\b|\bDBA\s+ETF\b|\(DBA(?:\.[A-Z]+)?\))", re.I),
     ),
     "AAPL": (
         re.compile(r"\bApple\b", re.I),
         re.compile(r"(?:NASDAQ\s*[:：]\s*AAPL|AAPL\s*[:：]\s*NASDAQ|\$AAPL\b|\(AAPL(?:\.[A-Z]+)?\))", re.I),
         re.compile(r"\bAAPL\b", re.I),
+    ),
+    "EWY": (
+        re.compile(r"iShares MSCI South Korea ETF|MSCI South Korea ETF", re.I),
+        re.compile(r"(?:NYSEARCA\s*[:：]\s*EWY|EWY\s*[:：]\s*NYSEARCA|\$EWY\b|\bEWY\s+ETF\b|\(EWY(?:\.[A-Z]+)?\)|\bEWY\b)", re.I),
+    ),
+    "META": (
+        re.compile(r"\bMeta Platforms\b|\bMeta\b", re.I),
+        re.compile(r"(?:NASDAQ\s*[:：]\s*META|META\s*[:：]\s*NASDAQ|\$META\b|\(META(?:\.[A-Z]+)?\)|\bMETA\b)", re.I),
+    ),
+    "MSFT": (
+        re.compile(r"\bMicrosoft\b", re.I),
+        re.compile(r"(?:NASDAQ\s*[:：]\s*MSFT|MSFT\s*[:：]\s*NASDAQ|\$MSFT\b|\(MSFT(?:\.[A-Z]+)?\))", re.I),
+        re.compile(r"\bMSFT\b", re.I),
+    ),
+    "NVDA": (
+        re.compile(r"\bNVIDIA\b", re.I),
+        re.compile(r"(?:NASDAQ\s*[:：]\s*NVDA|NVDA\s*[:：]\s*NASDAQ|\$NVDA\b|\(NVDA(?:\.[A-Z]+)?\))", re.I),
+        re.compile(r"\bNVDA\b", re.I),
     ),
     "TSM": (
         re.compile(r"\bTSMC\b|Taiwan Semiconductor|台積電|台積公司|台湾積体電路", re.I),
@@ -37,24 +78,9 @@ _PATTERNS = {
         re.compile(r"(?:NASDAQ\s*[:：]\s*PLTR|PLTR\s*[:：]\s*NASDAQ|\$PLTR\b|\(PLTR(?:\.[A-Z]+)?\))", re.I),
         re.compile(r"\bPLTR\b", re.I),
     ),
-    "MSFT": (
-        re.compile(r"\bMicrosoft\b", re.I),
-        re.compile(r"(?:NASDAQ\s*[:：]\s*MSFT|MSFT\s*[:：]\s*NASDAQ|\$MSFT\b|\(MSFT(?:\.[A-Z]+)?\))", re.I),
-        re.compile(r"\bMSFT\b", re.I),
-    ),
-    "GOOG": (
-        re.compile(r"\bAlphabet\b|\bGoogle\b", re.I),
-        re.compile(r"(?:NASDAQ\s*[:：]\s*GOO?GL?|GOO?GL?\s*[:：]\s*NASDAQ|\$GOO?GL?\b|\(GOO?GL?(?:\.[A-Z]+)?\))", re.I),
-        re.compile(r"\bGOOG(?:L)?\b", re.I),
-    ),
-    "EMXC": (
-        re.compile(r"\bEMXC\b|iShares MSCI Emerging Markets ex China|Emerging Markets ex China ETF", re.I),
-    ),
-    "EWY": (
-        re.compile(r"\bEWY\b|iShares MSCI South Korea ETF|MSCI South Korea ETF", re.I),
-    ),
     "VT": (
-        re.compile(r"Vanguard Total World Stock ETF|Vanguard Total World|(?:NYSEARCA\s*[:：]\s*VT|VT\s*[:：]\s*NYSEARCA|\$VT\b)|\bVT\s+ETF\b", re.I),
+        re.compile(r"Vanguard Total World Stock ETF|Vanguard Total World", re.I),
+        re.compile(r"(?:NYSEARCA\s*[:：]\s*VT|VT\s*[:：]\s*NYSEARCA|\$VT\b)|\bVT\s+ETF\b", re.I),
     ),
 }
 
@@ -65,17 +91,12 @@ _FALSE_POSITIVE = {
     ),
 }
 
-# Sources that may corroborate an official event.  They never make a raw item
-# publishable on their own; the verified producer still requires a primary
-# company/IR/regulatory source.
 _TRUSTED_SECONDARY = (
     "Reuters", "Associated Press", "AP News", "Bloomberg", "Financial Times",
     "The Wall Street Journal", "Wall Street Journal", "CNBC", "MarketWatch",
     "Nikkei Asia", "Nikkei", "BBC", "The Guardian",
 )
 
-# Explicitly low-signal/analysis/social sources.  Keep them in discovery for
-# breadth, but never use them as automatic verification evidence.
 _BLOCKED_AUTO_SOURCES = (
     "Moomoo", "Stocktwits", "The Motley Fool", "Motley Fool", "GuruFocus",
     "24/7 Wall St", "Seeking Alpha", "Barchart", "FXLeaders", "StartupHub",
@@ -98,7 +119,7 @@ def normalize(value: str | None) -> str:
 
 def _finance_context(text: str) -> bool:
     return bool(re.search(
-        r"\b(stock|shares?|earnings|revenue|guidance|analyst|NASDAQ|NYSE|ETF|investor|market|quarter|SEC|AI|chip|cloud|product|event)\b|股|財報|營收|業績|投資",
+        r"\b(stock|shares?|earnings|revenue|guidance|analyst|NASDAQ|NYSE|NYSEARCA|ETF|trust|fund|investor|market|quarter|SEC|AI|chip|cloud|product|event|gold|bitcoin|crypto|agriculture|commodity|index)\b|股|財報|營收|業績|投資|黃金|比特幣|商品|基金",
         text,
         re.I,
     ))
@@ -109,20 +130,17 @@ def match_tickers(title: str, source: str = "", query: str = "") -> list[str]:
     found: list[str] = []
     for ticker in TRACKED:
         if any(pattern.search(text) for pattern in _FALSE_POSITIVE.get(ticker, ())):
-            # A false-positive exclusion can be overridden only by the canonical
-            # company/fund name also being present.
             canonical_override = {
                 "NVDA": re.search(r"\bNVIDIA\b", text, re.I),
                 "VT": re.search(r"Vanguard Total World", text, re.I),
             }.get(ticker)
             if not canonical_override:
                 continue
-        if any(pattern.search(text) for pattern in _PATTERNS[ticker]):
-            # Short finance tickers are accepted only in a finance/news context.
-            if ticker in {"NVDA", "AAPL", "PLTR", "MSFT", "GOOG", "EMXC", "EWY"}:
-                has_name = bool(_PATTERNS[ticker][0].search(text))
-                if not has_name and not _finance_context(text + " " + normalize(query)):
-                    continue
+        patterns = _PATTERNS[ticker]
+        if any(pattern.search(text) for pattern in patterns):
+            has_name = bool(patterns[0].search(text))
+            if not has_name and not _finance_context(text + " " + normalize(query)):
+                continue
             found.append(ticker)
     return found
 
