@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Shared public-desk freshness policy.
+"""Shared public-desk freshness and editorial-routing policy.
 
 Numeric desk depth is not enough to prove that a public news page is current.
-This module defines the maximum age of the newest published/verified story that
-may still be described as a healthy current desk.
+A story also has to belong to the page.  Publication uses one primary desk by
+default; cross-desk relevance is context, not a licence to duplicate a story
+onto unrelated topic pages.  Specialist football and manga/anime ownership is
+resolved before generic geographic/business routing.
 """
 from __future__ import annotations
 
@@ -21,9 +23,6 @@ EXPECTED_DESKS = (
     "ai-tech", "manga-anime", "manchester-united", "football",
 )
 
-# Public-page SLA, not a collection lookback. Niche desks may have a longer
-# window than broad breaking-news desks, but no desk may silently survive for
-# multiple days merely because it still contains enough old stories.
 PUBLIC_DESK_FRESHNESS_HOURS = {
     "world": 8,
     "asia": 12,
@@ -50,6 +49,21 @@ CAPS = {
 
 CANONICAL_DESK = {"finance": "market-economy"}
 
+_FOOTBALL = re.compile(
+    r"(?:\bfootball\b|\bsoccer\b|\bFIFA\b|\bUEFA\b|\bAFC\b|\bPremier League\b|"
+    r"\bChampions League\b|\bEuropa League\b|\bJ[- ]?League\b|\bU-?20\b.{0,25}(?:World Cup|世界盃)|"
+    r"世界盃|世盃|足球|英超|歐聯|歐霸|日職|J聯賽|女足|女子世界盃|球賽|入球|轉會|領隊|球員)",
+    re.I,
+)
+_MANCHESTER_UNITED = re.compile(
+    r"(?:Manchester United|Man Utd|Man United|曼聯|曼彻斯特联|紅魔)", re.I,
+)
+_MANGA_ANIME = re.compile(
+    r"(?:\banime\b|\bmanga\b|漫畫|动画|動畫|動漫|漫改|輕小說|聲優|名偵探柯南|柯南|"
+    r"聖鬥士星矢|One Piece|海賊王|鬼滅之刃|咒術迴戰|進擊的巨人)",
+    re.I,
+)
+
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
@@ -60,18 +74,59 @@ def canonical_slug(value: Any) -> str:
     return CANONICAL_DESK.get(raw, raw)
 
 
+def _routing_text(story: dict[str, Any]) -> str:
+    return " ".join(
+        str(story.get(key) or "")
+        for key in ("id", "desk", "section", "sectionLabel", "title", "dek", "summary")
+    )
+
+
 def routed_slugs(story: dict[str, Any]) -> list[str]:
+    """Return editorial publication ownership for a story.
+
+    The first valid explicit deskSlugs entry is the primary desk.  Secondary
+    deskSlugs are treated as relevance metadata only and do not cause public
+    cross-posting.  Clear specialist content overrides a generic geographic or
+    finance tag so football cannot leak into World/Asia/Japan/Finance and
+    manga/anime cannot leak into Japan/general desks.
+    """
+    text = _routing_text(story)
+    story_id = str(story.get("id") or "").strip().lower()
+    raw_desk = canonical_slug(story.get("desk"))
+
+    is_mu = (
+        raw_desk == "manchester-united"
+        or story_id.startswith(("mu-", "manchester-united-"))
+        or bool(_MANCHESTER_UNITED.search(text))
+    )
+    is_football = (
+        raw_desk in {"football", "manchester-united"}
+        or story_id.startswith(("football-", "soccer-", "fifa-", "uefa-"))
+        or bool(_FOOTBALL.search(text))
+    )
+    if is_mu and is_football:
+        return ["manchester-united", "football"]
+    if is_football:
+        return ["football"]
+
+    is_manga = (
+        raw_desk == "manga-anime"
+        or story_id.startswith(("anime-", "manga-", "comic-"))
+        or bool(_MANGA_ANIME.search(text))
+    )
+    if is_manga:
+        return ["manga-anime"]
+
     explicit = story.get("deskSlugs")
     if isinstance(explicit, list) and explicit:
-        out = []
         for raw in explicit:
             slug = canonical_slug(raw)
-            if slug in EXPECTED_DESKS and slug not in out:
-                out.append(slug)
-        if out:
-            return out
-    slug = canonical_slug(story.get("desk"))
-    return [slug] if slug in EXPECTED_DESKS else []
+            if slug in EXPECTED_DESKS:
+                return [slug]
+
+    if raw_desk in EXPECTED_DESKS:
+        return [raw_desk]
+    return []
 
 
 def editorial_story_time(story: dict[str, Any], *, now: datetime | None = None) -> datetime | None:
