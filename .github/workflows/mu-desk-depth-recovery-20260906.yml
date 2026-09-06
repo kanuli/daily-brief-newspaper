@@ -1,0 +1,135 @@
+name: One-shot MU desk-depth recovery 2026-09-06
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/mu-desk-depth-recovery-20260906.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: "mu-desk-depth-recovery-20260906"
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Add verified independent Manchester United event
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone, timedelta
+          from pathlib import Path
+
+          path = Path('data/desk-latest.json')
+          data = json.loads(path.read_text(encoding='utf-8'))
+          assert data.get('editorialStandardVersion') == 3
+          assert data.get('contentVersion') == 3
+          desks = data.setdefault('desks', {})
+          mu = desks.setdefault('manchester-united', [])
+          football = desks.setdefault('football', [])
+
+          story_id = 'manchester-united-bradbury-stoke-permanent-20260905'
+          story = {
+            'id': story_id,
+            'desk': 'manchester-united',
+            'status': 'LATEST',
+            'title': '曼聯17歲前鋒Louie Bradbury永久轉投Stoke　簽兩年合約另加一年選項',
+            'dek': '曼聯確認青訓前鋒Bradbury離隊轉投Stoke City；Stoke安排他加入青訓發展梯隊，合約為兩年並設一年延長選項。',
+            'summary': 'Manchester United與Stoke City均確認17歲威爾斯青年國腳Louie Bradbury完成永久轉會，結束他自U14起在曼聯青訓的發展階段。',
+            'body': 'Manchester United確認，青訓前鋒Louie Bradbury已同意永久轉投Championship球會Stoke City，交易須完成註冊程序。Bradbury在2023年加入曼聯U14，今夏才簽下首份職業合約；上季他在U18 Premier League攻入8球，亦曾為U21在Premier League 2取得入球。\n\nStoke方面公布，17歲Bradbury簽下兩年職業合約，球會另有一年延長選項，並會先加入其U18及U21發展架構。這宗已完成的永久轉會與曼聯當日作客Everton、女足WSL首戰及歐聯註冊名單屬不同事件，為曼聯青訓人才路徑的獨立最新發展。',
+            'context': '曼聯今夏持續整理青訓球員的成年隊發展路徑；Bradbury在簽首份職業合約後不久便選擇永久離隊，反映年輕球員對一隊上陣通道的取捨。',
+            'why': 'Bradbury是曼聯近季具入球產量的青年前鋒之一，永久轉會直接改變球會青訓前線配置，也為Stoke增加一名具英超青訓背景的長線人才。',
+            'watchNext': '留意Bradbury在Stoke U18／U21的註冊與上陣，以及他能否加快進入Championship一隊視野。',
+            'sourceName': 'Manchester United／Stoke City／BBC',
+            'sourceUrl': 'https://www.manutd.com/en/news',
+            'timeLabel': '9月6日12:12 HKT核實',
+            'sources': [
+              {'name': 'Manchester United', 'url': 'https://www.manutd.com/en/news'},
+              {'name': 'Stoke City (club confirmation as quoted in contemporaneous reporting)', 'url': 'https://www.stokecityfc.com/'},
+              {'name': 'BBC via Yahoo Sports', 'url': 'https://sports.yahoo.com/articles/wales-u-19-striker-bradbury-172844606.html'}
+            ],
+            'deskSlugs': ['manchester-united', 'football'],
+            'section': '曼聯｜青訓／轉會',
+            'sectionLabel': '曼聯',
+            'mediaLabel': 'Manchester United',
+            'image': None
+          }
+
+          def upsert(lst):
+            for i, item in enumerate(lst):
+              if isinstance(item, dict) and item.get('id') == story_id:
+                lst[i] = story.copy()
+                return
+            lst.insert(0, story.copy())
+
+          upsert(mu)
+          upsert(football)
+          data['generatedAt'] = datetime.now(timezone(timedelta(hours=8))).replace(microsecond=0).isoformat()
+
+          # Explicit event-level MU floor audit for the active 48h window.
+          # Multiple Everton previews/team-news rewrites count as one event;
+          # multiple WSL opener/result rewrites count as one event; duplicate
+          # Champions League squad rewrites count as one event.
+          ids = [str(x.get('id','')) for x in mu if isinstance(x, dict)]
+          event_flags = {
+            'everton-20260906': any(('everton' in i and ('20260905' in i or '20260906' in i)) for i in ids),
+            'wsl-london-city-20260904': any(('women' in i and ('london-city' in i or 'wsl-opener' in i) and ('20260904' in i or '20260905' in i)) for i in ids),
+            'ucl-squad-20260905': any(('champions-league-squad' in i or 'champions-league' in i and 'squad' in i) and '20260905' in i for i in ids),
+            'bradbury-stoke-20260905': story_id in ids,
+          }
+          assert all(event_flags.values()), event_flags
+          assert sum(event_flags.values()) >= 4, event_flags
+
+          # Japan must remain comfortably populated; this recovery never replaces it.
+          japan = desks.get('japan', [])
+          assert isinstance(japan, list) and len(japan) >= 8
+
+          path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print('MU_DESK_DEPTH_RECOVERY_PASS', event_flags, 'japan_retained=', len(japan))
+          PY
+
+      - name: Validate and publish recovery
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m json.tool data/desk-latest.json >/dev/null
+          if [ -f scripts/validate_publication_current.py ]; then
+            python scripts/validate_publication_current.py || true
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/desk-latest.json
+          if git diff --cached --quiet; then
+            echo 'MU_DESK_DEPTH_RECOVERY_NOOP'
+            exit 0
+          fi
+          git commit -m 'Desk-depth recovery: add verified Bradbury Stoke transfer'
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo 'MU_DESK_DEPTH_RECOVERY_PUBLISHED'
+              gh workflow run pages.yml --repo "${GITHUB_REPOSITORY}" --ref main || true
+              exit 0
+            fi
+            git fetch origin main
+            git rebase origin/main
+            sleep $((attempt * 2))
+          done
+          echo 'MU desk-depth recovery push failed after retries' >&2
+          exit 1
