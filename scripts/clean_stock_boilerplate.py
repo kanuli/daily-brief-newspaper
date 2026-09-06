@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Remove repeated verification-policy boilerplate from published Stock News.
+"""Remove internal verification/process copy from published Stock News.
 
-The verification policy belongs at page level, not repeated inside every
-company story. This keeps event-specific copy distinct while preserving all
-facts, sources, timestamps, and verification metadata.
+Verification policy belongs at page/system level, never as the news value of a
+company story. Whole pseudo-news cards whose public copy merely says that Stock
+News verified an item are removed so the publication pipeline must replace them
+with actual developments.
 """
 from __future__ import annotations
 
@@ -21,6 +22,18 @@ BODY_SENTENCES = (
     "Stock News的自動核實器不會因搜尋結果、社交平台貼文或預測文章出現相似標題，就把未正式發布的消息當作公司事實。",
     "Stock News 的自動核實器不會因搜尋結果、社交平台貼文或預測文章出現相似標題，就把未正式發布的消息當作公司事實。",
 )
+BANNED_STORY_FRAGMENTS = (
+    "第一手資料已通過Stock News核實",
+    "已通過Stock News核實",
+    "Stock News核實",
+    "Stock News 核實",
+)
+PUBLIC_COPY_FIELDS = ("title", "dek", "summary", "body", "context", "why", "watchNext")
+
+
+def is_process_story(story: dict) -> bool:
+    public_copy = " ".join(str(story.get(field) or "") for field in PUBLIC_COPY_FIELDS)
+    return any(fragment in public_copy for fragment in BANNED_STORY_FRAGMENTS)
 
 
 def clean_story(story: dict) -> bool:
@@ -41,7 +54,7 @@ def clean_story(story: dict) -> bool:
     original = body
     for sentence in BODY_SENTENCES:
         body = body.replace(sentence, "")
-    body = body.replace("。。", "。").replace("。\n\n", "。\n\n").strip()
+    body = body.replace("。。", "。").strip()
     if body != original:
         story["body"] = body
         changed = True
@@ -51,17 +64,27 @@ def clean_story(story: dict) -> bool:
 
 def main() -> None:
     data = json.loads(PATH.read_text(encoding="utf-8"))
-    changed_count = 0
+    cleaned_count = 0
+    removed_count = 0
     for block in (data.get("tickers") or {}).values():
         if not isinstance(block, dict):
             continue
-        for story in block.get("stories") or []:
-            if isinstance(story, dict) and clean_story(story):
-                changed_count += 1
+        stories = block.get("stories") or []
+        kept = []
+        for story in stories:
+            if not isinstance(story, dict):
+                continue
+            if is_process_story(story):
+                removed_count += 1
+                continue
+            if clean_story(story):
+                cleaned_count += 1
+            kept.append(story)
+        block["stories"] = kept[:3]
 
-    if changed_count:
+    if cleaned_count or removed_count:
         PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("STOCK_BOILERPLATE_CLEAN_OK", "stories", changed_count)
+    print("STOCK_BOILERPLATE_CLEAN_OK", "cleaned", cleaned_count, "removed_pseudo_stories", removed_count)
 
 
 if __name__ == "__main__":
