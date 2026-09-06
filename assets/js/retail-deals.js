@@ -48,10 +48,14 @@
     if (t.includes('secondary')) return 'SECONDARY';
     return 'SOURCE';
   }
+  function isPubliclyVerifiedPromotion(p) {
+    const t = String(p && p.sourceType || '').toLowerCase();
+    return t.includes('official') || t.includes('social') || t.includes('facebook');
+  }
 
   function promotions(data) {
     return (Array.isArray(data.promotions) ? data.promotions : [])
-      .filter((p) => p && p.id && p.retailer && p.title && p.active !== false)
+      .filter((p) => p && p.id && p.retailer && p.title && p.active !== false && isPubliclyVerifiedPromotion(p))
       .map((p) => ({ ...p, id: String(p.id), timestamp: p.publishedAt || p.discoveredAt || p.checkedAt || data.generatedAt }));
   }
 
@@ -83,7 +87,7 @@
     const sources = Array.isArray(data.sources) ? data.sources : [];
     const ok = sources.filter((s) => s.status === 'ok').length;
     $('retail-summary').innerHTML = `
-      <div class="retail-stat"><strong>${rows.length}</strong><span>最新推廣</span></div>
+      <div class="retail-stat"><strong>${rows.length}</strong><span>已核實推廣</span></div>
       <div class="retail-stat"><strong>${retailers.size}</strong><span>涵蓋商店</span></div>
       <div class="retail-stat"><strong>${ok}/${sources.length}</strong><span>來源正常</span></div>
       <div class="retail-stat"><strong>2小時</strong><span>更新頻率</span></div>`;
@@ -91,9 +95,9 @@
 
   function renderPromotions(data) {
     const rows = sortCards(promotions(data).filter(cardMatches));
-    $('promo-count').textContent = `${rows.length} PROMOTIONS`;
+    $('promo-count').textContent = `${rows.length} VERIFIED PROMOTIONS`;
     if (!rows.length) {
-      $('promotion-list').innerHTML = '<p class="empty-retail">目前沒有符合篩選條件的最新推廣。</p>';
+      $('promotion-list').innerHTML = '<p class="empty-retail">目前沒有符合篩選條件的已核實最新推廣。</p>';
       return;
     }
     $('promotion-list').innerHTML = rows.map((p) => {
@@ -103,7 +107,7 @@
         <div><span class="source-badge ${sourceClass(p.sourceType)}">${sourceLabel(p.sourceType)}</span> <span class="source-badge official">PROMOTION</span></div>
         <h3>${esc(p.title)}</h3>
         ${p.summary ? `<p>${esc(p.summary)}</p>` : ''}
-        ${hasDates ? `<div class="promo-validity">活動日期：${dateOnly(p.startDate)} – ${dateOnly(p.endDate)}</div>` : `<div class="promo-validity">發布／發現：${when(p.timestamp)}</div>`}
+        ${hasDates ? `<div class="promo-validity">活動日期：${dateOnly(p.startDate)} – ${dateOnly(p.endDate)}</div>` : `<div class="promo-validity">發布／核實：${when(p.timestamp)}</div>`}
         ${p.restriction ? `<div class="promo-restriction">條件／備註：${esc(p.restriction)}</div>` : ''}
         <div class="promo-source">${esc(p.sourceName || '')}${p.sourceUrl ? `<br><a class="source-link-retail" href="${esc(p.sourceUrl)}" target="_blank" rel="noopener noreferrer">查看推廣來源 ↗</a>` : ''}</div>
       </article>`;
@@ -153,13 +157,13 @@
       const data = await response.json();
       if (!data || data.schemaVersion !== 3 || !Array.isArray(data.promotions) || !Array.isArray(data.sources)) throw new Error('invalid promotion-only schema');
       state.data = data;
-      $('retail-generated').textContent = '資料範圍：推廣活動（PROMOTION ONLY）';
+      $('retail-generated').textContent = '資料範圍：已核實推廣活動（PROMOTION ONLY）';
       $('retail-checked').textContent = `最後資料更新：${when(data.generatedAt)}`;
       populateRetailers(data);
       render();
     } catch (err) {
       const message = `最新推廣資料暫時無法載入：${esc(err.message || err)}`;
-      $('retail-generated').textContent = '資料範圍：推廣活動（PROMOTION ONLY）';
+      $('retail-generated').textContent = '資料範圍：已核實推廣活動（PROMOTION ONLY）';
       $('retail-checked').textContent = '最後資料更新：暫時未能讀取';
       $('promotion-list').innerHTML = `<p class="notice">${message}</p>`;
       $('source-health').innerHTML = '<p class="notice">請稍後重新整理頁面；其他新聞版面不受影響。</p>';
