@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Promote the current verified Daily edition into Rolling Desk reservoirs.
 
-The Daily edition is already verified editorial copy. Topic pages combine Daily,
-Rolling Desk and Live, so a Daily story must never be hidden behind a stale
-Rolling Desk simply because the Rolling Desk still satisfies a numeric count
-floor. Hard desk depths are minimums, never story caps.
+The Daily edition is already verified editorial copy, but desk ownership is
+resolved independently by the shared editorial-routing policy.  Relevance tags
+must not become uncontrolled public cross-posts.  Before syncing the current
+Daily we therefore remove retained stories from desks they no longer own, then
+promote each story only to its resolved primary/specialist desk.
 """
 from __future__ import annotations
 
@@ -53,6 +54,23 @@ def main() -> int:
         return 0
 
     desks = desk.setdefault("desks", {})
+
+    # Clean old uncontrolled cross-posts first. Stories without any resolvable
+    # ownership are left in place for recovery/retention tooling to inspect;
+    # stories with resolved ownership may only remain on an owned desk.
+    removed = []
+    for slug in EXPECTED_DESKS:
+        kept = []
+        for raw in desks.setdefault(slug, []):
+            if not isinstance(raw, dict):
+                continue
+            routes = routed_slugs(raw)
+            if routes and slug not in routes:
+                removed.append((slug, str(raw.get("id") or raw.get("title") or "unknown"), tuple(routes)))
+                continue
+            kept.append(raw)
+        desks[slug] = kept
+
     promoted = {slug: 0 for slug in EXPECTED_DESKS}
     for raw in latest.get("articles") or []:
         if not isinstance(raw, dict) or not raw.get("id") or not raw.get("title"):
@@ -64,10 +82,9 @@ def main() -> int:
             story = copy.deepcopy(raw)
             story["status"] = "LATEST"
             story["deskSlugs"] = list(dict.fromkeys(slugs))
+            story["desk"] = slug if len(slugs) == 1 else story.get("desk", slug)
             existing = desks.setdefault(slug, [])
             before = [str(x.get("id") or "") for x in existing if isinstance(x, dict)]
-            # Preserve every distinct retained story. Staleness is handled by the
-            # retention policy, not by an arbitrary topic-page count maximum.
             desks[slug] = merge_front(existing, story)
             after = [str(x.get("id") or "") for x in desks[slug] if isinstance(x, dict)]
             if after and after[0] == str(story.get("id")) and (not before or before[0] != after[0]):
@@ -75,7 +92,9 @@ def main() -> int:
 
     DESK.write_text(json.dumps(desk, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     changed = {k: v for k, v in promoted.items() if v}
-    print(f"DAILY_TO_DESK_SYNC_PASS edition={latest_date} promoted={changed}")
+    print(f"DAILY_TO_DESK_SYNC_PASS edition={latest_date} promoted={changed} removed_misroutes={len(removed)}")
+    if removed:
+        print("DAILY_DESK_MISROUTES_REMOVED", removed[:100])
     return 0
 
 
