@@ -10,10 +10,36 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STOCKS_PATH = ROOT / "data" / "stocks-latest.json"
+TRACKED = ["GOOG", "GLDM", "ICE", "MCD", "EMXC", "GBTC", "DBA", "AAPL", "EWY", "META", "MSFT", "NVDA", "TSM", "PLTR", "VT"]
+ETF_TICKERS = {"GLDM", "EMXC", "GBTC", "DBA", "EWY", "VT"}
+NAMES = {
+    "GOOG": "Alphabet / Google",
+    "GLDM": "SPDR Gold MiniShares Trust",
+    "ICE": "Intercontinental Exchange",
+    "MCD": "McDonald's",
+    "EMXC": "iShares MSCI Emerging Markets ex China ETF",
+    "GBTC": "Grayscale Bitcoin Trust",
+    "DBA": "Invesco DB Agriculture Fund",
+    "AAPL": "Apple",
+    "EWY": "iShares MSCI South Korea ETF",
+    "META": "Meta Platforms",
+    "MSFT": "Microsoft",
+    "NVDA": "NVIDIA",
+    "TSM": "TSMC",
+    "PLTR": "Palantir",
+    "VT": "Vanguard Total World Stock ETF",
+}
 REQUIRED = (
     "id", "ticker", "title", "dek", "summary", "body", "context", "why",
     "watchNext", "sourceName", "sourceUrl", "timeLabel",
 )
+BANNED_PUBLIC_FRAGMENTS = (
+    "第一手資料已通過Stock News核實",
+    "已通過Stock News核實",
+    "Stock News核實",
+    "Stock News 核實",
+)
+PUBLIC_COPY_FIELDS = ("title", "dek", "summary", "body", "context", "why", "watchNext")
 
 
 def load(path: Path):
@@ -47,6 +73,25 @@ def format_hkt(dt: datetime) -> str:
     return f"{hkt.year}年{hkt.month}月{hkt.day}日 {hkt.hour:02d}:{hkt.minute:02d} HKT"
 
 
+def canonicalize_contract(stocks: dict) -> None:
+    old = stocks.get("tickers") if isinstance(stocks.get("tickers"), dict) else {}
+    migrated = {}
+    for ticker in TRACKED:
+        block = copy.deepcopy(old.get(ticker)) if isinstance(old.get(ticker), dict) else {}
+        block["name"] = NAMES[ticker]
+        block["assetType"] = "ETF" if ticker in ETF_TICKERS else "EQUITY"
+        stories = block.get("stories") if isinstance(block.get("stories"), list) else []
+        block["stories"] = [story for story in stories if isinstance(story, dict)][:3]
+        migrated[ticker] = block
+    stocks["tracked"] = TRACKED
+    stocks["tickers"] = migrated
+
+
+def contains_process_copy(story: dict) -> bool:
+    public_copy = " ".join(str(story.get(field) or "") for field in PUBLIC_COPY_FIELDS)
+    return any(fragment in public_copy for fragment in BANNED_PUBLIC_FRAGMENTS)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("draft")
@@ -55,16 +100,19 @@ def main():
 
     draft = load(Path(args.draft))
     stocks = load(STOCKS_PATH)
+    canonicalize_contract(stocks)
     now = datetime.now(timezone.utc)
 
     if draft.get("status") != "VERIFIED_DRAFT":
         print("STOCK_FAILOVER_NOOP draft-not-verified")
+        STOCKS_PATH.write_text(json.dumps(stocks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return 0
     created = parse_iso(draft.get("createdAt") or "")
     if created.astimezone(timezone.utc) > now + timedelta(minutes=2):
         raise SystemExit("verified draft createdAt is in the future")
     if now - created.astimezone(timezone.utc) > timedelta(minutes=args.max_age_minutes):
         print("STOCK_FAILOVER_NOOP draft-too-old")
+        STOCKS_PATH.write_text(json.dumps(stocks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return 0
 
     try:
@@ -73,6 +121,7 @@ def main():
         current = datetime.min.replace(tzinfo=timezone.utc)
     if current.astimezone(timezone.utc) >= created.astimezone(timezone.utc):
         print("STOCK_FAILOVER_NOOP stocks-current")
+        STOCKS_PATH.write_text(json.dumps(stocks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return 0
 
     tracked = list(stocks.get("tracked") or [])
@@ -83,6 +132,7 @@ def main():
     ]
     if not candidates:
         print("STOCK_FAILOVER_NOOP verified-draft-has-no-stock-news")
+        STOCKS_PATH.write_text(json.dumps(stocks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return 0
 
     promoted = 0
@@ -90,6 +140,8 @@ def main():
         for field in REQUIRED:
             if not clean(source.get(field)):
                 raise SystemExit(f"verified stock draft missing {field}: {source.get('id')}")
+        if contains_process_copy(source):
+            raise SystemExit(f"verified stock draft contains internal Stock News process copy: {source.get('id')}")
         sources = source.get("sources")
         if not isinstance(sources, list) or not sources:
             raise SystemExit(f"verified stock draft missing sources: {source.get('id')}")
@@ -107,6 +159,8 @@ def main():
         story.pop("desk", None)
         story.pop("ticker", None)
         story["storyType"] = clean(story.get("storyType") or "VERIFIED NEWS")
+        if ticker in ETF_TICKERS and "ETF READ-THROUGH" not in story["storyType"].upper():
+            story["storyType"] = "ETF READ-THROUGH / " + story["storyType"]
         story["impact"] = impact_symbol(story.get("impact") or "")
         story["impactLabel"] = clean(story.get("impactLabel") or "VERIFIED UPDATE")
 
@@ -116,12 +170,14 @@ def main():
             if isinstance(item, dict)
             and item.get("id") != story.get("id")
             and clean(item.get("sourceUrl")) != clean(story.get("sourceUrl"))
+            and not contains_process_copy(item)
         ]
         tickers[ticker]["stories"] = [story] + deduped[:2]
         promoted += 1
 
     if promoted <= 0:
         print("STOCK_FAILOVER_NOOP no-tracked-stock-candidate")
+        STOCKS_PATH.write_text(json.dumps(stocks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return 0
 
     stocks["generatedAt"] = created.isoformat()
