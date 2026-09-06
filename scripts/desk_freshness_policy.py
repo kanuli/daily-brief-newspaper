@@ -2,9 +2,9 @@
 """Shared public-desk freshness and editorial-routing policy.
 
 Numeric desk depth is not enough to prove that a public news page is current.
-A story also has to belong to the page.  Publication uses one primary desk by
+A story also has to belong to the page. Publication uses one primary desk by
 default; cross-desk relevance is context, not a licence to duplicate a story
-onto unrelated topic pages.  Specialist football and manga/anime ownership is
+onto unrelated topic pages. Specialist football and manga/anime ownership is
 resolved before generic geographic/business routing.
 """
 from __future__ import annotations
@@ -84,11 +84,13 @@ def _routing_text(story: dict[str, Any]) -> str:
 def routed_slugs(story: dict[str, Any]) -> list[str]:
     """Return editorial publication ownership for a story.
 
-    The first valid explicit deskSlugs entry is the primary desk.  Secondary
+    The first valid explicit deskSlugs entry is the primary desk. Secondary
     deskSlugs are treated as relevance metadata only and do not cause public
-    cross-posting.  Clear specialist content overrides a generic geographic or
+    cross-posting. Clear specialist content overrides a generic geographic or
     finance tag so football cannot leak into World/Asia/Japan/Finance and
-    manga/anime cannot leak into Japan/general desks.
+    manga/anime cannot leak into Japan/general desks. Manchester United-specific
+    football belongs to its dedicated desk rather than being duplicated into
+    the general football reservoir.
     """
     text = _routing_text(story)
     story_id = str(story.get("id") or "").strip().lower()
@@ -105,7 +107,7 @@ def routed_slugs(story: dict[str, Any]) -> list[str]:
         or bool(_FOOTBALL.search(text))
     )
     if is_mu and is_football:
-        return ["manchester-united", "football"]
+        return ["manchester-united"]
     if is_football:
         return ["football"]
 
