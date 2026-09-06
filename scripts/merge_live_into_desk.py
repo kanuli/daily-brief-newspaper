@@ -43,6 +43,10 @@ DESK_LABELS = {
     "manga-anime": "漫畫 / Anime", "manchester-united": "Manchester United",
     "football": "Football",
 }
+RETIRED_EVENT_IDS = {
+    "world-lebanon-israel-strikes-four-killed-20260906-2000",
+    "japan-motosu-cake-shop-arson-investigation-20260906-2000",
+}
 REQUIRED = (
     "title", "dek", "summary", "body", "context", "why", "watchNext",
     "sourceName", "sourceUrl", "timeLabel",
@@ -148,6 +152,10 @@ def main():
         retained = []
         for raw in desks.setdefault(slug, []):
             if not isinstance(raw, dict):
+                continue
+            raw_id = str(raw.get("id") or "").strip()
+            if raw_id in RETIRED_EVENT_IDS:
+                expired_cross_posts.append((slug, raw_id))
                 continue
             ident = story_identity(raw)
             if ident in current_routes and slug not in current_routes[ident]:
