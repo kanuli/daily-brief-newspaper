@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Record an hourly Stock News newsroom check without faking story freshness.
+"""Record a truthful Stock News publication check and currentness state.
 
 The rolling discovery branch proves that the tracked-stock desk was searched.
-This script records that check separately from ``generatedAt`` (the timestamp of
-the most recent verified story publication). A check heartbeat never promotes
-raw discovery candidates and never rewrites verified copy.
+Each successful scheduled publication check advances ``generatedAt`` and
+``lastUpdatedLabel`` to the completed publication check time, as required by the
+public Stock News currentness contract. ``verifiedContentUpdatedAt`` separately
+preserves when the verified story set last changed, so current publication time
+never fabricates a new catalyst.
 
-Stock discovery health is recalculated with strict ticker identity rules rather
-than trusting the broad collector's raw count. This prevents examples such as
-Virginia Tech (VT) or Navitas Semiconductor carrying a bad NVDA tag from making
-the tracked-stock desk appear healthier than it really is.
+A check heartbeat never promotes raw discovery candidates and never rewrites
+verified copy. Stock discovery health is recalculated with strict ticker identity
+rules rather than trusting the broad collector's raw count. This prevents
+examples such as Virginia Tech (VT) or Navitas Semiconductor carrying a bad NVDA
+tag from making the tracked-stock desk appear healthier than it really is.
 """
 from __future__ import annotations
 
@@ -104,6 +107,12 @@ def main() -> int:
     else:
         collection_status = "COMPLETE"
 
+    # Preserve the last time the verified story set changed independently from
+    # the publication/currentness timestamp advanced by this successful check.
+    previous_verified_update = stocks.get("verifiedContentUpdatedAt") or stocks.get("generatedAt")
+
+    stocks["generatedAt"] = checked.isoformat()
+    stocks["lastUpdatedLabel"] = format_hkt(checked)
     stocks["lastCheckedAt"] = checked.isoformat()
     stocks["lastCheckedLabel"] = format_hkt(checked)
     stocks["collectionStatus"] = collection_status
@@ -114,10 +123,11 @@ def main() -> int:
     stocks["discoveryUnderfilled"] = is_underfilled
     stocks["rawDiscoveryCandidateCount"] = int(((staging.get("candidateCounts") or {}).get("stock-news")) or 0)
     stocks["rejectedDiscoveryNoiseCount"] = max(0, stocks["rawDiscoveryCandidateCount"] - reservoir_count)
-    stocks["verifiedContentUpdatedAt"] = stocks.get("generatedAt")
+    stocks["verifiedContentUpdatedAt"] = previous_verified_update
     stocks["freshnessContract"] = {
-        "lastCheckedAt": "hourly newsroom/search heartbeat after strict tracked-ticker identity filtering; does not imply a new verified story",
-        "generatedAt": "time the verified Stock News content last changed",
+        "generatedAt": "time the current Stock News edition completed its verified publication check",
+        "verifiedContentUpdatedAt": "time the verified story set last changed",
+        "lastCheckedAt": "hourly newsroom/search check after strict tracked-ticker identity filtering",
     }
 
     STOCKS_PATH.write_text(json.dumps(stocks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
