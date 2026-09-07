@@ -3,8 +3,10 @@ import copy
 import json
 import pathlib
 import re
+from datetime import datetime, timezone
 
 from desk_retention import keep_on_desk
+from desk_freshness_policy import editorial_story_time, routed_slugs
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -23,20 +25,6 @@ FLOORS = {
     "manchester-united": 4,
     "football": 10,
 }
-DESK_ALIASES = {
-    "world": ["world"],
-    "asia": ["asia"],
-    "hong-kong": ["hong-kong"],
-    "japan": ["japan"],
-    "finance": ["market-economy"],
-    "market-economy": ["market-economy"],
-    "ai-tech": ["ai-tech"],
-    "manga-anime": ["manga-anime"],
-    "manchester-united": ["manchester-united", "football"],
-    "football": ["football"],
-    "stock-news": [],
-}
-CANONICAL_DESK = {"finance": "market-economy"}
 DESK_LABELS = {
     "world": "世界", "asia": "亞洲", "hong-kong": "香港", "japan": "日本",
     "market-economy": "財經 / 全球市場", "ai-tech": "AI / 科技",
@@ -90,21 +78,15 @@ def normalize_retained_story(story):
 
 
 def desk_slugs(item):
-    explicit = item.get("deskSlugs")
-    if isinstance(explicit, list) and explicit:
-        return list(dict.fromkeys(str(slug) for slug in explicit if slug in FLOORS))
-    desk = CANONICAL_DESK.get(str(item.get("desk") or ""), str(item.get("desk") or ""))
-    return DESK_ALIASES.get(desk, [])
+    return routed_slugs(item)
 
 
 def normalize_live_route(item):
-    raw_desk = str(item.get("desk") or "").strip()
-    canonical = CANONICAL_DESK.get(raw_desk, raw_desk)
-    if canonical:
-        item["desk"] = canonical
     slugs = desk_slugs(item)
+    primary = slugs[0] if slugs else str(item.get("desk") or "").strip()
+    if primary:
+        item["desk"] = primary
     item["deskSlugs"] = list(dict.fromkeys(slugs))
-    primary = slugs[0] if slugs else canonical
     if not str(item.get("section") or "").strip():
         item["section"] = DESK_LABELS.get(primary, "Live")
     if not str(item.get("sectionLabel") or "").strip():
@@ -133,6 +115,18 @@ def dedupe(stories):
     return out
 
 
+def newest_first(stories):
+    current = datetime.now(timezone.utc)
+
+    def key(story):
+        if not isinstance(story, dict):
+            return float("-inf")
+        stamp = editorial_story_time(story, now=current)
+        return stamp.timestamp() if stamp is not None else float("-inf")
+
+    return sorted(dedupe(stories), key=key, reverse=True)
+
+
 def unique_count(stories):
     return len(dedupe(stories))
 
@@ -158,18 +152,19 @@ def main():
                 expired_cross_posts.append((slug, raw_id))
                 continue
             ident = story_identity(raw)
-            if ident in current_routes and slug not in current_routes[ident]:
-                expired_cross_posts.append((slug, str(raw.get("id") or raw.get("title") or "unknown")))
-                continue
-            explicit_routes = raw.get("deskSlugs")
-            if isinstance(explicit_routes, list) and explicit_routes and slug not in explicit_routes:
+            desired_routes = set(routed_slugs(raw))
+            if ident in current_routes:
+                desired_routes = current_routes[ident]
+            if desired_routes and slug not in desired_routes:
                 expired_cross_posts.append((slug, str(raw.get("id") or raw.get("title") or "unknown")))
                 continue
             if not keep_on_desk(raw, slug):
                 expired_cross_posts.append((slug, str(raw.get("id") or raw.get("title") or "unknown")))
                 continue
-            retained.append(normalize_retained_story(copy.deepcopy(raw)))
-        desks[slug] = dedupe(retained)
+            normalized = normalize_retained_story(copy.deepcopy(raw))
+            normalized["deskSlugs"] = list(routed_slugs(normalized))
+            retained.append(normalized)
+        desks[slug] = newest_first(retained)
 
     for item in live.get("items", []):
         slugs = normalize_live_route(item)
@@ -198,7 +193,10 @@ def main():
             existing = [s for s in existing
                         if str(s.get("id") or "") != story_id
                         and re.sub(r"\s+", " ", str(s.get("title") or "")).strip().lower() != story_title]
-            desks[slug] = dedupe([story] + existing)
+            desks[slug] = newest_first([story] + existing)
+
+    for slug in FLOORS:
+        desks[slug] = newest_first(desks.get(slug, []))
 
     counts = {slug: unique_count(desks.get(slug, [])) for slug in FLOORS}
     missing = {slug: (counts[slug], minimum) for slug, minimum in FLOORS.items() if counts[slug] < minimum}
