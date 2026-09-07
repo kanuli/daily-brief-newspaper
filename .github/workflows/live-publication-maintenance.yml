@@ -1,4 +1,4 @@
-# Recovery trigger refreshed 2026-08-24 23:18 HKT
+# Recovery trigger refreshed 2026-09-07 23:00 HKT
 name: Live Publication Auto Maintenance
 
 on:
@@ -30,80 +30,146 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Read verified prepublish draft
+      - name: Inspect current Live publication state and verified prepublish draft
         id: inspect
         shell: bash
         run: |
           set -euo pipefail
           git fetch -q origin prepublish-news:refs/remotes/origin/prepublish-news || true
-          if ! git show origin/prepublish-news:data/prepublish.json > /tmp/prepublish.json 2>/dev/null; then
-            echo "promote=false" >> "$GITHUB_OUTPUT"
-            echo "reason=no-prepublish-draft" >> "$GITHUB_OUTPUT"
-            exit 0
+          if git show origin/prepublish-news:data/prepublish.json > /tmp/prepublish.json 2>/dev/null; then
+            export HAVE_DRAFT=true
+          else
+            printf '%s\n' '{}' > /tmp/prepublish.json
+            export HAVE_DRAFT=false
           fi
 
           python - <<'PY' > /tmp/live-failover.env
           import json
+          import os
           from datetime import datetime, timedelta, timezone
 
           HKT=timezone(timedelta(hours=8))
           now=datetime.now(timezone.utc)
           draft=json.load(open('/tmp/prepublish.json',encoding='utf-8'))
           live=json.load(open('data/live.json',encoding='utf-8'))
+          have_draft=os.environ.get('HAVE_DRAFT') == 'true'
+          floors={
+              'world':8,'asia':8,'hong-kong':6,'japan':8,'market-economy':8,
+              'ai-tech':6,'manga-anime':4,'manchester-united':4,'football':10,
+          }
 
           def parse(value):
               return datetime.fromisoformat(str(value).replace('Z','+00:00'))
 
+          coverage=live.get('coverage') if isinstance(live.get('coverage'),dict) else {}
+          counts=coverage.get('deskLatestStoryCounts') if isinstance(coverage.get('deskLatestStoryCounts'),dict) else {}
+          depth_ok=all(int(counts.get(slug) or 0) >= minimum for slug,minimum in floors.items())
+          coverage_ok=(
+              coverage.get('status') == 'COMPLETE'
+              and coverage.get('publishingGateMet') is True
+              and coverage.get('deskLatestDepthMet') is True
+              and depth_ok
+          )
+          try:
+              current=parse(live.get('lastUpdated') or '')
+          except Exception:
+              current=datetime.min.replace(tzinfo=timezone.utc)
+
+          local_now=now.astimezone(HKT)
+          due_hour=local_now.hour
+          allowed_now=(due_hour in (0,6,7) or 9 <= due_hour <= 23)
+          due=local_now.replace(minute=0,second=0,microsecond=0)
+          current_is_due=(not allowed_now) or current.astimezone(HKT) >= due
+          repair=(current_is_due and not coverage_ok)
+
           promote=False
           reason='healthy'
           target=None
-          try:
-              target=parse(draft.get('targetPublication') or '')
-          except Exception:
-              reason='invalid-draft-target'
+          if repair:
+              reason='current-live-coverage-incomplete'
+          elif not have_draft:
+              reason='no-prepublish-draft'
           else:
-              local=target.astimezone(HKT)
-              allowed=(local.hour in (0,6,7) or 9 <= local.hour <= 23)
-              if draft.get('status') != 'VERIFIED_DRAFT':
-                  reason='draft-not-verified'
-              elif draft.get('publicationType') != 'LIVE':
-                  reason='draft-not-live'
-              elif not allowed:
-                  reason='outside-live-publication-window'
-              elif not isinstance(draft.get('articles'),list) or not draft['articles']:
-                  reason='verified-draft-empty'
+              try:
+                  target=parse(draft.get('targetPublication') or '')
+              except Exception:
+                  reason='invalid-draft-target'
               else:
-                  try:
-                      current=parse(live.get('lastUpdated') or '')
-                  except Exception:
-                      current=datetime.min.replace(tzinfo=timezone.utc)
-                  age=now-target.astimezone(timezone.utc)
-                  if current.astimezone(timezone.utc) >= target.astimezone(timezone.utc):
-                      reason='main-live-current'
-                  elif age < timedelta(minutes=8):
-                      reason='normal-publisher-grace'
-                  elif age > timedelta(minutes=90):
-                      reason='verified-draft-too-old'
+                  local=target.astimezone(HKT)
+                  allowed=(local.hour in (0,6,7) or 9 <= local.hour <= 23)
+                  if draft.get('status') != 'VERIFIED_DRAFT':
+                      reason='draft-not-verified'
+                  elif draft.get('publicationType') != 'LIVE':
+                      reason='draft-not-live'
+                  elif not allowed:
+                      reason='outside-live-publication-window'
+                  elif not isinstance(draft.get('articles'),list) or not draft['articles']:
+                      reason='verified-draft-empty'
                   else:
-                      promote=True
-                      reason='main-live-behind-verified-draft'
+                      age=now-target.astimezone(timezone.utc)
+                      if current.astimezone(timezone.utc) >= target.astimezone(timezone.utc):
+                          reason='main-live-current'
+                      elif age < timedelta(minutes=8):
+                          reason='normal-publisher-grace'
+                      elif age > timedelta(minutes=90):
+                          reason='verified-draft-too-old'
+                      else:
+                          promote=True
+                          reason='main-live-behind-verified-draft'
 
+          print('REPAIR=' + ('true' if repair else 'false'))
           print('PROMOTE=' + ('true' if promote else 'false'))
           print('REASON=' + reason)
           print('DRAFT_ID=' + str(draft.get('draftId') or ''))
           print('TARGET=' + (target.isoformat() if target else ''))
           print('CURRENT=' + str(live.get('lastUpdated') or ''))
+          print('COVERAGE=' + str(coverage.get('status') or 'missing'))
           PY
           source /tmp/live-failover.env
-          echo "Live failover check: promote=${PROMOTE}; reason=${REASON}; draft=${DRAFT_ID:-none}; target=${TARGET:-none}; current=${CURRENT:-none}"
+          echo "Live watchdog: repair=${REPAIR}; promote=${PROMOTE}; reason=${REASON}; current=${CURRENT:-none}; coverage=${COVERAGE:-none}"
+          echo "repair=${REPAIR}" >> "$GITHUB_OUTPUT"
           echo "promote=${PROMOTE}" >> "$GITHUB_OUTPUT"
           echo "reason=${REASON}" >> "$GITHUB_OUTPUT"
           echo "draft_id=${DRAFT_ID}" >> "$GITHUB_OUTPUT"
           echo "target=${TARGET}" >> "$GITHUB_OUTPUT"
 
+      - name: Repair current Live coverage and Rolling Desk state
+        id: repair
+        if: steps.inspect.outputs.repair == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python scripts/merge_live_into_desk.py
+            python scripts/validate_publication_current.py
+            python scripts/audit_tts_language.py
+
+            git add -- data/live.json data/desk-latest.json
+            if git diff --cached --quiet; then
+              echo "LIVE_COVERAGE_REPAIR_NOOP publication already caught up"
+              exit 0
+            fi
+
+            git commit -m "Repair current Live coverage and Rolling Desk state"
+            if git push origin HEAD:main; then
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+              echo "LIVE_COVERAGE_REPAIR_PASS"
+              exit 0
+            fi
+            sleep $((attempt * 2))
+          done
+          echo "Current Live coverage repair could not push after retries" >&2
+          exit 1
+
       - name: Promote verified draft when normal publisher missed the hour
         id: promote
-        if: steps.inspect.outputs.promote == 'true'
+        if: steps.inspect.outputs.repair != 'true' && steps.inspect.outputs.promote == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -146,8 +212,8 @@ jobs:
           echo "Verified Live failover could not push after retries" >&2
           exit 1
 
-      - name: Dispatch Pages after Live failover publication
-        if: steps.promote.outputs.changed == 'true'
+      - name: Dispatch Pages after Live repair or failover publication
+        if: steps.repair.outputs.changed == 'true' || steps.promote.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -161,8 +227,8 @@ jobs:
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/pages.yml/dispatches" \
             -d "$payload"
-          echo "LIVE_FAILOVER_PAGES_DEPLOY_DISPATCHED"
+          echo "LIVE_RECOVERY_PAGES_DEPLOY_DISPATCHED"
 
       - name: Live publication healthy
-        if: steps.inspect.outputs.promote != 'true'
+        if: steps.inspect.outputs.repair != 'true' && steps.inspect.outputs.promote != 'true'
         run: echo "Live publication maintenance healthy (${{ steps.inspect.outputs.reason }})."
