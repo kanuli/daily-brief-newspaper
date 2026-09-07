@@ -1,4 +1,4 @@
-# Recovery trigger refreshed 2026-09-08 00:10 HKT
+# Recovery trigger refreshed 2026-09-08 HKT
 name: Live Publication Auto Maintenance
 
 on:
@@ -7,6 +7,10 @@ on:
     paths:
       - ".github/workflows/live-publication-maintenance.yml"
       - "scripts/promote_verified_live_draft.py"
+      - "scripts/recover_desk_freshness_watchdog.py"
+      - "scripts/merge_live_into_desk.py"
+      - "scripts/desk_freshness_policy.py"
+      - "scripts/validate_desk_freshness.py"
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
@@ -22,7 +26,7 @@ concurrency:
 jobs:
   watchdog:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 7
     steps:
       - name: Checkout current main
         uses: actions/checkout@v4
@@ -43,6 +47,12 @@ jobs:
             export HAVE_DRAFT=false
           fi
 
+          if python scripts/validate_desk_freshness.py --report /tmp/live-maintenance-freshness.json; then
+            export DESK_FRESHNESS_OK=true
+          else
+            export DESK_FRESHNESS_OK=false
+          fi
+
           python - <<'PY' > /tmp/live-failover.env
           import json
           import os
@@ -53,6 +63,7 @@ jobs:
           draft=json.load(open('/tmp/prepublish.json',encoding='utf-8'))
           live=json.load(open('data/live.json',encoding='utf-8'))
           have_draft=os.environ.get('HAVE_DRAFT') == 'true'
+          desk_fresh=os.environ.get('DESK_FRESHNESS_OK') == 'true'
           floors={
               'world':8,'asia':8,'hong-kong':6,'japan':8,'market-economy':8,
               'ai-tech':6,'manga-anime':4,'manchester-united':4,'football':10,
@@ -69,6 +80,7 @@ jobs:
               and coverage.get('publishingGateMet') is True
               and coverage.get('deskLatestDepthMet') is True
               and depth_ok
+              and desk_fresh
           )
           try:
               current=parse(live.get('lastUpdated') or '')
@@ -86,7 +98,7 @@ jobs:
           reason='healthy'
           target=None
           if repair:
-              reason='current-live-coverage-incomplete'
+              reason='current-live-coverage-or-freshness-incomplete'
           elif not have_draft:
               reason='no-prepublish-draft'
           else:
@@ -124,16 +136,17 @@ jobs:
           print('TARGET=' + (target.isoformat() if target else ''))
           print('CURRENT=' + str(live.get('lastUpdated') or ''))
           print('COVERAGE=' + str(coverage.get('status') or 'missing'))
+          print('DESK_FRESH=' + ('true' if desk_fresh else 'false'))
           PY
           source /tmp/live-failover.env
-          echo "Live watchdog: repair=${REPAIR}; promote=${PROMOTE}; reason=${REASON}; current=${CURRENT:-none}; coverage=${COVERAGE:-none}"
+          echo "Live watchdog: repair=${REPAIR}; promote=${PROMOTE}; reason=${REASON}; current=${CURRENT:-none}; coverage=${COVERAGE:-none}; deskFresh=${DESK_FRESH:-false}"
           echo "repair=${REPAIR}" >> "$GITHUB_OUTPUT"
           echo "promote=${PROMOTE}" >> "$GITHUB_OUTPUT"
           echo "reason=${REASON}" >> "$GITHUB_OUTPUT"
           echo "draft_id=${DRAFT_ID}" >> "$GITHUB_OUTPUT"
           echo "target=${TARGET}" >> "$GITHUB_OUTPUT"
 
-      - name: Repair current Live coverage and Rolling Desk state
+      - name: Repair current Live coverage, freshness and Rolling Desk state
         id: repair
         if: steps.inspect.outputs.repair == 'true'
         shell: bash
@@ -146,7 +159,9 @@ jobs:
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
+            python scripts/recover_desk_freshness_watchdog.py
             python scripts/merge_live_into_desk.py
+            python scripts/validate_desk_freshness.py --report /tmp/live-maintenance-freshness-after.json
             python scripts/validate_publication_current.py
             python scripts/audit_tts_language.py
 
@@ -156,7 +171,7 @@ jobs:
               exit 0
             fi
 
-            git commit -m "Repair current Live coverage and Rolling Desk state"
+            git commit -m "Repair current Live coverage, freshness and Rolling Desk state"
             if git push origin HEAD:main; then
               echo "changed=true" >> "$GITHUB_OUTPUT"
               echo "LIVE_COVERAGE_REPAIR_PASS"
@@ -182,7 +197,9 @@ jobs:
             git reset --hard origin/main
 
             python scripts/promote_verified_live_draft.py /tmp/prepublish.json
+            python scripts/recover_desk_freshness_watchdog.py
             python scripts/merge_live_into_desk.py
+            python scripts/validate_desk_freshness.py --report /tmp/live-maintenance-freshness-after.json
             python scripts/validate_publication_current.py
             python scripts/audit_tts_language.py
 
