@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const ORDER = ["NVDA","AAPL","TSM","PLTR","MSFT","GOOG","EMXC","EWY","VT"];
+  const DEFAULT_ORDER = ["GOOG","GLDM","ICE","MCD","EMXC","GBTC","DBA","AAPL","EWY","META","MSFT","NVDA","TSM","PLTR","VT"];
   const esc = (v='') => String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
   const paragraphs = (value='') => String(value || '').split(/\n\s*\n/).map(v=>v.trim()).filter(Boolean);
   const impactClass = (impact='↔') => impact === '↑' ? 'stock-impact-up' : impact === '↓' ? 'stock-impact-down' : 'stock-impact-neutral';
@@ -93,14 +93,23 @@
     host.innerHTML = `<p class="notice"><strong>Newsroom freshness：</strong>目前只保存「最近已核實內容更新」時間；獨立 hourly check timestamp 會由新的 Stock News maintenance 建立。</p>`;
   }
 
+  function resolveOrder(data){
+    const tracked = Array.isArray(data.tracked) ? data.tracked.filter(Boolean).map(String) : [];
+    if(tracked.length === DEFAULT_ORDER.length && DEFAULT_ORDER.every((ticker,index)=>tracked[index]===ticker)) return tracked;
+    return DEFAULT_ORDER;
+  }
+
   function render(data){
     const host = document.querySelector('#stock-sections');
     if(!host) return;
+    const order = resolveOrder(data);
     const nav = document.querySelector('#stock-ticker-nav');
-    if(nav) nav.innerHTML = ORDER.map(t=>`<a href="#stock-${t.toLowerCase()}">${t}</a>`).join('');
+    if(nav) nav.innerHTML = order.map(t=>`<a href="#stock-${t.toLowerCase()}">${t}</a>`).join('');
+    const trackedText = document.querySelector('#stock-tracked');
+    if(trackedText) trackedText.textContent = `Tracked: ${order.join(' · ')}`;
     renderFreshness(data);
     const tickers = data.tickers || {};
-    host.innerHTML = ORDER.map(ticker=>{
+    host.innerHTML = order.map(ticker=>{
       const block = tickers[ticker] || {};
       const stories = Array.isArray(block.stories)?block.stories:[];
       return `<section class="stock-section" id="stock-${ticker.toLowerCase()}">
