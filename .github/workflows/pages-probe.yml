@@ -189,7 +189,11 @@ jobs:
                           'assets/js/live-article.js' not in text
                       )
                   if page=='index.html':
-                      index_vocab_contract=bool('assets/css/extras.css?v=20260904-vocab-rebuild-v9' in text)
+                      index_vocab_contract=bool(
+                          'assets/css/extras.css?v=' in text and
+                          'id="study-desk"' in text and
+                          'assets/js/daily-extras.js?v=' in text
+                      )
                   page_checks[page]={'ok':bool(status==200 and '<html' in text.lower() and not marker),'status':status,'contentType':content_type,'bytes':len(body),'errorMarker':marker}
               except Exception as exc:
                   page_checks[page]={'ok':False,'error':str(exc)}
