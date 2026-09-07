@@ -89,8 +89,7 @@ def routed_slugs(story: dict[str, Any]) -> list[str]:
     cross-posting. Clear specialist content overrides a generic geographic or
     finance tag so football cannot leak into World/Asia/Japan/Finance and
     manga/anime cannot leak into Japan/general desks. Manchester United-specific
-    football belongs to its dedicated desk rather than being duplicated into
-    the general football reservoir.
+    football belongs to both its dedicated MU desk and the general Football desk.
     """
     text = _routing_text(story)
     story_id = str(story.get("id") or "").strip().lower()
@@ -107,7 +106,7 @@ def routed_slugs(story: dict[str, Any]) -> list[str]:
         or bool(_FOOTBALL.search(text))
     )
     if is_mu and is_football:
-        return ["manchester-united"]
+        return ["manchester-united", "football"]
     if is_football:
         return ["football"]
 
