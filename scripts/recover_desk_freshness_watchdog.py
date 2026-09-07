@@ -2,7 +2,7 @@
 """Editor-in-Chief freshness recovery for verified topic-desk events.
 
 This helper is intentionally publication-only: it never creates a Live edition.
-It adds vetted current events to stale specialist desks before the existing
+It adds vetted current events to stale desks before the existing
 freshness/publication validators run. Same IDs are idempotent across retries.
 """
 import datetime as dt
@@ -12,9 +12,31 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DESK_PATH = ROOT / "data" / "desk-latest.json"
 HKT = dt.timezone(dt.timedelta(hours=8))
-SLA_HOURS = {"ai-tech": 12, "manga-anime": 24}
+SLA_HOURS = {"market-economy": 8, "ai-tech": 12, "manga-anime": 24}
 
 RECOVERY = {
+    "market-economy": {
+        "id": "market-economy-oil-hormuz-near-100-20260907",
+        "desk": "market-economy",
+        "deskSlugs": ["market-economy"],
+        "section": "財經／市場｜能源與全球市場",
+        "status": "LATEST",
+        "title": "中東航運受襲推高供應風險　布蘭特油價逼近每桶100美元",
+        "dek": "美伊互相襲擊區內油輪令霍爾木茲海峽原油流量維持低位；布蘭特期油一度升至97.93美元，市場關注供應中斷會否進一步擴大。",
+        "summary": "中東航運安全風險升溫，布蘭特期油9月7日升至近六周高位並逼近100美元；能源成本、通脹與主要央行利率預期因而再次成為全球市場焦點。",
+        "body": "中東原油航運風險周一繼續主導能源市場。Reuters報道，美國與伊朗近期互相襲擊在霍爾木茲海峽及附近航行的船舶，令區內原油流量持續偏低；布蘭特期油一度升至每桶97.93美元，較上一交易日再升，西德州中質原油亦維持在六周高位附近。\n\n油價上升同時加重市場對通脹與利率的憂慮。Associated Press的全球市場報道亦指出，能源價格與霍爾木茲局勢正影響歐亞股市及美國利率預期。現階段不能把任何120美元情景視為基準預測，但若船運中斷擴大，能源與運輸成本仍可能進一步上升。",
+        "context": "霍爾木茲海峽是全球重要能源運輸通道。近期船舶受襲及航運量下降，使地緣政治風險重新直接反映在油價、通脹預期與資產定價。",
+        "why": "能源價格已成為全球市場與宏觀政策的即時變數，會影響通脹、企業成本、消費者支出及主要央行的利率判斷。",
+        "watchNext": "留意霍爾木茲實際船運量、布蘭特油價是否突破100美元、OPEC+供應政策，以及本周美國通脹數據對聯儲局利率預期的影響。",
+        "sourceName": "Reuters／Associated Press",
+        "sourceUrl": "https://www.reuters.com/business/energy/oil-extends-gains-after-us-iran-strike-ships-2026-09-07/",
+        "timeLabel": "9月7日20:14 HKT前核實",
+        "publishedAt": "2026-09-07T20:14:00+08:00",
+        "sources": [
+            {"name": "Reuters", "url": "https://www.reuters.com/business/energy/oil-extends-gains-after-us-iran-strike-ships-2026-09-07/"},
+            {"name": "Associated Press", "url": "https://apnews.com/article/5fed4e21cb3f80eef06087217dbbd9f7"}
+        ]
+    },
     "ai-tech": {
         "id": "ai-tech-seattle-times-newsday-openai-microsoft-lawsuit-20260907",
         "desk": "ai-tech",
