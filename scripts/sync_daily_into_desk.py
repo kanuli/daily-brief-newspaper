@@ -2,18 +2,25 @@
 """Promote the current verified Daily edition into Rolling Desk reservoirs.
 
 The Daily edition is already verified editorial copy, but desk ownership is
-resolved independently by the shared editorial-routing policy.  Relevance tags
-must not become uncontrolled public cross-posts.  Before syncing the current
+resolved independently by the shared editorial-routing policy. Relevance tags
+must not become uncontrolled public cross-posts. Before syncing the current
 Daily we therefore remove retained stories from desks they no longer own, then
-promote each story only to its resolved primary/specialist desk.
+promote each story only to its resolved hard-routing desk(s) and sort every
+public desk newest-first by a real editorial timestamp.
 """
 from __future__ import annotations
 
 import copy
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
-from desk_freshness_policy import EXPECTED_DESKS, current_daily_dates, routed_slugs
+from desk_freshness_policy import (
+    EXPECTED_DESKS,
+    current_daily_dates,
+    editorial_story_time,
+    routed_slugs,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -44,6 +51,18 @@ def merge_front(existing, story):
     return [story] + kept
 
 
+def newest_first(stories):
+    current = datetime.now(timezone.utc)
+
+    def key(story):
+        if not isinstance(story, dict):
+            return float("-inf")
+        stamp = editorial_story_time(story, now=current)
+        return stamp.timestamp() if stamp is not None else float("-inf")
+
+    return sorted(stories, key=key, reverse=True)
+
+
 def main() -> int:
     latest = load(LATEST)
     desk = load(DESK)
@@ -55,9 +74,6 @@ def main() -> int:
 
     desks = desk.setdefault("desks", {})
 
-    # Clean old uncontrolled cross-posts first. Stories without any resolvable
-    # ownership are left in place for recovery/retention tooling to inspect;
-    # stories with resolved ownership may only remain on an owned desk.
     removed = []
     for slug in EXPECTED_DESKS:
         kept = []
@@ -68,8 +84,10 @@ def main() -> int:
             if routes and slug not in routes:
                 removed.append((slug, str(raw.get("id") or raw.get("title") or "unknown"), tuple(routes)))
                 continue
-            kept.append(raw)
-        desks[slug] = kept
+            normalized = copy.deepcopy(raw)
+            normalized["deskSlugs"] = list(dict.fromkeys(routes)) if routes else normalized.get("deskSlugs", [])
+            kept.append(normalized)
+        desks[slug] = newest_first(kept)
 
     promoted = {slug: 0 for slug in EXPECTED_DESKS}
     for raw in latest.get("articles") or []:
@@ -84,15 +102,18 @@ def main() -> int:
             story["deskSlugs"] = list(dict.fromkeys(slugs))
             story["desk"] = slug if len(slugs) == 1 else story.get("desk", slug)
             existing = desks.setdefault(slug, [])
-            before = [str(x.get("id") or "") for x in existing if isinstance(x, dict)]
-            desks[slug] = merge_front(existing, story)
-            after = [str(x.get("id") or "") for x in desks[slug] if isinstance(x, dict)]
-            if after and after[0] == str(story.get("id")) and (not before or before[0] != after[0]):
+            before_top = str(existing[0].get("id") or "") if existing and isinstance(existing[0], dict) else ""
+            desks[slug] = newest_first(merge_front(existing, story))
+            after_top = str(desks[slug][0].get("id") or "") if desks[slug] and isinstance(desks[slug][0], dict) else ""
+            if after_top == str(story.get("id")) and before_top != after_top:
                 promoted[slug] += 1
+
+    for slug in EXPECTED_DESKS:
+        desks[slug] = newest_first(desks.get(slug, []))
 
     DESK.write_text(json.dumps(desk, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     changed = {k: v for k, v in promoted.items() if v}
-    print(f"DAILY_TO_DESK_SYNC_PASS edition={latest_date} promoted={changed} removed_misroutes={len(removed)}")
+    print(f"DAILY_TO_DESK_SYNC_PASS edition={latest_date} promoted={changed} removed_misroutes={len(removed)} newest_first=true")
     if removed:
         print("DAILY_DESK_MISROUTES_REMOVED", removed[:100])
     return 0
