@@ -21,6 +21,10 @@
     ["upcoming-events","📅 Upcoming events / 明日焦點","Upcoming"]
   ];
   const META=new Map(DEFS.map(([slug,title,subtitle])=>[slug,{slug,title,subtitle}]));
+  const HARD_DESKS=new Set(["world","asia","hong-kong","japan","market-economy","ai-tech","manga-anime","manchester-united","football"]);
+  const FOOTBALL_RE=/(?:\bfootball\b|\bsoccer\b|\bFIFA\b|\bUEFA\b|\bAFC\b|\bPremier League\b|\bChampions League\b|\bEuropa League\b|\bJ[- ]?League\b|\bU-?20\b.{0,25}(?:World Cup|世界盃)|世界盃|世盃|足球|英超|歐聯|歐霸|日職|J聯賽|女足|女子世界盃|球賽|入球|轉會|領隊|球員)/i;
+  const MU_RE=/(?:Manchester United|Man Utd|Man United|曼聯|曼彻斯特联|紅魔)/i;
+  const MANGA_RE=/(?:\banime\b|\bmanga\b|漫畫|动画|動畫|動漫|漫改|輕小說|聲優|名偵探柯南|柯南|聖鬥士星矢|One Piece|海賊王|鬼滅之刃|咒術迴戰|進擊的巨人)/i;
 
   function oneSlug(v=""){
     const raw=String(v).trim(), lower=raw.toLowerCase();
@@ -42,8 +46,12 @@
     return"worth-following";
   }
   function sectionSlugs(value="",explicit=[]){
+    const explicitSlugs=dedupe((Array.isArray(explicit)?explicit:[]).map(oneSlug).filter(s=>HARD_DESKS.has(s)));
+    if(explicitSlugs.includes("manchester-united"))return["manchester-united","football"];
+    if(explicitSlugs.includes("football"))return["football"];
+    if(explicitSlugs.includes("manga-anime"))return["manga-anime"];
+    if(explicitSlugs.length)return[explicitSlugs[0]];
     const out=[];
-    (Array.isArray(explicit)?explicit:[]).forEach(s=>{const n=oneSlug(s);if(n!=="worth-following")out.push(n);});
     const raw=String(value||""),l=raw.toLowerCase(),add=(s,h)=>{if(h)out.push(s);};
     add("world",raw.includes("世界")||l.includes("world")); add("asia",raw.includes("亞洲")||l.includes("asia"));
     add("hong-kong",raw.includes("香港")||l.includes("hong kong")); add("japan",raw.includes("日本")||l.includes("japan"));
@@ -61,17 +69,49 @@
   function similarity(a,b){const A=bigrams(a),B=bigrams(b);if(!A.size||!B.size)return 0;let hit=0;A.forEach(x=>{if(B.has(x))hit++;});return hit/(A.size+B.size-hit);}
   function sameEvent(a,b){if(!a||!b)return false;const ak=titleKey(a.title),bk=titleKey(b.title);if(ak&&bk&&(ak===bk||(ak.length>=16&&bk.length>=16&&(ak.includes(bk)||bk.includes(ak)))))return true;const sameUrl=a.sourceUrl&&b.sourceUrl&&String(a.sourceUrl).split("?")[0]===String(b.sourceUrl).split("?")[0];return !!(sameUrl&&similarity(a.title,b.title)>=0.12);}
 
+  function hardRoutes(a={}){
+    const text=[a.id,a.desk,a.section,a.sectionLabel,a.title,a.dek,a.summary].map(v=>String(v||"")).join(" ");
+    const rawDesk=oneSlug(a.desk||"");
+    const isMu=rawDesk==="manchester-united"||String(a.id||"").toLowerCase().startsWith("mu-")||String(a.id||"").toLowerCase().startsWith("manchester-united-")||MU_RE.test(text);
+    const isFootball=isMu||rawDesk==="football"||String(a.id||"").toLowerCase().startsWith("football-")||FOOTBALL_RE.test(text);
+    if(isMu&&isFootball)return["manchester-united","football"];
+    if(isFootball)return["football"];
+    if(rawDesk==="manga-anime"||MANGA_RE.test(text))return["manga-anime"];
+    const explicit=dedupe((Array.isArray(a.deskSlugs)?a.deskSlugs:[]).map(oneSlug).filter(s=>HARD_DESKS.has(s)));
+    if(explicit.length)return[explicit[0]];
+    if(HARD_DESKS.has(rawDesk))return[rawDesk];
+    const section=oneSlug(a.section||a.sectionLabel||"");
+    return HARD_DESKS.has(section)?[section]:[];
+  }
+  function enforceHardRouting(data){
+    const articleMap=new Map((data.articles||[]).filter(a=>a?.id).map(a=>[a.id,a]));
+    (data.sections||[]).forEach(s=>{
+      if(!HARD_DESKS.has(s.slug))return;
+      s.articleIds=dedupe(s.articleIds||[]).filter(id=>{const a=articleMap.get(id);if(!a)return false;const routes=hardRoutes(a);return !routes.length||routes.includes(s.slug);});
+    });
+    (data.articles||[]).forEach(a=>hardRoutes(a).forEach(slug=>{if(HARD_DESKS.has(slug)){const s=ensureSection(data,slug);s.articleIds=dedupe([...(s.articleIds||[]),a.id]);}}));
+    return data;
+  }
+  function editorialTime(a={}){
+    const stamps=[];
+    [a.publishedAt,a.updatedAt,a.verifiedAt,a.timestamp,a.time].forEach(v=>{const t=Date.parse(String(v||""));if(Number.isFinite(t))stamps.push(t);});
+    const label=String(a.timeLabel||"");
+    const m=label.match(/(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})\s*(HKT|JST)/i);
+    if(m){const now=new Date(),year=Number(m[1]||now.getUTCFullYear()),month=Number(m[2]),day=Number(m[3]),hour=Number(m[4]),minute=Number(m[5]),offset=m[6].toUpperCase()==="JST"?9:8;const t=Date.UTC(year,month-1,day,hour-offset,minute);if(Number.isFinite(t))stamps.push(t);}
+    return stamps.length?Math.max(...stamps):Number.NEGATIVE_INFINITY;
+  }
+
   function mergeArticle(data,article,slugs=[],prepend=true){
     if(!article?.id)return;
     let i=data.articles.findIndex(x=>x.id===article.id);if(i<0)i=data.articles.findIndex(x=>sameEvent(x,article));
     let id=article.id;
-    if(i>=0){const old=data.articles[i];id=old.id;const rollingOnly=article.isRolling&&!article.isLive;const published=!old.isRolling&&!old.isLive;data.articles[i]=rollingOnly&&published?{...article,...old,id}:{...old,...article,id};data.sections.forEach(s=>{if(article.id!==id)s.articleIds=(s.articleIds||[]).map(x=>x===article.id?id:x);s.articleIds=dedupe(s.articleIds||[]);});}else data.articles.push(article);
+    if(i>=0){const old=data.articles[i];id=old.id;const rollingOnly=article.isRolling&&!article.isLive;const published=!old.isRolling&&!old.isLive;const merged=rollingOnly&&published?{...article,...old,id}:{...old,...article,id};if(rollingOnly&&published){["publishedAt","updatedAt","verifiedAt","timestamp","time","timeLabel","desk","deskSlugs","section","sectionLabel"].forEach(k=>{if(article[k]!=null&&article[k]!=="")merged[k]=article[k];});}data.articles[i]=merged;data.sections.forEach(s=>{if(article.id!==id)s.articleIds=(s.articleIds||[]).map(x=>x===article.id?id:x);s.articleIds=dedupe(s.articleIds||[]);});}else data.articles.push(article);
     slugs.forEach(slug=>{if(!META.has(slug))return;const s=ensureSection(data,slug);s.articleIds=prepend?dedupe([id,...(s.articleIds||[])]):dedupe([...(s.articleIds||[]),id]);});
   }
   const byId=(data,id)=>(data.articles||[]).find(a=>a.id===id);
   async function getJson(path,optional=false){const r=await fetch(path,{cache:"no-store"});if(optional&&r.status===404)return null;if(!r.ok)throw new Error(`${path} HTTP ${r.status}`);return r.json();}
-  async function applyEditorialOverride(data){data=ensureSections(data);if(!data?.date)return data;const o=await getJson(`data/editorial-overrides/${data.date}.json`,true);if(!o)return data;(Array.isArray(o.articles)?o.articles:[]).forEach(a=>mergeArticle(data,a,sectionSlugs(a.section),false));Object.entries(o.sectionOverrides||{}).forEach(([slug,c])=>{const s=ensureSection(data,slug);if(c.title)s.title=c.title;if(c.subtitle)s.subtitle=c.subtitle;if(Array.isArray(c.articleIds))s.articleIds=dedupe(c.articleIds);});const f=dedupe(o.moveToMarketEconomy||[]);if(f.length){data.sections.forEach(s=>{if(s.slug!=="market-economy")s.articleIds=(s.articleIds||[]).filter(id=>!f.includes(id));});ensureSection(data,"market-economy").articleIds=dedupe([...(ensureSection(data,"market-economy").articleIds||[]),...f]);}return data;}
-  async function applyTopicExtras(data){if(!data?.date)return data;const e=await getJson(`data/topic-more/${data.date}.json`,true);if(!e)return data;(Array.isArray(e.articles)?e.articles:[]).forEach(a=>mergeArticle(data,a,sectionSlugs(a.section),false));(Array.isArray(e.sections)?e.sections:[]).forEach(x=>{if(!x||typeof x!=="object"||Array.isArray(x))return;const slug=oneSlug(x.slug||x.section||x.title),s=ensureSection(data,slug);if(x.title)s.title=x.title;if(x.subtitle)s.subtitle=x.subtitle;s.articleIds=dedupe([...(s.articleIds||[]),...(x.articleIds||[])]);});return data;}
+  async function applyEditorialOverride(data){data=ensureSections(data);if(!data?.date)return data;const o=await getJson(`data/editorial-overrides/${data.date}.json`,true);if(!o)return data;(Array.isArray(o.articles)?o.articles:[]).forEach(a=>mergeArticle(data,a,sectionSlugs(a.section,a.deskSlugs),false));Object.entries(o.sectionOverrides||{}).forEach(([slug,c])=>{const s=ensureSection(data,slug);if(c.title)s.title=c.title;if(c.subtitle)s.subtitle=c.subtitle;if(Array.isArray(c.articleIds))s.articleIds=dedupe(c.articleIds);});const f=dedupe(o.moveToMarketEconomy||[]);if(f.length){data.sections.forEach(s=>{if(s.slug!=="market-economy")s.articleIds=(s.articleIds||[]).filter(id=>!f.includes(id));});ensureSection(data,"market-economy").articleIds=dedupe([...(ensureSection(data,"market-economy").articleIds||[]),...f]);}return data;}
+  async function applyTopicExtras(data){if(!data?.date)return data;const e=await getJson(`data/topic-more/${data.date}.json`,true);if(!e)return data;(Array.isArray(e.articles)?e.articles:[]).forEach(a=>mergeArticle(data,a,sectionSlugs(a.section,a.deskSlugs),false));(Array.isArray(e.sections)?e.sections:[]).forEach(x=>{if(!x||typeof x!=="object"||Array.isArray(x))return;const slug=oneSlug(x.slug||x.section||x.title),s=ensureSection(data,slug);if(x.title)s.title=x.title;if(x.subtitle)s.subtitle=x.subtitle;s.articleIds=dedupe([...(s.articleIds||[]),...(x.articleIds||[])]);});return data;}
   const rolling=(s,status="LATEST")=>({...s,section:s.section||"Rolling Desk",dek:s.dek||s.lede||"",context:s.context||s.background||"",why:s.why||s.whyImportant||"",watchNext:s.watchNext||s.nextStep||"",status:s.status||status,isRolling:true});
   async function applyDeskLatest(data){const d=await getJson("data/desk-latest.json",true);if(!d)return data;Object.entries(d.desks||{}).forEach(([slug,stories])=>(Array.isArray(stories)?stories:[]).slice().reverse().forEach(st=>{const a=rolling(st);mergeArticle(data,a,sectionSlugs(a.section,a.deskSlugs||[slug]),true);}));return data;}
   async function applyLive(data){const l=await getJson("data/live.json",true);if(!l)return data;(Array.isArray(l.items)?l.items:[]).slice().reverse().forEach(st=>{const a=rolling(st,st.status||"UPDATED");a.isLive=true;mergeArticle(data,a,sectionSlugs(a.section,a.deskSlugs),true);});return data;}
@@ -79,8 +119,8 @@
   const detail=(label,v,cls)=>v?`<p class="${cls}"><strong>${label}</strong>${esc(v)}</p>`:"";
   function bodyMarkup(a){const ps=String(a?.body||"").split(/\n\s*\n/).map(p=>p.trim()).filter(Boolean);return ps.length?`<div class="topic-full-body">${ps.map(p=>`<p>${esc(p)}</p>`).join("")}</div>`:"";}
   function renderArticle(a,featured=false){const badge=a.isLive?`<span class="topic-live-badge">${esc(a.status||"LIVE")}</span>`:(a.isRolling?`<span class="topic-latest-badge">${esc(a.status||"LATEST")}</span>`:"");return `<article class="topic-story ${featured?"topic-feature":""} ${a.isLive?"topic-live-story":""}"><div class="tag">${badge}${esc(a.section||"NEWS")}</div><h2>${esc(a.title||"")}</h2>${a.dek?`<p class="topic-dek">${esc(a.dek)}</p>`:""}<div class="topic-article-body">${detail("最新：",a.summary,"topic-summary")}${bodyMarkup(a)}${detail("背景：",a.context||a.background,"topic-context")}${detail("為何重要：",a.why||a.whyImportant,"why-mini")}${detail("下一步：",a.watchNext||a.nextStep,"topic-next")}</div><div class="story-meta">${esc(a.timeLabel||"")} ${a.sourceName?`· ${esc(a.sourceName)}`:""}</div>${sourceMarkup(a)}</article>`;}
-  function uniqueStories(data,s){const out=[];dedupe(s.articleIds||[]).map(id=>byId(data,id)).filter(Boolean).forEach(a=>{if(!out.some(x=>sameEvent(x,a)))out.push(a);});return out;}
+  function uniqueStories(data,s){const out=[];dedupe(s.articleIds||[]).map(id=>byId(data,id)).filter(Boolean).forEach(a=>{if(!out.some(x=>sameEvent(x,a)))out.push(a);});return out.sort((a,b)=>editorialTime(b)-editorialTime(a));}
   function renderTopic(data){const host=$("#topic-sections");if(!host)return;const wanted=new Set((document.body.dataset.topicSlugs||"").split(",").map(x=>x.trim()).filter(Boolean)),sections=(data.sections||[]).filter(s=>wanted.has(s.slug));$("#topic-date")?.replaceChildren(document.createTextNode(data.dateLabel||data.date||""));const n=sections.reduce((sum,s)=>sum+uniqueStories(data,s).length,0),count=$("#topic-count");if(count)count.textContent=`${n} stories · Daily + Rolling Desk + Live`;host.innerHTML=sections.map(s=>{const stories=uniqueStories(data,s);if(!stories.length)return"";return `<section class="topic-section" id="${esc(s.slug)}"><div class="section-heading"><h2>${esc(s.title)}</h2><span>${esc(s.subtitle||`${stories.length} 則`)}</span></div><div class="topic-story-grid">${stories.map((a,i)=>renderArticle(a,i===0)).join("")}</div></section>`;}).join("")||`<p class="notice">本版目前未有可核實內容。</p>`;}
-  async function init(){try{let data=ensureSections(await getJson("data/latest.json"));data=await applyEditorialOverride(data);data=await applyTopicExtras(data);data=await applyDeskLatest(data);data=await applyLive(data);renderTopic(data);}catch(e){console.error(e);const h=$("#topic-sections");if(h)h.innerHTML=`<p class="notice">本版暫時未能載入。請返回頭版或稍後重試。</p>`;}}
+  async function init(){try{let data=ensureSections(await getJson("data/latest.json"));data=await applyEditorialOverride(data);data=await applyTopicExtras(data);data=await applyDeskLatest(data);data=await applyLive(data);data=enforceHardRouting(data);renderTopic(data);}catch(e){console.error(e);const h=$("#topic-sections");if(h)h.innerHTML=`<p class="notice">本版暫時未能載入。請返回頭版或稍後重試。</p>`;}}
   init();
 })();
