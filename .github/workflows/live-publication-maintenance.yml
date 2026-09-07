@@ -79,7 +79,7 @@ jobs:
           due_hour=local_now.hour
           allowed_now=(due_hour in (0,6,7) or 9 <= due_hour <= 23)
           due=local_now.replace(minute=0,second=0,microsecond=0)
-          current_is_due=(not allowed_now) or current.astimezone(HKT) >= due
+          current_is_due=allowed_now and current.astimezone(HKT) >= due
           repair=(current_is_due and not coverage_ok)
 
           promote=False
