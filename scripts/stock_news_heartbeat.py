@@ -3,9 +3,11 @@
 
 The rolling discovery branch proves that the tracked-stock desk was searched.
 Each successful scheduled publication check advances ``generatedAt`` and
-``lastUpdatedLabel`` to the actual publication completion time. The separate
+``lastUpdatedLabel`` to the actual publication completion time, even when the
+latest rolling-search snapshot has already been consumed. The separate
 ``verifiedContentUpdatedAt`` field preserves when the verified story set last
-changed, so a current edition timestamp never fabricates a new catalyst.
+changed, while ``lastCheckedAt`` continues to describe the newest source-search
+snapshot actually evaluated.
 
 A check heartbeat never promotes raw discovery candidates and never rewrites
 verified copy. Stock discovery health is recalculated with strict ticker identity
@@ -83,45 +85,24 @@ def main() -> int:
 
     checked = parse_iso(staging.get("lastSearchAt") or "")
     previous_raw = stocks.get("lastCheckedAt")
+    refresh_collection = True
+    refresh_reason = "new-search-snapshot"
     if previous_raw:
         previous = parse_iso(previous_raw)
         if checked <= previous:
-            print("STOCK_HEARTBEAT_NOOP staging-not-newer")
-            return 0
-        if checked - previous < timedelta(minutes=args.min_interval_minutes):
-            print("STOCK_HEARTBEAT_NOOP minimum-interval-not-reached")
-            return 0
+            refresh_collection = False
+            refresh_reason = "staging-not-newer"
+        elif checked - previous < timedelta(minutes=args.min_interval_minutes):
+            refresh_collection = False
+            refresh_reason = "minimum-interval-not-reached"
 
-    valid, current = strict_candidates(staging)
-    floor = int(((staging.get("discoveryFloors") or {}).get("stock-news")) or 12)
-    unique_this_run = len({str(item.get("id") or item.get("title")) for item in current})
-    reservoir_count = len({str(item.get("id") or item.get("title")) for item in valid})
-    floor_met = unique_this_run >= floor
-    is_underfilled = reservoir_count < floor
-
-    if unique_this_run <= 0:
-        collection_status = "COLLECTION_FAILURE"
-    elif not floor_met or is_underfilled:
-        collection_status = "INCOMPLETE"
-    else:
-        collection_status = "COMPLETE"
-
-    # Keep verified-story freshness distinct from the edition publication time.
+    # Publication currentness is independent of whether a newer discovery
+    # snapshot exists. A successful edition run must never leave generatedAt
+    # looking stale merely because the retained verified story set is unchanged.
     previous_verified_update = stocks.get("verifiedContentUpdatedAt") or stocks.get("generatedAt")
     published = datetime.now(timezone.utc)
-
     stocks["generatedAt"] = published.isoformat()
     stocks["lastUpdatedLabel"] = format_hkt(published)
-    stocks["lastCheckedAt"] = checked.isoformat()
-    stocks["lastCheckedLabel"] = format_hkt(checked)
-    stocks["collectionStatus"] = collection_status
-    stocks["collectionSource"] = "rolling-news-search+strict-ticker-filter"
-    stocks["discoveryCandidateCount"] = reservoir_count
-    stocks["discoveredThisCheck"] = unique_this_run
-    stocks["discoveryFloorMet"] = floor_met
-    stocks["discoveryUnderfilled"] = is_underfilled
-    stocks["rawDiscoveryCandidateCount"] = int(((staging.get("candidateCounts") or {}).get("stock-news")) or 0)
-    stocks["rejectedDiscoveryNoiseCount"] = max(0, stocks["rawDiscoveryCandidateCount"] - reservoir_count)
     stocks["verifiedContentUpdatedAt"] = previous_verified_update
     stocks["freshnessContract"] = {
         "generatedAt": "actual completion time of the current verified Stock News publication",
@@ -129,18 +110,53 @@ def main() -> int:
         "lastCheckedAt": "source-search time after strict tracked-ticker identity filtering",
     }
 
+    if refresh_collection:
+        valid, current = strict_candidates(staging)
+        floor = int(((staging.get("discoveryFloors") or {}).get("stock-news")) or 12)
+        unique_this_run = len({str(item.get("id") or item.get("title")) for item in current})
+        reservoir_count = len({str(item.get("id") or item.get("title")) for item in valid})
+        floor_met = unique_this_run >= floor
+        is_underfilled = reservoir_count < floor
+
+        if unique_this_run <= 0:
+            collection_status = "COLLECTION_FAILURE"
+        elif not floor_met or is_underfilled:
+            collection_status = "INCOMPLETE"
+        else:
+            collection_status = "COMPLETE"
+
+        stocks["lastCheckedAt"] = checked.isoformat()
+        stocks["lastCheckedLabel"] = format_hkt(checked)
+        stocks["collectionStatus"] = collection_status
+        stocks["collectionSource"] = "rolling-news-search+strict-ticker-filter"
+        stocks["discoveryCandidateCount"] = reservoir_count
+        stocks["discoveredThisCheck"] = unique_this_run
+        stocks["discoveryFloorMet"] = floor_met
+        stocks["discoveryUnderfilled"] = is_underfilled
+        stocks["rawDiscoveryCandidateCount"] = int(((staging.get("candidateCounts") or {}).get("stock-news")) or 0)
+        stocks["rejectedDiscoveryNoiseCount"] = max(0, stocks["rawDiscoveryCandidateCount"] - reservoir_count)
+
+        message = (
+            "STOCK_HEARTBEAT_UPDATED "
+            f"published={published.isoformat()} "
+            f"checked={checked.isoformat()} "
+            f"status={collection_status} "
+            f"strict_discovered={unique_this_run} "
+            f"strict_reservoir={reservoir_count} "
+            f"raw_reservoir={stocks['rawDiscoveryCandidateCount']} "
+            f"rejected_noise={stocks['rejectedDiscoveryNoiseCount']} "
+            f"floor_met={floor_met}"
+        )
+    else:
+        message = (
+            "STOCK_HEARTBEAT_PUBLICATION_REFRESHED "
+            f"published={published.isoformat()} "
+            f"collection_refresh={refresh_reason} "
+            f"last_checked={stocks.get('lastCheckedAt')}"
+        )
+
     STOCKS_PATH.write_text(json.dumps(stocks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(
-        "STOCK_HEARTBEAT_UPDATED",
-        f"published={published.isoformat()}",
-        f"checked={checked.isoformat()}",
-        f"status={collection_status}",
-        f"strict_discovered={unique_this_run}",
-        f"strict_reservoir={reservoir_count}",
-        f"raw_reservoir={stocks['rawDiscoveryCandidateCount']}",
-        f"rejected_noise={stocks['rejectedDiscoveryNoiseCount']}",
-        f"floor_met={floor_met}",
-    )
+    print(message)
     return 0
 
 
