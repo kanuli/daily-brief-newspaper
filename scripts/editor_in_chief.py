@@ -15,7 +15,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from desk_retention import expired_cross_desk_football, story_time
+from desk_retention import expired_cross_desk_football
+from desk_freshness_policy import editorial_story_time, routed_slugs
 
 HKT = timezone(timedelta(hours=8))
 EXPECTED_DESKS = (
@@ -111,7 +112,7 @@ def audit(
         add(findings, "LIVE_STALE", "critical", "live",
             f"Live publication age is {live_age if live_age is not None else 'unknown'} min", "live")
 
-    # Desk coverage, retention and article quality.
+    # Desk coverage, retention, hard routing, newest-first order and article quality.
     desks = desk.get("desks") if isinstance(desk.get("desks"), dict) else {}
     all_ids: dict[str, str] = {}
     all_titles: dict[str, str] = {}
@@ -121,6 +122,9 @@ def audit(
         newest = None
         quality_errors = 0
         stale_cross_desk_football = 0
+        routing_errors = 0
+        newest_first_errors = 0
+        previous_stamp = None
         for story in stories:
             if not isinstance(story, dict):
                 quality_errors += 1
@@ -130,15 +134,28 @@ def audit(
             body = str(story.get("body") or "").strip()
             summary = str(story.get("summary") or "").strip()
             source_url = str(story.get("sourceUrl") or "").strip()
-            routes = {
-                str(x) for x in (story.get("deskSlugs") or [])
-                if isinstance(story.get("deskSlugs"), list) and str(x)
-            }
+            routes = set(routed_slugs(story))
             if not sid or not title or len(body) < 80 or len(summary) < 20 or not source_url.startswith("http"):
                 quality_errors += 1
 
-            # Intentional multi-desk routing is not itself a duplicate defect.  What
-            # matters is whether a cross-post is still appropriate for the target desk.
+            # Hard routing ownership. A story is not allowed to remain on an old or
+            # unrelated page merely because stale deskSlugs still say so.
+            if routes and slug not in routes:
+                routing_errors += 1
+                add(findings, "HARD_ROUTING_VIOLATION", "critical", slug,
+                    f"story {sid or title} belongs to {sorted(routes)} but is still present on {slug}",
+                    "desk")
+
+            # Latest means latest: every topic reservoir must be descending by a real
+            # editorial timestamp, not insertion order.
+            stamp = editorial_story_time(story, now=now)
+            if stamp is not None:
+                if previous_stamp is not None and stamp > previous_stamp:
+                    newest_first_errors += 1
+                previous_stamp = stamp
+                if newest is None or stamp > newest:
+                    newest = stamp
+
             if expired_cross_desk_football(story, slug, now=now):
                 stale_cross_desk_football += 1
                 add(findings, "STALE_CROSS_DESK_FOOTBALL", "critical", slug,
@@ -150,7 +167,7 @@ def audit(
                 intentional = bool(prior and prior in routes and slug in routes)
                 if prior and prior != slug and not intentional:
                     add(findings, "DUPLICATE_ARTICLE_ID", "warning", "editorial",
-                        f"article id {sid} appears in both {prior} and {slug} without an explicit multi-desk route")
+                        f"article id {sid} appears in both {prior} and {slug} without an explicit valid route")
                 all_ids[sid] = slug
             norm_title = re.sub(r"\s+", "", title).lower()
             if norm_title:
@@ -158,17 +175,22 @@ def audit(
                 intentional = bool(prior and prior in routes and slug in routes)
                 if prior and prior != slug and not intentional:
                     add(findings, "DUPLICATE_HEADLINE", "warning", "editorial",
-                        f"same headline appears in both {prior} and {slug} without an explicit multi-desk route")
+                        f"same headline appears in both {prior} and {slug} without an explicit valid route")
                 all_titles[norm_title] = slug
-            st = story_time(story, now=now)
-            if st and (newest is None or st > newest):
-                newest = st
+
+        if newest_first_errors:
+            add(findings, "DESK_NOT_NEWEST_FIRST", "critical", slug,
+                f"{slug} has {newest_first_errors} timestamp inversion(s); newest verified story is not at the top",
+                "desk")
+
         newest_age = max(0.0, (now - newest).total_seconds() / 60.0) if newest else None
         desk_summary[slug] = {
             "storyCount": len(stories),
             "newestAgeMinutes": newest_age,
             "qualityErrorCount": quality_errors,
             "staleCrossDeskFootballCount": stale_cross_desk_football,
+            "hardRoutingErrorCount": routing_errors,
+            "newestFirstErrorCount": newest_first_errors,
         }
         if not stories:
             add(findings, "DESK_EMPTY", "critical", slug,
@@ -176,8 +198,6 @@ def audit(
         elif quality_errors:
             add(findings, "ARTICLE_SHAPE_INVALID", "warning", slug,
                 f"{quality_errors} story/stories fail basic article-shape checks")
-        # A desk going two days without any parseable/new material is suspicious, but
-        # not a licence to manufacture a story. Trigger discovery once, then escalate.
         if newest_age is not None and newest_age > 48 * 60:
             add(findings, "DESK_EDITORIAL_GAP", "critical", slug,
                 f"newest parseable story is {newest_age/60:.1f} hours old", "collection")
@@ -225,13 +245,9 @@ def audit(
         add(findings, "VOICE_PENDING", "info", "voice",
             f"{int(tts.get('pendingArticleCount') or 0)} article(s) remain pending; scheduled voice production owns the backlog")
 
-    # Discord is audited conservatively here. Delivery-level evidence is not persisted
-    # in the repository, so the supervisor must not claim success it cannot prove.
     add(findings, "DISCORD_DELIVERY_OBSERVABILITY", "info", "discord",
         "Discord workflow delivery cannot be proven from newsroom JSON alone; workflow-run health remains the delivery evidence")
 
-    # If the same critical repairable failure survives a previous supervisory cycle,
-    # escalate it rather than endlessly restarting workflows.
     if previous:
         previous_codes = {
             str(f.get("code")) for f in (previous.get("findings") or [])
