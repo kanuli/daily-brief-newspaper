@@ -3,10 +3,9 @@
 
 The rolling discovery branch proves that the tracked-stock desk was searched.
 Each successful scheduled publication check advances ``generatedAt`` and
-``lastUpdatedLabel`` to the completed publication check time, as required by the
-public Stock News currentness contract. ``verifiedContentUpdatedAt`` separately
-preserves when the verified story set last changed, so current publication time
-never fabricates a new catalyst.
+``lastUpdatedLabel`` to the actual publication completion time. The separate
+``verifiedContentUpdatedAt`` field preserves when the verified story set last
+changed, so a current edition timestamp never fabricates a new catalyst.
 
 A check heartbeat never promotes raw discovery candidates and never rewrites
 verified copy. Stock discovery health is recalculated with strict ticker identity
@@ -107,12 +106,12 @@ def main() -> int:
     else:
         collection_status = "COMPLETE"
 
-    # Preserve the last time the verified story set changed independently from
-    # the publication/currentness timestamp advanced by this successful check.
+    # Keep verified-story freshness distinct from the edition publication time.
     previous_verified_update = stocks.get("verifiedContentUpdatedAt") or stocks.get("generatedAt")
+    published = datetime.now(timezone.utc)
 
-    stocks["generatedAt"] = checked.isoformat()
-    stocks["lastUpdatedLabel"] = format_hkt(checked)
+    stocks["generatedAt"] = published.isoformat()
+    stocks["lastUpdatedLabel"] = format_hkt(published)
     stocks["lastCheckedAt"] = checked.isoformat()
     stocks["lastCheckedLabel"] = format_hkt(checked)
     stocks["collectionStatus"] = collection_status
@@ -125,14 +124,15 @@ def main() -> int:
     stocks["rejectedDiscoveryNoiseCount"] = max(0, stocks["rawDiscoveryCandidateCount"] - reservoir_count)
     stocks["verifiedContentUpdatedAt"] = previous_verified_update
     stocks["freshnessContract"] = {
-        "generatedAt": "time the current Stock News edition completed its verified publication check",
+        "generatedAt": "actual completion time of the current verified Stock News publication",
         "verifiedContentUpdatedAt": "time the verified story set last changed",
-        "lastCheckedAt": "hourly newsroom/search check after strict tracked-ticker identity filtering",
+        "lastCheckedAt": "source-search time after strict tracked-ticker identity filtering",
     }
 
     STOCKS_PATH.write_text(json.dumps(stocks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(
         "STOCK_HEARTBEAT_UPDATED",
+        f"published={published.isoformat()}",
         f"checked={checked.isoformat()}",
         f"status={collection_status}",
         f"strict_discovered={unique_this_run}",
