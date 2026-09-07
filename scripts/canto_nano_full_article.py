@@ -88,9 +88,90 @@ def full_script(story):
     return script
 
 
+def _semantic_norm(value):
+    return re.sub(r"\s+", "", str(value or ""))
+
+
+def lossless_units(text):
+    """Segment speech without ever dropping adjacent punctuation.
+
+    The legacy segmenter can produce a punctuation-only piece when punctuation
+    characters are adjacent (for example ``BanG Dream!、Vanguard``). Its empty
+    core was discarded, silently removing the second punctuation mark. Keep
+    that mark on the preceding semantic unit and enforce a lossless invariant
+    before any expensive synthesis begins.
+    """
+    sty, factor = base.style(text)
+    pieces = []
+    start = 0
+    for match in re.finditer(r"[。！？!?，、；：]", text):
+        pieces.append(text[start : match.end()])
+        start = match.end()
+    if start < len(text):
+        pieces.append(text[start:])
+
+    out = []
+    for piece in [value.strip() for value in pieces if value.strip()]:
+        mark = piece[-1] if piece[-1] in "。！？!?，、；：" else ""
+        core = piece[:-1].strip() if mark else piece
+        chunks = base.num_refine(base.split_core(core))
+
+        if not chunks:
+            # Adjacent punctuation creates a punctuation-only piece. Preserve
+            # it on the preceding spoken unit instead of silently dropping it.
+            if mark and out:
+                out[-1]["text"] += mark
+                pause = (
+                    base.COMMA
+                    if mark in "，、"
+                    else base.SEMI
+                    if mark in "；："
+                    else base.QUESTION
+                    if mark in "？?"
+                    else base.SENT
+                    if mark in "。！!"
+                    else 0.0
+                )
+                if pause:
+                    out[-1]["pause"] = max(out[-1]["pause"], round(pause * factor, 3))
+                    out[-1]["reason"] = "punctuation"
+            continue
+
+        if mark:
+            chunks[-1]["text"] += mark
+        pause = (
+            base.COMMA
+            if mark and mark in "，、"
+            else base.SEMI
+            if mark and mark in "；："
+            else base.QUESTION
+            if mark and mark in "？?"
+            else base.SENT
+            if mark and mark in "。！!"
+            else 0.0
+        )
+        if pause:
+            chunks[-1]["pause"] = max(chunks[-1]["pause"], pause)
+            chunks[-1]["reason"] = "punctuation"
+        for chunk in chunks:
+            chunk["pause"] = round(chunk["pause"] * factor, 3)
+        out += chunks
+
+    if not out:
+        raise RuntimeError("zero semantic units")
+
+    spoken = "".join(str(unit.get("text") or "") for unit in out)
+    if _semantic_norm(spoken) != _semantic_norm(text):
+        raise RuntimeError("lossy semantic-unit segmentation")
+    return out, sty, factor
+
+
 # Preserve the proven synthesis/runtime code while replacing only the text
-# collector and adding output completeness verification.
+# collector and adding output completeness verification. The full-article
+# wrapper also uses lossless segmentation so the completeness gate cannot be
+# tripped by adjacent punctuation being discarded by the legacy tokenizer.
 base.script = full_script
+base.units = lossless_units
 _original_synth = base.synth
 
 
@@ -103,8 +184,7 @@ def verified_synth(tts, ref, story, out_path):
     # regression gate. It catches truncation, dropped English, altered names,
     # or any future text mutation without guessing from ambiguous Chinese
     # characters that can legitimately appear in people/place names.
-    normalize = lambda value: re.sub(r"\s+", "", str(value or ""))
-    if normalize(spoken) != normalize(expected):
+    if _semantic_norm(spoken) != _semantic_norm(expected):
         raise RuntimeError(
             f"semantic-unit completeness check failed for {story.get('id') or story.get('title')}"
         )
