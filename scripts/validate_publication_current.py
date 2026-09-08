@@ -77,6 +77,17 @@ def validate_live(latest, live, desk):
         need(coverage.get("deskLatestDepthMet") is True, "Daily baseline requires deskLatestDepthMet=true")
         return
 
+    need(coverage.get("status") == "COMPLETE", f"Hourly Live coverage must be COMPLETE, got {coverage.get('status')!r}")
+    need(coverage.get("publishingGateMet") is True, "Hourly Live requires publishingGateMet=true")
+    need(coverage.get("deskLatestDepthMet") is True, "Hourly Live requires deskLatestDepthMet=true")
+    need(coverage.get("footballGateMet") is True, "Hourly Live requires footballGateMet=true")
+    counts = coverage.get("deskLatestStoryCounts")
+    need(isinstance(counts, dict), "Hourly Live requires deskLatestStoryCounts")
+    for slug, minimum in DEPTH_FLOOR.items():
+        actual_count = len(desk.get("desks", {}).get(slug, []))
+        need(actual_count >= minimum, f"Hourly Live desk {slug} depth {actual_count} < {minimum}")
+        need(counts.get(slug) == actual_count, f"Hourly Live reported {slug}={counts.get(slug)} but actual={actual_count}")
+
     need(items, "Hourly Live publication must never be empty")
     actual = {"NEW": 0, "UPDATED": 0, "DEVELOPING": 0}
     ids = []
