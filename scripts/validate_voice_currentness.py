@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Validate that current published newsroom stories have current Canto Nano audio.
 
-This is an outcome validator, not a workflow-status validator.  It rebuilds the
+This is an outcome validator, not a workflow-status validator. It rebuilds the
 same current story set and content hashes used by the Canto Nano producer and
-compares those expectations against data/tts-manifest.json.  Therefore an old
-manifest cannot claim HEALTHY merely because its own counters say 239/239.
+compares those expectations against data/tts-manifest.json. An old or
+transiently truncated manifest therefore cannot claim HEALTHY merely because
+its own counters say every item in its reduced set is playable.
 """
 from __future__ import annotations
 
@@ -27,6 +28,17 @@ FIELDS = (
 EXPECTED_ENGINE = "typangaa/canto-tts-nano"
 EXPECTED_NAMESPACE = "cnf4"
 EXPECTED_LANGUAGE_GATE = "hk-cantonese-english-codeswitch-allowed"
+DESK_FLOORS = {
+    "world": 8,
+    "asia": 8,
+    "hong-kong": 6,
+    "japan": 8,
+    "market-economy": 8,
+    "ai-tech": 6,
+    "manga-anime": 4,
+    "manchester-united": 4,
+    "football": 10,
+}
 
 
 def clean(value: Any) -> str:
@@ -69,6 +81,45 @@ def read_json(path: Path) -> dict[str, Any] | None:
     return data
 
 
+def publication_state() -> tuple[bool, str, dict[str, int]]:
+    """Require the same complete newsroom state that voice is meant to cover."""
+    live = read_json(Path("data/live.json"))
+    if not live:
+        return False, "live-json-missing", {}
+    coverage = live.get("coverage") if isinstance(live.get("coverage"), dict) else {}
+    if coverage.get("status") != "COMPLETE":
+        return False, f"coverage={coverage.get('status')}", {}
+    for gate in (
+        "publishingGateMet",
+        "routingGateMet",
+        "copyGateMet",
+        "footballGateMet",
+        "deskLatestDepthMet",
+    ):
+        if coverage.get(gate) is not True:
+            return False, f"{gate}={coverage.get(gate)}", {}
+    raw_counts = coverage.get("deskLatestStoryCounts")
+    if not isinstance(raw_counts, dict):
+        return False, "deskLatestStoryCounts-missing", {}
+    counts: dict[str, int] = {}
+    for desk, floor in DESK_FLOORS.items():
+        try:
+            count = int(raw_counts.get(desk, 0))
+        except (TypeError, ValueError):
+            count = 0
+        counts[desk] = count
+        if count < floor:
+            return False, f"{desk}={count}<{floor}", counts
+    try:
+        raw = Path("data/desk-latest.json").read_bytes()
+        if len(raw) < 1024:
+            return False, f"desk-latest-bytes={len(raw)}", counts
+        json.loads(raw.decode("utf-8"))
+    except Exception as exc:
+        return False, f"desk-latest-unreadable:{type(exc).__name__}", counts
+    return True, "complete-publication-state", counts
+
+
 def source_paths(date: str | None) -> list[Path]:
     paths = [
         Path("data/latest.json"),
@@ -96,8 +147,6 @@ def source_text(story: dict[str, Any]) -> str:
 
 
 def content_digest(story: dict[str, Any]) -> str:
-    # The production wrapper replaces canto_nano_prod.hktrad with tts_hktrad_v3,
-    # so this is exactly the digest semantics used by current cnf4 generation.
     return hashlib.sha256(hktrad.localize(source_text(story)).encode()).hexdigest()
 
 
@@ -136,6 +185,7 @@ def collect_current() -> tuple[dict[str, Any], list[dict[str, Any]], list[str]]:
 
 
 def validate() -> dict[str, Any]:
+    publication_healthy, publication_reason, desk_counts = publication_state()
     latest, stories, loaded = collect_current()
     manifest = read_json(Path("data/tts-manifest.json")) or {}
     articles = manifest.get("articles") if isinstance(manifest.get("articles"), dict) else {}
@@ -155,8 +205,6 @@ def validate() -> dict[str, Any]:
     for sid, want in expected.items():
         entry = articles.get(sid)
         if not isinstance(entry, dict):
-            # Backward-compatible lookup for manifests that may have been keyed
-            # differently while still carrying articleId inside the entry.
             entry = next(
                 (e for e in articles.values() if isinstance(e, dict) and clean(e.get("articleId")) == sid),
                 None,
@@ -179,13 +227,23 @@ def validate() -> dict[str, Any]:
         playable += 1
 
     engine_ok = clean(manifest.get("engine")) == EXPECTED_ENGINE
-    healthy = engine_ok and not missing and not stale and not invalid and playable == len(expected)
+    healthy = (
+        publication_healthy
+        and engine_ok
+        and not missing
+        and not stale
+        and not invalid
+        and playable == len(expected)
+    )
     lead_id = story_id(stories[0]) if stories else None
 
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "checkedAt": datetime.now(timezone.utc).isoformat(),
         "healthy": healthy,
+        "publicationStateHealthy": publication_healthy,
+        "publicationStateReason": publication_reason,
+        "deskLatestStoryCounts": desk_counts,
         "engineOk": engine_ok,
         "expectedNamespace": EXPECTED_NAMESPACE,
         "expectedLanguageGate": EXPECTED_LANGUAGE_GATE,
