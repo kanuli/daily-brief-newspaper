@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Editor-in-Chief recovery guard; refreshed after publication-validator alignment.
 import json
 import pathlib
 import subprocess
