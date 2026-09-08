@@ -214,7 +214,10 @@ def main():
     depth_met = all(counts[slug] >= minimum for slug, minimum in FLOORS.items())
     source_gate = bool(coverage.get("sourceGateMet", coverage.get("sourceGate", False)))
     geographic_gate = bool(coverage.get("geographicGateMet", coverage.get("geographicGate", False)))
-    football_gate = counts["football"] >= FLOORS["football"] and bool(coverage.get("footballGateMet", coverage.get("footballGate", False)))
+    # Football gate is derived from the repaired routing state, not inherited
+    # from stale producer metadata. The merge has already recalculated every
+    # story's routed_slugs, removed stale cross-posts, and enforced the floor.
+    football_gate = counts["football"] >= FLOORS["football"]
     publication_ready = depth_met and source_gate and geographic_gate and football_gate
     coverage["deskLatestStoryCounts"] = counts
     coverage["deskLatestDepthMet"] = depth_met
