@@ -39,7 +39,60 @@ jobs:
         run: python -m py_compile scripts/retail_deals_collector.py
 
       - name: Collect latest public retail promotions only
-        run: python scripts/retail_deals_collector.py --output data/retail-deals.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp data/retail-deals.json /tmp/retail-deals-last-good.json
+          if python scripts/retail_deals_collector.py --output data/retail-deals.json; then
+            echo "RETAIL_PRIMARY_COLLECTION_PASS"
+            exit 0
+          fi
+
+          echo "Primary collection could not produce a dated current set; applying last-good dated-primary fallback"
+          cp /tmp/retail-deals-last-good.json data/retail-deals.json
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          path = Path('data/retail-deals.json')
+          data = json.loads(path.read_text(encoding='utf-8'))
+          now = datetime.now(timezone.utc)
+          hkt = now.astimezone(ZoneInfo('Asia/Hong_Kong'))
+          today = hkt.date()
+          allowed = {'official-promotion', 'facebook', 'social'}
+          retained = []
+          for promo in data.get('promotions', []):
+              try:
+                  start = datetime.strptime(str(promo.get('startDate') or ''), '%Y-%m-%d').date()
+                  end = datetime.strptime(str(promo.get('endDate') or ''), '%Y-%m-%d').date()
+              except ValueError:
+                  continue
+              if promo.get('sourceType') not in allowed:
+                  continue
+              if promo.get('active') is False or not (start <= today <= end):
+                  continue
+              retained.append(promo)
+          if not retained:
+              raise SystemExit('RETAIL_FALLBACK_FAIL no previously verified dated primary promotion remains current')
+
+          data['promotions'] = retained
+          data['generatedAt'] = now.isoformat(timespec='seconds').replace('+00:00', 'Z')
+          data['generatedAtHkt'] = hkt.strftime('%Y-%m-%d %H:%M HKT')
+          data['collectorVersion'] = '3.4.1-dated-primary-fallback'
+          for source in data.get('sources', []):
+              if isinstance(source, dict):
+                  source['status'] = 'limited'
+                  source['detail'] = '本輪自動 collector 受來源讀取限制；只續刊先前已由主要來源核實、且今日仍在明確活動期內的 Promotion，未加入未核實新優惠。'
+          stats = data.setdefault('stats', {})
+          stats['activePromotions'] = len(retained)
+          stats['retailerCount'] = len({p.get('retailer') for p in retained if p.get('retailer')})
+          stats['fallbackRetained'] = len(retained)
+          stats['sourceReadLimited'] = True
+          path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print('RETAIL_DATED_PRIMARY_FALLBACK_PASS', len(retained), data['generatedAt'])
+          PY
 
       - name: Validate promotion-only public dataset
         shell: bash
