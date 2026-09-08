@@ -46,7 +46,9 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          from datetime import datetime, timezone
           from pathlib import Path
+          from zoneinfo import ZoneInfo
 
           path = Path('data/retail-deals.json')
           data = json.loads(path.read_text(encoding='utf-8'))
@@ -75,7 +77,30 @@ jobs:
                       walk(child, f'{path}[{idx}]')
 
           walk(data)
-          print('RETAIL_PROMOTION_ONLY_OK', len(data['promotions']), len(data['sources']), data['generatedAt'])
+
+          today = datetime.now(timezone.utc).astimezone(ZoneInfo('Asia/Hong_Kong')).date()
+          active = []
+          for idx, promo in enumerate(data['promotions']):
+              start_raw = promo.get('startDate')
+              end_raw = promo.get('endDate')
+              if not start_raw or not end_raw:
+                  raise SystemExit(f'promotion[{idx}] missing clear startDate/endDate')
+              try:
+                  start = datetime.strptime(start_raw, '%Y-%m-%d').date()
+                  end = datetime.strptime(end_raw, '%Y-%m-%d').date()
+              except ValueError as exc:
+                  raise SystemExit(f'promotion[{idx}] invalid promotion date: {exc}')
+              if start > end:
+                  raise SystemExit(f'promotion[{idx}] startDate after endDate')
+              if promo.get('active') is not False and start <= today <= end:
+                  active.append(promo)
+
+          if not active:
+              raise SystemExit('no clearly dated current promotions')
+          if len(active) != len(data['promotions']):
+              raise SystemExit('public promotions dataset contains stale/future/non-current entries')
+
+          print('RETAIL_PROMOTION_ONLY_OK', len(active), len(data['sources']), data['generatedAt'])
           PY
 
       - name: Commit latest retail promotions
