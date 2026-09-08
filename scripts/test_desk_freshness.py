@@ -12,10 +12,13 @@ SLUGS = (
 
 
 def story(slug, ident):
+    routes = [slug]
+    if slug == "manchester-united":
+        routes = ["manchester-united", "football"]
     return {
         "id": ident,
         "desk": slug,
-        "deskSlugs": [slug],
+        "deskSlugs": routes,
         "title": f"{slug} 測試新聞",
         "summary": "測試摘要",
         "body": "測試正文",
@@ -26,7 +29,10 @@ def story(slug, ident):
 def base():
     latest_articles = [story(slug, f"{slug}-daily-20260828") for slug in SLUGS]
     latest = {"date": "2026-08-28", "articles": latest_articles}
-    desk = {"desks": {slug: [dict(article)] for slug, article in zip(SLUGS, latest_articles)}}
+    desk = {"desks": {slug: [] for slug in SLUGS}}
+    for article in latest_articles:
+        for slug in article["deskSlugs"]:
+            desk["desks"][slug].append(dict(article))
     return latest, desk
 
 
@@ -48,6 +54,13 @@ desk["desks"]["manchester-united"] = [story("manchester-united", "mu-other-20260
 result = audit(latest, desk, NOW)
 assert result["status"] == "FAIL", result
 assert any("current Daily" in x and "manchester-united" in x for x in result["failures"]), result
+
+# Manchester United football must also be present on the Football desk.
+latest, desk = base()
+desk["desks"]["football"] = [s for s in desk["desks"]["football"] if s["id"] != "manchester-united-daily-20260828"]
+result = audit(latest, desk, NOW)
+assert result["status"] == "FAIL", result
+assert any("current Daily" in x and "football" in x for x in result["failures"]), result
 
 # A date-only ID must not fake 23:59 freshness when the verified editorial
 # timeLabel gives an earlier real publication/check time.
