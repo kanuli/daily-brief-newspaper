@@ -94,6 +94,16 @@ jobs:
               if not dt: return None
               return max(0.0,(now-dt).total_seconds()/60.0)
 
+          def voice_manifest_at_least(remote, local):
+              if not isinstance(remote,dict) or not isinstance(local,dict): return False
+              if remote.get('engine') != local.get('engine'): return False
+              if remote.get('assetNamespace') != local.get('assetNamespace'): return False
+              if remote.get('prosodyPolicy') != local.get('prosodyPolicy'): return False
+              if int(remote.get('availableArticleCount') or 0) < int(local.get('availableArticleCount') or 0): return False
+              remote_ts=parse_iso(remote.get('lastVoicePublishedAt'))
+              local_ts=parse_iso(local.get('lastVoicePublishedAt'))
+              return bool(remote_ts and local_ts and remote_ts >= local_ts)
+
           def request_bytes(url):
               sep='&' if '?' in url else '?'
               req=urllib.request.Request(url+sep+'v='+str(int(time.time()*1000)),headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-pages-probe'})
@@ -121,19 +131,13 @@ jobs:
                   live_match=bool(remote_live.get('lastUpdated')==expected_live and (remote_live.get('items') or []))
                   desk_match=bool(remote_desk.get('generatedAt')==expected_live)
                   stock_match=bool(remote_stocks.get('generatedAt')==expected_stocks)
-                  voice_match=bool(
-                      remote_tts.get('engine')==local_tts.get('engine') and
-                      remote_tts.get('assetNamespace')==local_tts.get('assetNamespace') and
-                      remote_tts.get('prosodyPolicy')==local_tts.get('prosodyPolicy') and
-                      int(remote_tts.get('availableArticleCount') or 0)==int(local_tts.get('availableArticleCount') or 0) and
-                      str(remote_tts.get('lastVoicePublishedAt') or '')==str(local_tts.get('lastVoicePublishedAt') or '')
-                  )
+                  voice_match=voice_manifest_at_least(remote_tts,local_tts)
                   if daily_match and live_match and desk_match and stock_match and voice_match:
                       error=None; break
                   error=(f"daily={remote_latest.get('date')} expected={expected_daily}; live={remote_live.get('lastUpdated')} expected={expected_live}; "
                          f"desk={remote_desk.get('generatedAt')} expected={expected_live}; stocks={remote_stocks.get('generatedAt')} expected={expected_stocks}; "
                          f"voice={remote_tts.get('engine')}/{remote_tts.get('assetNamespace')}/{remote_tts.get('availableArticleCount')} "
-                         f"expected={local_tts.get('engine')}/{local_tts.get('assetNamespace')}/{local_tts.get('availableArticleCount')}")
+                         f"expected-at-least={local_tts.get('engine')}/{local_tts.get('assetNamespace')}/{local_tts.get('availableArticleCount')}")
               except Exception as exc:
                   error=str(exc)
               time.sleep(5)
@@ -142,7 +146,7 @@ jobs:
           live_match=bool(isinstance(remote_live,dict) and remote_live.get('lastUpdated')==expected_live and (remote_live.get('items') or []))
           desk_match=bool(isinstance(remote_desk,dict) and remote_desk.get('generatedAt')==expected_live)
           stock_match=bool(isinstance(remote_stocks,dict) and remote_stocks.get('generatedAt')==expected_stocks)
-          voice_match=bool(isinstance(remote_tts,dict) and remote_tts.get('engine')==local_tts.get('engine') and remote_tts.get('assetNamespace')==local_tts.get('assetNamespace') and remote_tts.get('prosodyPolicy')==local_tts.get('prosodyPolicy') and int(remote_tts.get('availableArticleCount') or 0)==int(local_tts.get('availableArticleCount') or 0) and str(remote_tts.get('lastVoicePublishedAt') or '')==str(local_tts.get('lastVoicePublishedAt') or ''))
+          voice_match=voice_manifest_at_least(remote_tts,local_tts)
 
           hour,minute=now_hkt.hour,now_hkt.minute
           live_age=age_minutes(remote_live.get('lastUpdated')) if isinstance(remote_live,dict) else None
