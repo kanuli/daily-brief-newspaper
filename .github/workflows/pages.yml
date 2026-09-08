@@ -42,7 +42,6 @@ jobs:
           node --check assets/js/hktrad-display-sync.js
           node --check assets/js/system-panel.js
           node --check assets/js/page-updated-time.js
-          node --check assets/js/retail-deals.js
           node --check assets/js/news-pipeline-status.js
           node --check assets/js/voice-production-status.js
           node --check assets/js/site-tts-canto-nano.js
@@ -51,7 +50,7 @@ jobs:
           node --check assets/js/desk-latest-summary.js
           node --check assets/js/source-display-upgrade.js
 
-      - name: Force newest self-healing client on every page
+      - name: Force newest self-healing client and remove retired Retail links
         shell: bash
         run: |
           python - <<'PY'
@@ -60,35 +59,37 @@ jobs:
           changed=0
           for path in Path('.').rglob('*.html'):
               text=path.read_text(encoding='utf-8')
-              new=re.sub(r'assets/js/system-panel\.js\?v=[^"\']+', 'assets/js/system-panel.js?v=20260901-cnf4-playback-v2', text)
+              new=re.sub(r'assets/js/system-panel\.js\?v=[^"\']+', 'assets/js/system-panel.js?v=20260908-retail-retired-v1', text)
+              new=re.sub(r'<a[^>]*href=["\'][^"\']*retail-deals\.html[^"\']*["\'][^>]*>.*?</a>', '', new, flags=re.I|re.S)
               if new != text:
                   path.write_text(new, encoding='utf-8')
                   changed += 1
-          print('SELF_HEAL_CLIENT_CACHE_BUST_OK pages', changed)
+          print('SELF_HEAL_CLIENT_AND_RETIRED_RETAIL_LINKS_OK pages', changed)
           PY
 
-      - name: Verify navbar, page timestamps and Stock/Retail copy contracts
+      - name: Verify navbar and page timestamps
         shell: bash
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
           js=Path('assets/js/system-panel.js').read_text(encoding='utf-8')
-          required=['🔴 Live','📰 頭版','🌍 世界','🌏 亞洲','🇭🇰 香港','🇯🇵 日本','📈 財經','📊 Stock News','🤖 AI / 科技','📚 漫畫 / Anime','🏟️ Manchester United','⚽ Football','🛒 最新優惠','🗂️ Archive']
+          required=['🔴 Live','📰 頭版','🌍 世界','🌏 亞洲','🇭🇰 香港','🇯🇵 日本','📈 財經','📊 Stock News','🤖 AI / 科技','📚 漫畫 / Anime','🏟️ Manchester United','⚽ Football','🗂️ Archive']
           missing=[x for x in required if x not in js]
           if missing: raise SystemExit('runtime navbar missing icon labels: '+repr(missing))
-          if not (js.index('⚽ Football') < js.index('🛒 最新優惠') < js.index('🗂️ Archive')):
-              raise SystemExit('runtime navbar order must be Football -> 最新優惠 -> Archive')
-          pages=['index.html','live.html','world.html','asia.html','hong-kong.html','japan.html','finance.html','stocks.html','technology.html','manga-anime.html','manchester-united.html','football.html','retail-deals.html','archive.html']
+          if '🛒 最新優惠' in js or 'retail-deals.html' in js:
+              raise SystemExit('retired Retail navigation remains in runtime navbar')
+          if not (js.index('⚽ Football') < js.index('🗂️ Archive')):
+              raise SystemExit('runtime navbar order must be Football -> Archive')
+          pages=['index.html','live.html','world.html','asia.html','hong-kong.html','japan.html','finance.html','stocks.html','technology.html','manga-anime.html','manchester-united.html','football.html','archive.html']
           for page in pages:
               text=Path(page).read_text(encoding='utf-8')
               if 'assets/js/page-updated-time.js' not in text: raise SystemExit(f'{page}: missing page update-time client')
+              if 'retail-deals.html' in text: raise SystemExit(f'{page}: retired Retail link remains')
           stock=json.loads(Path('data/stocks-latest.json').read_text(encoding='utf-8')); stock_text=json.dumps(stock,ensure_ascii=False)
           for phrase in ['自動核實器只在官方／監管來源出現後才升格為已核實新聞','Stock News的自動核實器不會因搜尋結果、社交平台貼文或預測文章出現相似標題','第一手資料已通過Stock News核實']:
               if phrase in stock_text: raise SystemExit('Stock News process copy remains: '+phrase)
           if '最近已核實內容更新' not in Path('stocks.html').read_text(encoding='utf-8'): raise SystemExit('stocks.html missing verified-content timestamp label')
-          retail_js=Path('assets/js/retail-deals.js').read_text(encoding='utf-8')
-          if '最後資料更新' not in retail_js or "UPDATED ${when(data.generatedAt)}" in retail_js: raise SystemExit('retail update-time wording contract failed')
           print('PAGE_RUNTIME_COPY_CONTRACT_OK',len(pages))
           PY
 
@@ -113,7 +114,7 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          required=['data/latest.json','data/live.json','data/desk-latest.json','data/stocks-latest.json','data/retail-deals.json']
+          required=['data/latest.json','data/live.json','data/desk-latest.json','data/stocks-latest.json']
           loaded={name:json.loads(Path(name).read_text(encoding='utf-8')) for name in required}
           live=loaded['data/live.json']; desk=loaded['data/desk-latest.json']; items=live.get('items'); mode=str(live.get('mode') or '').upper(); coverage=live.get('coverage') or {}
           if not live.get('lastUpdated') or not live.get('nextUpdateLabel'): raise SystemExit('Live timestamps missing')
@@ -152,7 +153,7 @@ jobs:
           import json
           from pathlib import Path
           latest=json.load(open('data/latest.json',encoding='utf-8')); live=json.load(open('data/live.json',encoding='utf-8')); desk=json.load(open('data/desk-latest.json',encoding='utf-8')); stocks=json.load(open('data/stocks-latest.json',encoding='utf-8'))
-          pages=['index.html','live.html','world.html','asia.html','hong-kong.html','japan.html','finance.html','stocks.html','technology.html','manga-anime.html','manchester-united.html','football.html','retail-deals.html','archive.html']
+          pages=['index.html','live.html','world.html','asia.html','hong-kong.html','japan.html','finance.html','stocks.html','technology.html','manga-anime.html','manchester-united.html','football.html','archive.html']
           for page in pages:
               if 'name="daily-brief-prerender"' not in Path(page).read_text(encoding='utf-8'): raise SystemExit(f'{page}: missing prerender marker')
           lead=next((a for a in latest.get('articles',[]) if a.get('id')==latest.get('leadId')),None); home=Path('index.html').read_text(encoding='utf-8')
@@ -184,7 +185,7 @@ jobs:
         run: |
           python - <<'PY'
           import json, os, time, urllib.request
-          base=os.environ['PAGE_URL'].rstrip('/')+'/'; local=json.load(open('data/live.json',encoding='utf-8')); expected=local.get('lastUpdated'); expected_mode=str(local.get('mode') or '').upper(); expected_items=len(local.get('items') or []); pages=['index.html','live.html','world.html','asia.html','hong-kong.html','japan.html','finance.html','stocks.html','technology.html','manga-anime.html','manchester-united.html','football.html','retail-deals.html','archive.html']
+          base=os.environ['PAGE_URL'].rstrip('/')+'/'; local=json.load(open('data/live.json',encoding='utf-8')); expected=local.get('lastUpdated'); expected_mode=str(local.get('mode') or '').upper(); expected_items=len(local.get('items') or []); pages=['index.html','live.html','world.html','asia.html','hong-kong.html','japan.html','finance.html','stocks.html','technology.html','manga-anime.html','manchester-united.html','football.html','archive.html']
           def get(path):
               req=urllib.request.Request(base+path+('?v=' if '?' not in path else '&v=')+str(int(time.time()*1000)),headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-pages-check'})
               with urllib.request.urlopen(req,timeout=15) as r: return r.read().decode('utf-8','replace')
@@ -194,9 +195,12 @@ jobs:
                   remote=json.loads(get('data/live.json'))
                   if remote.get('lastUpdated')!=expected or str(remote.get('mode') or '').upper()!=expected_mode or len(remote.get('items') or [])!=expected_items: raise RuntimeError('remote Live snapshot mismatch')
                   for page in pages:
-                      if '<html' not in get(page).lower(): raise RuntimeError(page+' invalid HTML')
+                      text=get(page)
+                      if '<html' not in text.lower(): raise RuntimeError(page+' invalid HTML')
+                      if 'retail-deals.html' in text: raise RuntimeError(page+' contains retired Retail link')
                   runtime=get('assets/js/system-panel.js')
-                  if not (runtime.index('⚽ Football') < runtime.index('🛒 最新優惠') < runtime.index('🗂️ Archive')): raise RuntimeError('public nav order stale')
+                  if 'retail-deals.html' in runtime or '🛒 最新優惠' in runtime: raise RuntimeError('public retired Retail nav remains')
+                  if not (runtime.index('⚽ Football') < runtime.index('🗂️ Archive')): raise RuntimeError('public nav order stale')
                   print('DEPLOYED_PUBLICATION_UI_OK',base,expected,expected_mode,expected_items,len(pages)); break
               except Exception as exc:
                   last=exc; time.sleep(5)
