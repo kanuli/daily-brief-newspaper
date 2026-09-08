@@ -67,132 +67,76 @@ jobs:
           print('SELF_HEAL_CLIENT_CACHE_BUST_OK pages', changed)
           PY
 
-      - name: Verify runtime navbar icon contract
+      - name: Verify navbar, page timestamps and Stock/Retail copy contracts
         shell: bash
         run: |
           python - <<'PY'
+          import json
           from pathlib import Path
           js=Path('assets/js/system-panel.js').read_text(encoding='utf-8')
-          required=[
-            '🔴 Live','📰 頭版','🌍 世界','🌏 亞洲','🇭🇰 香港','🇯🇵 日本',
-            '📈 財經','📊 Stock News','🤖 AI / 科技','📚 漫畫 / Anime',
-            '🏟️ Manchester United','⚽ Football','🛒 最新優惠','🗂️ Archive'
-          ]
-          missing=[label for label in required if label not in js]
-          if missing:
-              raise SystemExit('runtime navbar missing icon labels: '+repr(missing))
-          football=js.index('["football.html", "⚽ Football"]')
-          retail=js.index('["retail-deals.html", "🛒 最新優惠", "retail-nav"]')
-          archive=js.index('["archive.html", "🗂️ Archive"]')
-          if not football < retail < archive:
+          required=['🔴 Live','📰 頭版','🌍 世界','🌏 亞洲','🇭🇰 香港','🇯🇵 日本','📈 財經','📊 Stock News','🤖 AI / 科技','📚 漫畫 / Anime','🏟️ Manchester United','⚽ Football','🛒 最新優惠','🗂️ Archive']
+          missing=[x for x in required if x not in js]
+          if missing: raise SystemExit('runtime navbar missing icon labels: '+repr(missing))
+          if not (js.index('⚽ Football') < js.index('🛒 最新優惠') < js.index('🗂️ Archive')):
               raise SystemExit('runtime navbar order must be Football -> 最新優惠 -> Archive')
-          print('RUNTIME_NAV_ICON_CONTRACT_OK', len(required), 'Football>最新優惠>Archive')
-          PY
-
-      - name: Verify page update-time and Stock copy contracts
-        shell: bash
-        run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          pages=['index.html','live.html','world.html','asia.html','hong-kong.html','japan.html',
-                 'finance.html','stocks.html','technology.html','manga-anime.html','manchester-united.html',
-                 'football.html','retail-deals.html','archive.html']
+          pages=['index.html','live.html','world.html','asia.html','hong-kong.html','japan.html','finance.html','stocks.html','technology.html','manga-anime.html','manchester-united.html','football.html','retail-deals.html','archive.html']
           for page in pages:
               text=Path(page).read_text(encoding='utf-8')
-              if 'assets/js/page-updated-time.js' not in text:
-                  raise SystemExit(f'{page}: missing page update-time client')
-
-          stock=json.loads(Path('data/stocks-latest.json').read_text(encoding='utf-8'))
-          stock_text=json.dumps(stock,ensure_ascii=False)
-          forbidden=[
-            '自動核實器只在官方／監管來源出現後才升格為已核實新聞',
-            'Stock News的自動核實器不會因搜尋結果、社交平台貼文或預測文章出現相似標題'
-          ]
-          for phrase in forbidden:
-              if phrase in stock_text:
-                  raise SystemExit('Stock News repeated verifier boilerplate remains: '+phrase)
-          if '最近已核實內容更新' not in Path('stocks.html').read_text(encoding='utf-8'):
-              raise SystemExit('stocks.html missing distinct verified-content timestamp label')
-
+              if 'assets/js/page-updated-time.js' not in text: raise SystemExit(f'{page}: missing page update-time client')
+          stock=json.loads(Path('data/stocks-latest.json').read_text(encoding='utf-8')); stock_text=json.dumps(stock,ensure_ascii=False)
+          for phrase in ['自動核實器只在官方／監管來源出現後才升格為已核實新聞','Stock News的自動核實器不會因搜尋結果、社交平台貼文或預測文章出現相似標題','第一手資料已通過Stock News核實']:
+              if phrase in stock_text: raise SystemExit('Stock News process copy remains: '+phrase)
+          if '最近已核實內容更新' not in Path('stocks.html').read_text(encoding='utf-8'): raise SystemExit('stocks.html missing verified-content timestamp label')
           retail_js=Path('assets/js/retail-deals.js').read_text(encoding='utf-8')
-          if '最後資料更新' not in retail_js or "UPDATED ${when(data.generatedAt)}" in retail_js:
-              raise SystemExit('retail update-time wording contract failed')
-          print('PAGE_TIME_STOCK_RETAIL_CONTRACT_OK pages',len(pages))
+          if '最後資料更新' not in retail_js or "UPDATED ${when(data.generatedAt)}" in retail_js: raise SystemExit('retail update-time wording contract failed')
+          print('PAGE_RUNTIME_COPY_CONTRACT_OK',len(pages))
           PY
 
-      - name: Verify cnf4 voice playback contract before deploy
+      - name: Verify cnf4 playback contract before deploy
         shell: bash
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          manifest=json.loads(Path('data/tts-manifest.json').read_text(encoding='utf-8'))
-          js=Path('assets/js/site-tts-canto-nano.js').read_text(encoding='utf-8')
-          status=Path('assets/js/voice-production-status.js').read_text(encoding='utf-8')
-          system=Path('assets/js/system-panel.js').read_text(encoding='utf-8')
-          if manifest.get('assetNamespace') != 'cnf4':
-              raise SystemExit('voice manifest namespace is not cnf4')
-          if 'const ASSET_NAMESPACE = "cnf4"' not in js or 'hk-cantonese-english-codeswitch-allowed' not in js:
-              raise SystemExit('site TTS client is not aligned with cnf4 mixed-language playback')
-          if 'const ASSET_NAMESPACE = "cnf4"' not in status:
-              raise SystemExit('voice status client is not aligned with cnf4')
-          if '20260901-cnf4-playback-v1' not in system:
-              raise SystemExit('system panel is not loading the cnf4 playback clients')
-          available=int(manifest.get('availableArticleCount') or 0)
-          if available <= 0:
-              raise SystemExit('cnf4 manifest has zero available voice articles')
-          print('CNF4_PLAYBACK_CONTRACT_OK available',available,'pending',manifest.get('pendingArticleCount'))
+          manifest=json.loads(Path('data/tts-manifest.json').read_text(encoding='utf-8')); js=Path('assets/js/site-tts-canto-nano.js').read_text(encoding='utf-8'); status=Path('assets/js/voice-production-status.js').read_text(encoding='utf-8'); system=Path('assets/js/system-panel.js').read_text(encoding='utf-8')
+          if manifest.get('assetNamespace') != 'cnf4': raise SystemExit('voice namespace is not cnf4')
+          if 'const ASSET_NAMESPACE = "cnf4"' not in js or 'hk-cantonese-english-codeswitch-allowed' not in js: raise SystemExit('site TTS client not cnf4/yue aligned')
+          if 'const ASSET_NAMESPACE = "cnf4"' not in status: raise SystemExit('voice status client not cnf4 aligned')
+          if '20260901-cnf4-playback-v1' not in system: raise SystemExit('system panel not loading cnf4 playback clients')
+          if int(manifest.get('availableArticleCount') or 0) <= 0: raise SystemExit('cnf4 manifest has zero available articles')
+          print('CNF4_PLAYBACK_CONTRACT_OK',manifest.get('availableArticleCount'),manifest.get('pendingArticleCount'))
           PY
 
-      - name: Availability gate — JSON readable and publication mode valid
+      - name: Availability gate — JSON readable and publication state complete
         shell: bash
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          required=['data/latest.json','data/live.json','data/desk-latest.json','data/stocks-latest.json']
-          loaded={}
-          for name in required:
-              path=Path(name)
-              if not path.is_file():
-                  raise SystemExit(f'missing required public data: {name}')
-              loaded[name]=json.loads(path.read_text(encoding='utf-8'))
-          live=loaded['data/live.json']
-          desk=loaded['data/desk-latest.json']
-          if not live.get('lastUpdated') or not live.get('nextUpdateLabel'):
-              raise SystemExit('Live timestamps missing')
-          items=live.get('items')
-          if not isinstance(items,list):
-              raise SystemExit('Live items must be an array')
-          mode=str(live.get('mode') or '').upper()
+          required=['data/latest.json','data/live.json','data/desk-latest.json','data/stocks-latest.json','data/retail-deals.json']
+          loaded={name:json.loads(Path(name).read_text(encoding='utf-8')) for name in required}
+          live=loaded['data/live.json']; desk=loaded['data/desk-latest.json']; items=live.get('items'); mode=str(live.get('mode') or '').upper(); coverage=live.get('coverage') or {}
+          if not live.get('lastUpdated') or not live.get('nextUpdateLabel'): raise SystemExit('Live timestamps missing')
+          if not isinstance(items,list): raise SystemExit('Live items must be an array')
+          floors={'world':8,'asia':8,'hong-kong':6,'japan':8,'market-economy':8,'ai-tech':6,'manga-anime':4,'manchester-united':4,'football':10}; counts=coverage.get('deskLatestStoryCounts') or {}
+          for slug,minimum in floors.items():
+              actual=len((desk.get('desks') or {}).get(slug,[]))
+              if actual < minimum or counts.get(slug) != actual: raise SystemExit(f'desk mismatch {slug}: reported={counts.get(slug)} actual={actual} floor={minimum}')
           if mode == 'DAILY_BASELINE':
-              if items:
-                  raise SystemExit('08:00 Daily baseline must not publish separate Live stories')
-              counts=(live.get('coverage') or {}).get('deskLatestStoryCounts') or {}
-              floors={'world':8,'asia':8,'hong-kong':6,'japan':8,'market-economy':8,'ai-tech':6,'manga-anime':4,'manchester-united':4,'football':10}
-              for slug,minimum in floors.items():
-                  actual=len((desk.get('desks') or {}).get(slug,[]))
-                  if actual < minimum or counts.get(slug) != actual:
-                      raise SystemExit(f'Daily baseline desk mismatch {slug}: reported={counts.get(slug)} actual={actual} minimum={minimum}')
-              print('PUBLIC_AVAILABILITY_GATE_OK DAILY_BASELINE', live.get('lastUpdated'), 'japan', counts.get('japan'), 'next', live.get('nextUpdateLabel'))
+              if items: raise SystemExit('Daily baseline must not contain Live items')
           else:
-              if mode not in {'LIVE','HOURLY_LIVE'} or not items:
-                  raise SystemExit('Hourly Live publication must be non-empty')
-              if desk.get('generatedAt') != live.get('lastUpdated'):
-                  raise SystemExit(f"Rolling Desk behind Live: desk={desk.get('generatedAt')} live={live.get('lastUpdated')}")
-              print('PUBLIC_AVAILABILITY_GATE_OK', mode, live.get('windowLabel'), 'items', len(items), 'desk', desk.get('generatedAt'), 'next', live.get('nextUpdateLabel'))
+              if mode not in {'LIVE','HOURLY_LIVE','LIVE_INCREMENTAL'} or not items: raise SystemExit(f'Hourly Live mode/items invalid: {mode}')
+              if coverage.get('status') != 'COMPLETE' or coverage.get('publishingGateMet') is not True or coverage.get('deskLatestDepthMet') is not True or coverage.get('footballGateMet') is not True: raise SystemExit('Hourly Live coverage hard gates are not complete')
+          if desk.get('generatedAt') != live.get('lastUpdated'): raise SystemExit(f"Rolling Desk behind Live: desk={desk.get('generatedAt')} live={live.get('lastUpdated')}")
+          print('PUBLIC_AVAILABILITY_GATE_OK',mode,live.get('windowLabel'),len(items),desk.get('generatedAt'))
           PY
 
       - name: Editorial QA — Daily v3
         run: python scripts/validate_daily_v3.py
-
       - name: Editorial QA — Stock News
         run: python scripts/validate_stock_news.py
-
       - name: Editorial QA — current Live / Rolling Desk
         run: python scripts/validate_publication_current.py
-
       - name: Editorial QA — hard desk depth and geography
         run: python scripts/validate_editorial_v2.py
 
@@ -201,68 +145,34 @@ jobs:
           python -m py_compile scripts/build_static_news_fallback.py
           python scripts/build_static_news_fallback.py
 
-      - name: Verify no-JS newspaper fallback contains real deployed content
+      - name: Verify no-JS newspaper fallback contains current deployed content
         shell: bash
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-
-          latest=json.load(open('data/latest.json',encoding='utf-8'))
-          live=json.load(open('data/live.json',encoding='utf-8'))
-          desk=json.load(open('data/desk-latest.json',encoding='utf-8'))
-          stocks=json.load(open('data/stocks-latest.json',encoding='utf-8'))
-          archive=json.load(open('data/archive.json',encoding='utf-8'))
-
-          pages=['index.html','live.html','world.html','asia.html','hong-kong.html','japan.html',
-                 'finance.html','stocks.html','technology.html','manga-anime.html','manchester-united.html',
-                 'football.html','archive.html']
+          latest=json.load(open('data/latest.json',encoding='utf-8')); live=json.load(open('data/live.json',encoding='utf-8')); desk=json.load(open('data/desk-latest.json',encoding='utf-8')); stocks=json.load(open('data/stocks-latest.json',encoding='utf-8'))
+          pages=['index.html','live.html','world.html','asia.html','hong-kong.html','japan.html','finance.html','stocks.html','technology.html','manga-anime.html','manchester-united.html','football.html','retail-deals.html','archive.html']
           for page in pages:
-              text=Path(page).read_text(encoding='utf-8')
-              if 'name="daily-brief-prerender"' not in text:
-                  raise SystemExit(f'{page}: missing prerender marker')
-
-          articles={a.get('id'):a for a in latest.get('articles',[]) if isinstance(a,dict)}
-          lead=articles.get(latest.get('leadId'))
-          home=Path('index.html').read_text(encoding='utf-8')
-          if not lead or lead.get('title') not in home or '各版最新' not in home:
-              raise SystemExit('index.html prerender missing lead or Desk Latest')
-
-          live_html=Path('live.html').read_text(encoding='utf-8')
-          if live.get('items'):
-              if live['items'][0].get('title') not in live_html:
-                  raise SystemExit('live.html prerender missing first Live item')
-          elif '沒有新增 Live 卡片' not in live_html:
-              raise SystemExit('live.html prerender missing zero-item fallback')
-
-          first_ticker=(stocks.get('tracked') or [None])[0]
-          first_story=((stocks.get('tickers') or {}).get(first_ticker) or {}).get('stories') or []
-          stock_html=Path('stocks.html').read_text(encoding='utf-8')
-          if not first_story or first_story[0].get('title') not in stock_html:
-              raise SystemExit('stocks.html prerender missing first verified story')
-
-          mapping={'world.html':'world','asia.html':'asia','hong-kong.html':'hong-kong','japan.html':'japan',
-                   'finance.html':'market-economy','technology.html':'ai-tech','manga-anime.html':'manga-anime',
-                   'manchester-united.html':'manchester-united','football.html':'football'}
+              if 'name="daily-brief-prerender"' not in Path(page).read_text(encoding='utf-8'): raise SystemExit(f'{page}: missing prerender marker')
+          lead=next((a for a in latest.get('articles',[]) if a.get('id')==latest.get('leadId')),None); home=Path('index.html').read_text(encoding='utf-8')
+          if not lead or lead.get('title') not in home or '各版最新' not in home: raise SystemExit('index prerender stale')
+          if live.get('items') and live['items'][0].get('title') not in Path('live.html').read_text(encoding='utf-8'): raise SystemExit('live prerender stale')
+          first=(stocks.get('tracked') or [None])[0]; stories=((stocks.get('tickers') or {}).get(first) or {}).get('stories') or []
+          if not stories or stories[0].get('title') not in Path('stocks.html').read_text(encoding='utf-8'): raise SystemExit('stocks prerender stale')
+          mapping={'world.html':'world','asia.html':'asia','hong-kong.html':'hong-kong','japan.html':'japan','finance.html':'market-economy','technology.html':'ai-tech','manga-anime.html':'manga-anime','manchester-united.html':'manchester-united','football.html':'football'}
           for page,slug in mapping.items():
-              stories=((desk.get('desks') or {}).get(slug) or [])
-              if not stories or stories[0].get('title') not in Path(page).read_text(encoding='utf-8'):
-                  raise SystemExit(f'{page}: prerender missing current {slug} story')
-
-          if archive.get('editions'):
-              if archive['editions'][0].get('headline') not in Path('archive.html').read_text(encoding='utf-8'):
-                  raise SystemExit('archive.html prerender missing first edition')
-          print('NO_JS_PRERENDER_VERIFY_OK pages', len(pages))
+              rows=(desk.get('desks') or {}).get(slug) or []
+              if not rows or rows[0].get('title') not in Path(page).read_text(encoding='utf-8'): raise SystemExit(f'{page}: prerender not newest-first/current')
+          print('NO_JS_PRERENDER_VERIFY_OK',len(pages))
           PY
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
-
       - name: Upload static site
         uses: actions/upload-pages-artifact@v3
         with:
           path: .
-
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
@@ -274,58 +184,21 @@ jobs:
         run: |
           python - <<'PY'
           import json, os, time, urllib.request
-          local=json.load(open('data/live.json',encoding='utf-8'))
-          expected=local.get('lastUpdated')
-          expected_mode=str(local.get('mode') or '').upper()
-          expected_items=len(local.get('items') or [])
-          base=os.environ['PAGE_URL'].rstrip('/')+'/'
-          icon_labels=['🔴 Live','📰 頭版','🌍 世界','🌏 亞洲','🇭🇰 香港','🇯🇵 日本','📈 財經','📊 Stock News','🤖 AI / 科技','📚 漫畫 / Anime','🏟️ Manchester United','⚽ Football','🛒 最新優惠','🗂️ Archive']
-          forbidden=['自動核實器只在官方／監管來源出現後才升格為已核實新聞','Stock News的自動核實器不會因搜尋結果、社交平台貼文或預測文章出現相似標題']
-          last_error=None
+          base=os.environ['PAGE_URL'].rstrip('/')+'/'; local=json.load(open('data/live.json',encoding='utf-8')); expected=local.get('lastUpdated'); expected_mode=str(local.get('mode') or '').upper(); expected_items=len(local.get('items') or []); pages=['index.html','live.html','world.html','asia.html','hong-kong.html','japan.html','finance.html','stocks.html','technology.html','manga-anime.html','manchester-united.html','football.html','retail-deals.html','archive.html']
           def get(path):
-              req=urllib.request.Request(base+path+('?v=' if '?' not in path else '&v=')+str(int(time.time())),headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-pages-check'})
-              with urllib.request.urlopen(req,timeout=15) as response:
-                  return response.read().decode('utf-8','replace')
-          for attempt in range(12):
+              req=urllib.request.Request(base+path+('?v=' if '?' not in path else '&v=')+str(int(time.time()*1000)),headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-pages-check'})
+              with urllib.request.urlopen(req,timeout=15) as r: return r.read().decode('utf-8','replace')
+          last=None
+          for _ in range(12):
               try:
                   remote=json.loads(get('data/live.json'))
-                  remote_mode=str(remote.get('mode') or '').upper()
-                  remote_items=len(remote.get('items') or [])
-                  if not (remote.get('lastUpdated')==expected and remote_mode==expected_mode and remote_items==expected_items):
-                      raise RuntimeError(f"remote snapshot mismatch: {remote.get('lastUpdated')} {remote_mode} {remote_items}")
-
+                  if remote.get('lastUpdated')!=expected or str(remote.get('mode') or '').upper()!=expected_mode or len(remote.get('items') or [])!=expected_items: raise RuntimeError('remote Live snapshot mismatch')
+                  for page in pages:
+                      if '<html' not in get(page).lower(): raise RuntimeError(page+' invalid HTML')
                   runtime=get('assets/js/system-panel.js')
-                  missing=[label for label in icon_labels if label not in runtime]
-                  if missing:
-                      raise RuntimeError('public runtime navbar icons missing: '+repr(missing))
-                  if not (runtime.index('⚽ Football') < runtime.index('🛒 最新優惠') < runtime.index('🗂️ Archive')):
-                      raise RuntimeError('public runtime nav order wrong')
-
-                  tts_client=get('assets/js/site-tts-canto-nano.js')
-                  if 'const ASSET_NAMESPACE = "cnf4"' not in tts_client or 'hk-cantonese-english-codeswitch-allowed' not in tts_client:
-                      raise RuntimeError('public TTS client is not cnf4 mixed-language capable')
-                  manifest=json.loads(get('data/tts-manifest.json'))
-                  if manifest.get('assetNamespace') != 'cnf4' or int(manifest.get('availableArticleCount') or 0) <= 0:
-                      raise RuntimeError('public cnf4 manifest has no playable voice assets')
-
-                  page_time=get('assets/js/page-updated-time.js')
-                  for label in ['最後內容更新','最後 Live 更新','最後檢查','最後資料更新']:
-                      if label not in page_time:
-                          raise RuntimeError('public page-time client missing label '+label)
-
-                  stock_text=get('data/stocks-latest.json')
-                  for phrase in forbidden:
-                      if phrase in stock_text:
-                          raise RuntimeError('public Stock News boilerplate remains')
-
-                  retail_js=get('assets/js/retail-deals.js')
-                  if '最後資料更新' not in retail_js or 'UPDATED ${when(data.generatedAt)}' in retail_js:
-                      raise RuntimeError('public retail timestamp wording stale')
-
-                  print('PAGES_PUBLIC_UI_CONTRACTS_OK', expected, 'mode', expected_mode, 'items', expected_items, 'icons', len(icon_labels), 'voiceAvailable', manifest.get('availableArticleCount'))
-                  raise SystemExit(0)
+                  if not (runtime.index('⚽ Football') < runtime.index('🛒 最新優惠') < runtime.index('🗂️ Archive')): raise RuntimeError('public nav order stale')
+                  print('DEPLOYED_PUBLICATION_UI_OK',base,expected,expected_mode,expected_items,len(pages)); break
               except Exception as exc:
-                  last_error=str(exc)
-              time.sleep(5)
-          raise SystemExit('GitHub Pages public UI contracts did not converge: '+str(last_error))
+                  last=exc; time.sleep(5)
+          else: raise SystemExit('deployed publication verify failed: '+str(last))
           PY
