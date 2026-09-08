@@ -6,6 +6,8 @@ Promotion-only contract:
 - no regular/current price fields
 - no price history or comparison
 - only promotion campaigns/notices plus source health
+- public promotions MUST have explicit current start/end dates
+- undated official/social/search hits are discovery evidence only, never public promotions
 
 Source policy:
 - DAISO Hong Kong Facebook and Kai Bo Facebook are primary social sources.
@@ -13,6 +15,8 @@ Source policy:
 - If Meta does not expose public post text to the runner, use public web-search
   indexing as a fallback and preserve direct Facebook URLs whenever available.
 - Kai Bo's corporate homepage is not treated as a live promotion source.
+- Previously verified, clearly dated official promotions may be carried forward only
+  while their source remains reachable and today's HKT date is inside the stated range.
 """
 
 from __future__ import annotations
@@ -33,7 +37,7 @@ from pathlib import Path
 from typing import Any
 
 HKT = timezone(timedelta(hours=8))
-USER_AGENT = "DailyBriefRetailPromotions/3.3 (+https://github.com/kanuli/daily-brief-newspaper)"
+USER_AGENT = "DailyBriefRetailPromotions/3.4 (+https://github.com/kanuli/daily-brief-newspaper)"
 MAX_PROMOTIONS = 60
 MAX_OFFICIAL_PER_SOURCE = 12
 MAX_DISCOVERY_PER_RETAILER = 6
@@ -73,6 +77,7 @@ GENERIC_PROMO_TITLE = re.compile(r"^(推廣資訊|今期推廣|AEON會員卡|租
 FALSE_POSITIVE = re.compile(r"必逛|推介\s*\d+間|攻略|合集|懶人包|介紹|開箱|新品介紹", re.I)
 TITLE_DAY_RE = re.compile(r"(?<!\d)(1[0-2]|[1-9])月([0-3]?\d)日")
 FORBIDDEN_PRICE_KEYS = {"offers", "products", "currentPrice", "regularPrice", "priceHistory", "historicalLow", "historicalHigh", "previousObservedPrice", "changePct"}
+PUBLIC_SOURCE_TYPES = {"official-promotion", "facebook", "social"}
 
 
 class PromotionLinkParser(HTMLParser):
@@ -141,6 +146,13 @@ def parse_dt(value: Any) -> datetime | None:
     try:
         return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone(timezone.utc)
     except Exception:
+        return None
+
+
+def parse_date(value: Any) -> date | None:
+    try:
+        return datetime.strptime(str(value or ""), "%Y-%m-%d").date()
+    except ValueError:
         return None
 
 
@@ -217,7 +229,7 @@ def collect_official(now: datetime) -> tuple[list[dict[str, Any]], list[dict[str
             rows = official_promotions(retailer, label, url, fetch_text(url), now)
             promotions.extend(rows)
             status = "ok" if rows else "limited"
-            detail = f"本輪辨識 {len(rows)} 個實際 Promotion；不收集商品價格。" if rows else "官方頁可讀取，但本輪未辨識到實際 Promotion。"
+            detail = f"本輪辨識 {len(rows)} 個 Promotion 候選；未有明確日期者不會進入公開 promotion cards。" if rows else "官方頁可讀取，但本輪未辨識到實際 Promotion。"
             sources.append(source_record(source_id, retailer, label, url, status, now, detail))
         except Exception as exc:
             sources.append(source_record(source_id, retailer, label, url, "error", now, f"本輪讀取失敗：{clean(exc)}。"))
@@ -245,7 +257,6 @@ def facebook_plugin_promotions(retailer: str, label: str, page_url: str, handle:
         parsed = urllib.parse.urlparse(href)
         if "facebook.com" not in parsed.netloc.lower():
             continue
-        # Plugin redirect links may URL-encode the real Facebook URL.
         qs = urllib.parse.parse_qs(parsed.query)
         for candidate_key in ("u", "href"):
             candidate = qs.get(candidate_key, [None])[0]
@@ -259,11 +270,7 @@ def facebook_plugin_promotions(retailer: str, label: str, page_url: str, handle:
         if not key or key in seen:
             continue
         seen.add(key)
-        rows.append(make_promotion(
-            retailer, title[:220], "facebook", label, href, now,
-            summary="Facebook Page 公開 timeline Promotion。",
-            restriction="以 Facebook Page 原貼文最新條款為準。",
-        ))
+        rows.append(make_promotion(retailer, title[:220], "facebook", label, href, now, summary="Facebook Page 公開 timeline Promotion。", restriction="以 Facebook Page 原貼文最新條款為準。"))
         if len(rows) >= MAX_FACEBOOK_PER_PAGE:
             break
     return rows
@@ -287,11 +294,7 @@ def facebook_search_promotions(retailer: str, label: str, handle: str, now: date
         published = parse_dt(item.findtext("pubDate"))
         if published and published < now - timedelta(days=21):
             continue
-        rows.append(make_promotion(
-            retailer, title, "facebook", label, link, now, published,
-            summary="Facebook 公開 Promotion；由公開搜尋索引發現並連回原 Facebook。",
-            restriction="以 Facebook Page 原貼文最新條款為準。",
-        ))
+        rows.append(make_promotion(retailer, title, "facebook", label, link, now, published, summary="Facebook 公開 Promotion 候選；由公開搜尋索引發現並連回原 Facebook。", restriction="未有明確活動日期前不會進入公開 promotion cards。"))
         if len(rows) >= MAX_FACEBOOK_PER_PAGE:
             break
     return rows
@@ -316,7 +319,7 @@ def collect_facebook(now: datetime) -> tuple[list[dict[str, Any]], list[dict[str
                     plugin_error = clean(exc)
         promotions.extend(rows)
         if rows:
-            sources.append(source_record(source_id, retailer, label, page_url, "ok", now, f"Facebook 為主要 Promotion 來源；本輪取得 {len(rows)} 個公開 Promotion。", mode=mode))
+            sources.append(source_record(source_id, retailer, label, page_url, "ok", now, f"Facebook 為主要 Promotion 發現來源；本輪取得 {len(rows)} 個候選，只有具明確有效期者可公開。", mode=mode))
         else:
             detail = "Facebook 為主要 Promotion 來源；Meta 本輪沒有向無登入 runner 提供可核實新貼文，搜尋 fallback 亦未找到。佳寶官網不會被當作最新 Promotion 來源。"
             if plugin_error:
@@ -362,20 +365,67 @@ def discovery_promotions(now: datetime) -> tuple[list[dict[str, Any]], dict[str,
             source_node = item.find("source")
             source_name = clean(source_node.text if source_node is not None else "") or "公開網上來源"
             clean_title = re.sub(r"\s+-\s+[^-]{2,80}$", "", title).strip()
-            rows.append(make_promotion(
-                retailer, clean_title, "secondary-discovery", source_name, link, now, published,
-                summary="近期公開 Promotion 消息；詳情以零售商最新官方／Facebook 公布為準。",
-                restriction="屬公開網上 Promotion 發現；未核實細節不會當作官方條款。",
-            ))
+            rows.append(make_promotion(retailer, clean_title, "secondary-discovery", source_name, link, now, published, summary="近期公開 Promotion 消息；詳情以零售商最新官方／Facebook 公布為準。", restriction="屬公開網上 Promotion 發現；未核實細節不會當作官方條款。"))
             kept += 1
             if kept >= MAX_DISCOVERY_PER_RETAILER:
                 break
     status = "ok" if failures == 0 else "limited" if failures < len(DISCOVERY_QUERIES) else "error"
-    return rows, source_record("promotion-web-discovery", "多個零售商", "公開網頁／新聞 Promotion 補充", "https://news.google.com/", status, now, f"本輪保留 {len(rows)} 個近期 Promotion 補充線索；{failures} 個搜尋查詢失敗。")
+    return rows, source_record("promotion-web-discovery", "多個零售商", "公開網頁／新聞 Promotion 補充", "https://news.google.com/", status, now, f"本輪保留 {len(rows)} 個近期 Promotion 補充線索；只作發現，不直接刊登；{failures} 個搜尋查詢失敗。")
 
 
 def source_rank(source_type: str) -> int:
-    return {"facebook": 3, "official-promotion": 2, "secondary-discovery": 1}.get(source_type, 0)
+    return {"facebook": 3, "social": 3, "official-promotion": 2, "secondary-discovery": 1}.get(source_type, 0)
+
+
+def is_current_dated(row: dict[str, Any], today: date) -> bool:
+    start = parse_date(row.get("startDate")); end = parse_date(row.get("endDate"))
+    return bool(start and end and start <= today <= end and row.get("active") is not False)
+
+
+def carry_forward_verified(now: datetime, path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Re-check current dated public promotions from the last good dataset.
+
+    A promotion is retained only if it was already public with a primary source,
+    remains inside its explicit date range, and its exact source URL is reachable now.
+    """
+    if not path.exists():
+        return [], []
+    try:
+        previous = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return [], []
+    today = now.astimezone(HKT).date()
+    kept: list[dict[str, Any]] = []
+    checks: list[dict[str, Any]] = []
+    for row in previous.get("promotions", []):
+        if not isinstance(row, dict) or row.get("sourceType") not in PUBLIC_SOURCE_TYPES or not is_current_dated(row, today):
+            continue
+        url = clean(row.get("sourceUrl"))
+        if not url:
+            continue
+        try:
+            markup = fetch_text(url, timeout=12)
+            if len(markup) < 200:
+                raise RuntimeError("source response unexpectedly short")
+        except Exception as exc:
+            checks.append(source_record(
+                f"carry-{hashlib.sha1(url.encode()).hexdigest()[:10]}", clean(row.get("retailer")),
+                clean(row.get("sourceName")) or "既有官方 Promotion", url, "error", now,
+                f"既有具日期 Promotion 本輪未能重新讀取來源，因此不續刊：{clean(exc)[:120]}。",
+                mode="dated-primary-recheck",
+            ))
+            continue
+        refreshed = dict(row)
+        refreshed["checkedAt"] = iso(now)
+        refreshed["active"] = True
+        kept.append(refreshed)
+        checks.append(source_record(
+            f"carry-{hashlib.sha1(url.encode()).hexdigest()[:10]}", clean(row.get("retailer")),
+            clean(row.get("sourceName")) or "既有官方 Promotion", url, "ok", now,
+            f"已重新讀取原始來源；活動有效期 {row.get('startDate')} 至 {row.get('endDate')}，今日仍在期限內。",
+            mode="dated-primary-recheck",
+        ))
+    return kept, checks
 
 
 def dedupe(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -388,7 +438,7 @@ def dedupe(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if old is None or source_rank(str(row.get("sourceType"))) > source_rank(str(old.get("sourceType"))):
             unique[key] = row
     out = list(unique.values())
-    out.sort(key=lambda x: str(x.get("publishedAt") or x.get("discoveredAt") or ""), reverse=True)
+    out.sort(key=lambda x: str(x.get("publishedAt") or x.get("checkedAt") or x.get("discoveredAt") or ""), reverse=True)
     return out[:MAX_PROMOTIONS]
 
 
@@ -403,15 +453,22 @@ def walk_forbidden(value: Any, path: str = "root") -> None:
             walk_forbidden(child, f"{path}[{idx}]")
 
 
-def build() -> dict[str, Any]:
-    now = utcnow()
-    official, official_sources = collect_official(now)
-    facebook, facebook_sources = collect_facebook(now)
+def build(existing_path: Path) -> dict[str, Any]:
+    now = utcnow(); today = now.astimezone(HKT).date()
+    official_candidates, official_sources = collect_official(now)
+    facebook_candidates, facebook_sources = collect_facebook(now)
     discovered, discovery_source = discovery_promotions(now)
-    promotions = dedupe(facebook + official + discovered)
-    sources = facebook_sources + official_sources + [discovery_source]
+    carried, carry_sources = carry_forward_verified(now, existing_path)
+
+    # HARD PUBLICATION GATE: only primary-source promotions with explicit current dates.
+    newly_dated = [
+        row for row in (facebook_candidates + official_candidates)
+        if row.get("sourceType") in PUBLIC_SOURCE_TYPES and is_current_dated(row, today)
+    ]
+    promotions = dedupe(carried + newly_dated)
+    sources = carry_sources + facebook_sources + official_sources + [discovery_source]
     data = {
-        "schemaVersion": 3, "collectorVersion": "3.3.0",
+        "schemaVersion": 3, "collectorVersion": "3.4.0-dated-public-gate",
         "generatedAt": iso(now), "generatedAtHkt": now.astimezone(HKT).strftime("%Y-%m-%d %H:%M HKT"),
         "promotions": promotions, "sources": sources,
         "stats": {
@@ -420,6 +477,7 @@ def build() -> dict[str, Any]:
             "facebookPromotions": sum(1 for x in promotions if x.get("sourceType") == "facebook"),
             "healthySources": sum(1 for x in sources if x.get("status") == "ok"),
             "sourceCount": len(sources),
+            "discoveryCandidates": len(discovered) + len(official_candidates) + len(facebook_candidates),
         },
     }
     walk_forbidden(data)
@@ -434,19 +492,26 @@ def validate(data: dict[str, Any]) -> None:
     if not isinstance(data.get("sources"), list) or not data["sources"]:
         raise SystemExit("sources must be a non-empty array")
     walk_forbidden(data)
-    for promo in data["promotions"]:
-        for key in ("id", "retailer", "title", "sourceUrl", "sourceType"):
+    today = utcnow().astimezone(HKT).date()
+    for idx, promo in enumerate(data["promotions"]):
+        for key in ("id", "retailer", "title", "sourceUrl", "sourceType", "startDate", "endDate"):
             if not promo.get(key):
-                raise SystemExit(f"promotion missing {key}")
+                raise SystemExit(f"promotion[{idx}] missing {key}")
+        if promo.get("sourceType") not in PUBLIC_SOURCE_TYPES:
+            raise SystemExit(f"promotion[{idx}] non-primary source cannot be public")
+        if not is_current_dated(promo, today):
+            raise SystemExit(f"promotion[{idx}] is not current for HKT today")
+    if not data["promotions"]:
+        raise SystemExit("no clearly dated current verified promotions")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(); ap.add_argument("--output", default="data/retail-deals.json"); args = ap.parse_args()
     output = Path(args.output); output.parent.mkdir(parents=True, exist_ok=True)
-    data = build(); validate(data)
+    data = build(output); validate(data)
     tmp = output.with_suffix(output.suffix + ".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"); tmp.replace(output)
-    print("RETAIL_PROMOTIONS_OK", "promotions", data["stats"]["activePromotions"], "facebook", data["stats"]["facebookPromotions"], "retailers", data["stats"]["retailerCount"], "sources_ok", data["stats"]["healthySources"], "generated", data["generatedAt"])
+    print("RETAIL_PROMOTIONS_OK", "promotions", data["stats"]["activePromotions"], "facebook", data["stats"]["facebookPromotions"], "retailers", data["stats"]["retailerCount"], "sources_ok", data["stats"]["healthySources"], "discovery_candidates", data["stats"]["discoveryCandidates"], "generated", data["generatedAt"])
     return 0
 
 
