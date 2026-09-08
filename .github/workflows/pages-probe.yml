@@ -15,9 +15,11 @@ on:
       - "assets/js/stocks.js"
       - "live.html"
       - "index.html"
+      - "retail-deals.html"
       - "data/latest.json"
       - "data/live.json"
       - "data/stocks-latest.json"
+      - "data/retail-deals.json"
   workflow_run:
     workflows: ["Deploy Daily Brief to GitHub Pages"]
     types: [completed]
@@ -59,7 +61,7 @@ jobs:
           core_pages=[
               'index.html','live.html','world.html','asia.html','hong-kong.html','japan.html',
               'finance.html','stocks.html','technology.html','manga-anime.html',
-              'manchester-united.html','football.html','archive.html'
+              'manchester-united.html','football.html','retail-deals.html','archive.html'
           ]
           runtime_files=[
               'assets/css/live.css','assets/css/live-rebuild.css','assets/css/extras.css',
