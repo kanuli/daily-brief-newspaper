@@ -1,3 +1,4 @@
+# Editor-in-Chief currentness recheck trigger: 2026-09-08 09:32 HKT
 name: Editor-in-Chief Voice Outcome Guard
 
 on:
@@ -105,6 +106,4 @@ jobs:
           echo "EDITOR_IN_CHIEF_VOICE_NOT_HEALTHY" >&2
           echo "A GitHub workflow success or old manifest coverageComplete flag cannot override current editorial outcome." >&2
           echo "expected=${{ steps.voice.outputs.expected }} playable=${{ steps.voice.outputs.playable }} missing=${{ steps.voice.outputs.missing }} stale=${{ steps.voice.outputs.stale }} invalid=${{ steps.voice.outputs.invalid }}" >&2
-          # The repair was dispatched (or is already owned), but the supervisory
-          # outcome remains red until a later run proves current coverage.
           exit 1
