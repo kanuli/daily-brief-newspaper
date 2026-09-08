@@ -16,7 +16,9 @@ Hong Kong mixed-language policy:
 """
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 
 import canto_nano_prod as base
 import tts_hktrad_v3 as hkpolicy
@@ -32,6 +34,83 @@ ENGLISH_POLICY = "hk-natural-cantonese-english-codeswitch-v4"
 # cnf4 forces current articles to be regenerated under the actual production
 # HK terminology policy rather than reusing cnf3 recordings.
 base.NS = "cnf4"
+
+# Voice publication must never derive its expected set from a transiently
+# broken newsroom container.  The primary Live publisher can briefly write an
+# incomplete desk-latest.json before the existing Editor-in-Chief watchdog
+# restores the full Rolling Desk reservoir.  Without this gate a Canto Nano
+# worker can reset to that transient main state, collect only a few dozen
+# stories and incorrectly publish coverageComplete=true for the tiny set.
+DESK_FLOORS = {
+    "world": 8,
+    "asia": 8,
+    "hong-kong": 6,
+    "japan": 8,
+    "market-economy": 8,
+    "ai-tech": 6,
+    "manga-anime": 4,
+    "manchester-united": 4,
+    "football": 10,
+}
+
+
+def _publication_state_is_healthy() -> tuple[bool, str]:
+    try:
+        live = json.loads(Path("data/live.json").read_text(encoding="utf-8"))
+    except Exception as exc:
+        return False, f"live-json-unreadable:{type(exc).__name__}"
+
+    coverage = live.get("coverage") or {}
+    if coverage.get("status") != "COMPLETE":
+        return False, f"coverage={coverage.get('status')}"
+
+    for gate in (
+        "publishingGateMet",
+        "routingGateMet",
+        "copyGateMet",
+        "footballGateMet",
+        "deskLatestDepthMet",
+    ):
+        if coverage.get(gate) is not True:
+            return False, f"{gate}={coverage.get(gate)}"
+
+    counts = coverage.get("deskLatestStoryCounts") or {}
+    for desk, floor in DESK_FLOORS.items():
+        try:
+            count = int(counts.get(desk, 0))
+        except (TypeError, ValueError):
+            count = 0
+        if count < floor:
+            return False, f"{desk}={count}<{floor}"
+
+    try:
+        desk_raw = Path("data/desk-latest.json").read_bytes()
+        if len(desk_raw) < 1024:
+            return False, f"desk-latest-bytes={len(desk_raw)}"
+        json.loads(desk_raw.decode("utf-8"))
+    except Exception as exc:
+        return False, f"desk-latest-unreadable:{type(exc).__name__}"
+
+    return True, "complete-publication-state"
+
+
+_original_collect = base.collect
+
+
+def guarded_collect():
+    healthy, reason = _publication_state_is_healthy()
+    if not healthy:
+        raise RuntimeError(
+            "CANTO_NANO_DEFER_INCOMPLETE_PUBLICATION_STATE " + reason
+        )
+    return _original_collect()
+
+
+# Both shard generation and the publish step call base.collect().  The publish
+# step first resets to origin/main, so replacing the base-module global here is
+# essential: the expected set is revalidated against the exact main snapshot
+# that would otherwise be committed into tts-manifest.json.
+base.collect = guarded_collect
 
 
 def localize_mixed_english(text: str) -> str:
