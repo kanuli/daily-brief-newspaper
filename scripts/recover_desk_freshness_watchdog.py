@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Editor-in-Chief freshness recovery for verified topic-desk events.
 
-This helper is publication-only: it never creates a Live edition.  It adds
+This helper is publication-only: it never creates a Live edition. It adds
 editorially vetted, current events to stale desks before the existing
 freshness/publication validators run. Same IDs are idempotent across retries.
+A recovery template must itself satisfy the desk freshness SLA; otherwise the
+watchdog fails rather than falsely claiming that stale content repaired a desk.
 """
 import copy
 import datetime as dt
@@ -18,23 +20,23 @@ HKT = dt.timezone(dt.timedelta(hours=8))
 
 RECOVERY = {
     "world": {
-        "id": "world-us-canada-bombardier-trump-sales-20260908",
+        "id": "world-ukraine-prosecutor-general-resignation-20260908",
         "desk": "world",
         "deskSlugs": ["world"],
-        "section": "世界｜美加貿易／航空",
+        "section": "世界｜歐洲／烏克蘭政治",
         "status": "LATEST",
-        "title": "特朗普稱Bombardier若不在美國生產　將不准在美銷售飛機",
-        "dek": "特朗普在Truth Social表示，加拿大飛機製造商Bombardier若要繼續進入美國市場，必須在美國生產；具體執行機制仍未公布。",
-        "summary": "美國總統特朗普表示，除非Bombardier把生產移到美國，否則將不准該公司在美國銷售飛機。事件令美加貿易摩擦延伸至高度整合的航空產業。",
-        "body": "路透社9月7日報道，美國總統特朗普在Truth Social發文，稱加拿大私人飛機製造商Bombardier若要繼續在美國市場銷售飛機，就必須在美國生產。他未交代政府會用甚麼法律或監管工具執行有關要求；白宮當時亦未回覆路透查詢。\n\nBombardier的飛機已獲美國聯邦航空管理局批准，公司在美國約有3,500名員工，供應鏈亦與美國航空業高度整合。加拿大正準備對美國實施新一輪反制關稅，今次表態令航空製造業成為兩國貿易摩擦的新焦點。",
-        "context": "美國與加拿大近期貿易摩擦升溫；航空業跨境供應鏈高度整合，任何銷售限制都可能牽動製造商、供應商與企業飛機客戶。",
-        "why": "這是美國總統針對加拿大主要航空製造商的直接政策威脅，涉及跨境貿易與航空產業准入，主要新聞價值屬非亞洲國際政經發展。",
-        "watchNext": "留意白宮、FAA或其他美國部門會否提出正式執行措施，以及加拿大政府與Bombardier的回應。",
+        "title": "烏克蘭總檢察長提出辭職　稱不願職位成政治對抗工具",
+        "dek": "Ruslan Kravchenko表示辭職屬政治決定，要求總統澤連斯基及國會接納；事件正值烏克蘭高層接連出現人事變動。",
+        "summary": "烏克蘭總檢察長Ruslan Kravchenko提出辭職，稱不希望總檢察長職位被用作政治對抗工具；他同時重申否認涉及檢察機關近期被揭發的詐騙犯罪組織。",
+        "body": "路透社9月8日報道，烏克蘭總檢察長Ruslan Kravchenko表示已提出辭職，形容這是自己有意識作出的政治決定，並要求總統澤連斯基及最高拉達接納。他表示不希望總檢察長職位被用作政治對抗工具，但沒有進一步說明辭職背後的具體政治爭議。\n\n烏克蘭反貪機構NABU及SAPO上周表示，已揭發一個涉及詐騙呼叫中心的犯罪組織，據稱由總檢察長辦公室一名官員安排。Kravchenko否認自己涉及相關指控。今次辭職要求延續烏克蘭政府高層近期的人事變動，時間上亦正值俄烏戰爭持續。",
+        "context": "烏克蘭在戰時同時面對反貪、政府管治與軍事壓力；高層司法及行政人事變動會影響政府內部穩定與改革可信度。",
+        "why": "總檢察長在戰時提出辭職並明言涉及政治對抗，是烏克蘭政府高層的重要政治與司法發展，屬非亞洲World版新聞。",
+        "watchNext": "留意澤連斯基及最高拉達會否接納辭呈、總檢察長職位繼任安排，以及反貪機構調查是否牽涉更多高層官員。",
         "sourceName": "Reuters",
-        "sourceUrl": "https://www.reuters.com/business/aerospace-defense/trump-says-canadas-bombardier-cannot-sell-us-unless-it-builds-there-2026-09-07/",
-        "timeLabel": "9月8日01:51 HKT報道",
-        "publishedAt": "2026-09-08T01:51:00+08:00",
-        "sources": [{"name": "Reuters", "url": "https://www.reuters.com/business/aerospace-defense/trump-says-canadas-bombardier-cannot-sell-us-unless-it-builds-there-2026-09-07/"}],
+        "sourceUrl": "https://www.reuters.com/business/aerospace-defense/ukraines-prosecutor-general-submits-resignation-citing-political-conflict-2026-09-08/",
+        "timeLabel": "9月8日08:14 HKT報道",
+        "publishedAt": "2026-09-08T08:14:00+08:00",
+        "sources": [{"name": "Reuters", "url": "https://www.reuters.com/business/aerospace-defense/ukraines-prosecutor-general-submits-resignation-citing-political-conflict-2026-09-08/"}],
     },
     "hong-kong": {
         "id": "hong-kong-hko-mainly-fine-hot-20260908-0402",
@@ -163,6 +165,12 @@ def main():
             print(f"DESK_FRESHNESS_RECOVERY_SKIP slug={slug} age_h={age:.2f} sla_h={sla}")
             continue
 
+        template_age = newest_age_hours([template], now)
+        if template_age > sla:
+            raise SystemExit(
+                f"DESK_FRESHNESS_RECOVERY_TEMPLATE_STALE slug={slug} template_age_h={template_age:.2f} sla_h={sla}; refusing false repair"
+            )
+
         story = copy.deepcopy(template)
         story_id = str(story["id"])
         current[:] = [x for x in current if str(x.get("id") or "") != story_id]
@@ -170,8 +178,6 @@ def main():
         changed = True
         print(f"DESK_FRESHNESS_RECOVERY_ADD slug={slug} age_h={age:.2f} id={story_id}")
 
-        # Manchester United-specific football must appear on both the dedicated
-        # MU page and the general Football page. Preserve the same ID/source.
         routes = routed_slugs(story)
         for route in routes:
             if route == slug or route not in desks:
