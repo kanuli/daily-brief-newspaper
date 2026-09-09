@@ -111,6 +111,28 @@ jobs:
         run: |
           set -euo pipefail
           echo "changed=false" >> "$GITHUB_OUTPUT"
+
+          # generatedAt/lastUpdatedLabel describe the completed text artifact,
+          # not the start of collection. Stamp them only after editing/cleanup,
+          # then revalidate the exact file that will be committed.
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          path = Path('data/stocks-latest.json')
+          data = json.loads(path.read_text(encoding='utf-8'))
+          now = datetime.now(timezone.utc)
+          hkt = now.astimezone(ZoneInfo('Asia/Hong_Kong'))
+          data['generatedAt'] = now.isoformat()
+          data['lastUpdatedLabel'] = f"{hkt.year}年{hkt.month}月{hkt.day}日 {hkt:%H:%M} HKT"
+          path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print('STOCK_COMPLETION_STAMP', data['generatedAt'], data['lastUpdatedLabel'])
+          PY
+
+          python scripts/validate_stock_news.py
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- data/stocks-latest.json
