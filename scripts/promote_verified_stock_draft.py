@@ -115,12 +115,18 @@ def main():
         STOCKS_PATH.write_text(json.dumps(stocks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return 0
 
+    # Publication freshness and substantive-content freshness are separate.
+    # generatedAt is advanced every publication/check run, so comparing a new
+    # verified draft against generatedAt can incorrectly block a genuinely new
+    # story. Gate only against the last substantive verified-content timestamp;
+    # fall back to generatedAt only for legacy snapshots that predate this field.
+    content_clock_raw = stocks.get("verifiedContentUpdatedAt") or stocks.get("generatedAt") or ""
     try:
-        current = parse_iso(stocks.get("generatedAt") or "")
+        content_clock = parse_iso(content_clock_raw)
     except Exception:
-        current = datetime.min.replace(tzinfo=timezone.utc)
-    if current.astimezone(timezone.utc) >= created.astimezone(timezone.utc):
-        print("STOCK_FAILOVER_NOOP stocks-current")
+        content_clock = datetime.min.replace(tzinfo=timezone.utc)
+    if content_clock.astimezone(timezone.utc) >= created.astimezone(timezone.utc):
+        print("STOCK_FAILOVER_NOOP verified-content-current")
         STOCKS_PATH.write_text(json.dumps(stocks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return 0
 
@@ -155,9 +161,15 @@ def main():
         if "\n\n" not in str(source.get("body") or ""):
             raise SystemExit(f"verified stock draft body needs two paragraphs: {source.get('id')}")
 
+        supersedes_ids = {
+            clean(value)
+            for value in (source.get("supersedesIds") or [])
+            if clean(value)
+        }
         story = copy.deepcopy(source)
         story.pop("desk", None)
         story.pop("ticker", None)
+        story.pop("supersedesIds", None)
         story["storyType"] = clean(story.get("storyType") or "VERIFIED NEWS")
         if ticker in ETF_TICKERS and "ETF READ-THROUGH" not in story["storyType"].upper():
             story["storyType"] = "ETF READ-THROUGH / " + story["storyType"]
@@ -168,6 +180,7 @@ def main():
         deduped = [
             item for item in old
             if isinstance(item, dict)
+            and clean(item.get("id")) not in supersedes_ids
             and item.get("id") != story.get("id")
             and clean(item.get("sourceUrl")) != clean(story.get("sourceUrl"))
             and not contains_process_copy(item)
