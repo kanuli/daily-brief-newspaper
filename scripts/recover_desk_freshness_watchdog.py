@@ -46,6 +46,18 @@ RECOVERY = {
         "sourceName": "香港特別行政區政府新聞公報 / Reuters", "sourceUrl": "https://www.info.gov.hk/gia/general/202609/09/P2026090900069.htm", "timeLabel": "9月9日21:19 HKT核實", "verifiedAt": "2026-09-09T21:19:00+08:00",
         "sources": [{"name": "香港特別行政區政府新聞公報", "url": "https://www.info.gov.hk/gia/general/202609/09/P2026090900069.htm"}, {"name": "Reuters", "url": "https://www.reuters.com/world/china/tung-chee-hwa-hong-kongs-first-leader-under-chinese-rule-dies-89-2026-09-08/"}]
     },
+    "market-economy": {
+        "id": "market-economy-brent-100-supply-inflation-20260909", "desk": "market-economy", "deskSlugs": ["market-economy"], "section": "財經｜能源市場", "status": "LATEST",
+        "title": "Brent突破100美元　供應緩衝收窄加劇通脹風險",
+        "dek": "中東衝突升級令Brent原油9月9日升穿每桶100美元，市場憂慮供應受阻、庫存下降及高能源成本重新推高全球通脹壓力。",
+        "summary": "路透社9月9日報道，Brent原油六周來首次升穿每桶100美元；美伊互擊及沙特能源設施遇襲令市場重新評估中東供應風險，分析指供應緩衝與庫存下降令油市對新一輪中斷更加敏感。",
+        "body": "Brent原油9月9日升穿每桶100美元，是約六周以來首次重返這一水平。路透社報道，美國與伊朗的軍事行動升級，加上伊朗支持的胡塞武裝攻擊沙特能源設施，令市場憂慮波斯灣供應及霍爾木茲海峽航運再受衝擊。\n\n油價自8月初以來已上升約四分之一。持續高企的能源成本可能推高企業運輸與生產開支，並增加消費者燃料負擔；若供應再受干擾，通脹壓力及主要央行維持較高利率的風險亦會上升。",
+        "context": "市場原先寄望中東局勢降溫，但近期能源設施、油輪及航道再受攻擊，令供應正常化預期逆轉。",
+        "why": "油價突破100美元不只是商品市場波動，亦會直接影響全球通脹、企業成本、消費力及利率預期，是當前市場與宏觀經濟的重要風險。",
+        "watchNext": "留意Brent能否持續企穩100美元以上、霍爾木茲海峽航運是否再受限制，以及高能源價格會否改變主要央行的通脹與利率判斷。",
+        "sourceName": "Reuters", "sourceUrl": "https://www.reuters.com/business/energy/brent-oil-tops-100-middle-east-conflict-intensifies-stoking-supply-fears-2026-09-09/", "timeLabel": "9月9日21:31 HKT核實", "verifiedAt": "2026-09-09T21:31:00+08:00",
+        "sources": [{"name": "Reuters", "url": "https://www.reuters.com/business/energy/brent-oil-tops-100-middle-east-conflict-intensifies-stoking-supply-fears-2026-09-09/"}]
+    },
     "manchester-united": {
         "id": "manchester-united-sabah-champions-league-preview-20260909", "desk": "manchester-united", "deskSlugs": ["manchester-united", "football"], "section": "Manchester United｜歐聯", "status": "LATEST",
         "title": "曼聯迎戰Sabah前更新歐聯賽前指南　奧脫福特準備下一場歐洲賽",
