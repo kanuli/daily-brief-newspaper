@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Existing Live Publication watchdog recovery trigger refreshed 2026-09-09 10:17 HKT.
 """Validate that every public topic desk contains current verified news.
 
 A desk is unhealthy when its newest published story breaches the desk-specific
