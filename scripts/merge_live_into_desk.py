@@ -83,9 +83,10 @@ def desk_slugs(item):
 
 def normalize_live_route(item):
     slugs = desk_slugs(item)
-    primary = slugs[0] if slugs else str(item.get("desk") or "").strip()
-    if primary:
-        item["desk"] = primary
+    if not slugs:
+        raise SystemExit(f"Live item {item.get('id')} has no valid editorial route")
+    primary = slugs[0]
+    item["desk"] = primary
     item["deskSlugs"] = list(dict.fromkeys(slugs))
     if not str(item.get("section") or "").strip():
         item["section"] = DESK_LABELS.get(primary, "Live")
@@ -129,6 +130,30 @@ def newest_first(stories):
 
 def unique_count(stories):
     return len(dedupe(stories))
+
+
+def routing_integrity(desks):
+    """Verify the repaired public desk state against canonical routing policy.
+
+    This is deliberately derived after stale cross-post removal and full
+    re-sorting. A raw Live producer can start with zero desk counts, so its
+    pre-merge geographic/routing flags are not evidence for the rendered desk
+    state. Manchester United is the only intentional two-desk publication and
+    is required on both Manchester United and Football by routed_slugs().
+    """
+    observed = {}
+    expected = {}
+    for slug in FLOORS:
+        for story in desks.get(slug, []):
+            if not isinstance(story, dict):
+                return False
+            ident = story_identity(story)
+            routes = set(routed_slugs(story))
+            if not routes or slug not in routes:
+                return False
+            observed.setdefault(ident, set()).add(slug)
+            expected.setdefault(ident, set()).update(routes)
+    return all(observed.get(ident, set()) == routes for ident, routes in expected.items())
 
 
 def main():
@@ -203,6 +228,10 @@ def main():
     if missing:
         raise SystemExit(f"topic desk depth below hard floor: {missing}")
 
+    routing_gate = routing_integrity(desks)
+    if not routing_gate:
+        raise SystemExit("public desk routing integrity failed after merge")
+
     desk["date"] = live.get("date", desk.get("date"))
     desk["generatedAt"] = live.get("lastUpdated")
     desk["mode"] = "ROLLING_DESK_LATEST"
@@ -213,16 +242,18 @@ def main():
     coverage.pop("qaNote", None)
     depth_met = all(counts[slug] >= minimum for slug, minimum in FLOORS.items())
     source_gate = bool(coverage.get("sourceGateMet", coverage.get("sourceGate", False)))
-    geographic_gate = bool(coverage.get("geographicGateMet", coverage.get("geographicGate", False)))
-    # Football gate is derived from the repaired routing state, not inherited
-    # from stale producer metadata. The merge has already recalculated every
-    # story's routed_slugs, removed stale cross-posts, and enforced the floor.
+    # Geographic/routing readiness must describe the repaired publication
+    # state, not the raw producer snapshot. The merge has recalculated every
+    # route, removed unrelated cross-posts, and routing_integrity() requires
+    # observed public ownership to exactly match canonical routed_slugs().
+    geographic_gate = routing_gate
     football_gate = counts["football"] >= FLOORS["football"]
     publication_ready = depth_met and source_gate and geographic_gate and football_gate
     coverage["deskLatestStoryCounts"] = counts
     coverage["deskLatestDepthMet"] = depth_met
     coverage["japanCountVerified"] = counts["japan"]
     coverage["sourceGateMet"] = source_gate
+    coverage["routingGateMet"] = routing_gate
     coverage["geographicGateMet"] = geographic_gate
     coverage["footballGateMet"] = football_gate
     coverage["publishingGateMet"] = publication_ready
