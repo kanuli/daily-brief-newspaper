@@ -44,6 +44,28 @@ RECOVERY = {
             {"name": "Reuters", "url": "https://www.reuters.com/world/middle-east/iran-attacks-us-base-jordan-ships-near-hormuz-after-tankers-sunk-2026-09-09/"}
         ]
     },
+    "hong-kong": {
+        "id": "hong-kong-tung-chee-hwa-government-tributes-20260909",
+        "desk": "hong-kong",
+        "deskSlugs": ["hong-kong"],
+        "section": "香港｜政情",
+        "status": "LATEST",
+        "title": "董建華逝世終年89歲　特首李家超代表特區致哀",
+        "dek": "香港首任行政長官董建華逝世，終年89歲；李家超表示深切哀悼，並代表香港特區向其家人致以慰問。",
+        "summary": "香港特區政府9月9日公布，首任行政長官、全國政協前副主席董建華逝世，終年89歲；行政長官李家超發表聲明，回顧其任內應對亞洲金融風暴、推動香港與內地經貿聯繫等工作。",
+        "body": "香港首任行政長官董建華逝世，終年89歲。行政長官李家超9月9日發表聲明表示深切哀悼，並代表香港特別行政區向董建華家人致以慰問。董建華於1997年出任香港特區首任行政長官，至2005年3月離任，其後擔任第十至第十三屆全國政協副主席。\n\n李家超在聲明中提到，董建華任內經歷亞洲金融風暴等重大挑戰，並推動香港與內地的經貿聯繫及協同發展。特區政府的正式悼念屬本地重大公共事務消息，文章只歸Hong Kong，不轉入World、Asia、Football或其他專題版。",
+        "context": "董建華是香港回歸後首任行政長官，任期由1997年至2005年，之後繼續在全國政協任職多年。",
+        "why": "首任行政長官逝世及特區政府正式悼念，涉及香港重要政治人物及特區成立初期的公共歷史，具有即時本地新聞價值。",
+        "watchNext": "留意特區政府及家屬公布的悼念、治喪安排，以及香港各界後續回應。",
+        "sourceName": "香港特別行政區政府新聞公報 / Reuters",
+        "sourceUrl": "https://www.info.gov.hk/gia/general/202609/09/P2026090900069.htm",
+        "timeLabel": "9月9日21:19 HKT核實",
+        "verifiedAt": "2026-09-09T21:19:00+08:00",
+        "sources": [
+            {"name": "香港特別行政區政府新聞公報", "url": "https://www.info.gov.hk/gia/general/202609/09/P2026090900069.htm"},
+            {"name": "Reuters", "url": "https://www.reuters.com/world/china/tung-chee-hwa-hong-kongs-first-leader-under-chinese-rule-dies-89-2026-09-08/"}
+        ]
+    },
     "manchester-united": {
         "id": "manchester-united-sabah-champions-league-preview-20260909",
         "desk": "manchester-united",
