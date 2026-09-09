@@ -68,6 +68,18 @@ RECOVERY = {
         "sourceName": "Manchester United", "sourceUrl": "https://www.manutd.com/en", "timeLabel": "9月9日08:27 HKT核實", "verifiedAt": "2026-09-09T08:27:00+08:00",
         "sources": [{"name": "Manchester United", "url": "https://www.manutd.com/en"}, {"name": "Manchester United Matches", "url": "https://www.manutd.com/en/mutv/matches/mens-team"}]
     },
+    "manga-anime": {
+        "id": "manga-anime-attack-on-titan-day-99-announcements-20260909", "desk": "manga-anime", "deskSlugs": ["manga-anime"], "section": "漫畫・動畫｜進擊的巨人", "status": "LATEST",
+        "title": "《進擊的巨人》首個官方紀念日公開99項企劃　諫山創發布全新賀圖",
+        "dek": "《進擊的巨人》官方在9月9日首個「進擊的巨人日」公開99項企劃，包括諫山創新繪賀圖、官方YouTube頻道及漫畫限時免費閱讀。",
+        "summary": "《進擊的巨人》官方入口網站9月9日公布99項紀念企劃；原作者諫山創發布全新賀圖，官方YouTube頻道同日啟用，講談社Magazine Pocket亦開放漫畫首99話限時99小時免費閱讀。",
+        "body": "《進擊的巨人》在9月9日迎來首個正式認定的「進擊的巨人日」。官方入口網站同日一次公開99項紀念企劃，其中包括原作者諫山創繪製的新賀圖、九大巨人紀念視覺，以及新設的官方YouTube頻道。\n\n漫畫方面，講談社旗下Magazine Pocket由日本時間9月9日凌晨零時起，開放原作首99話限時99小時免費閱讀。官方亦公布多項劇場重映、商品及合作企劃，延續作品完結後的跨媒體活動。",
+        "context": "9月9日是原作漫畫在2009年開始連載的日期，今年首次成為正式認定的作品紀念日。",
+        "why": "官方在同一天集中公布新繪內容、漫畫閱讀活動、影片頻道及劇場企劃，屬作品在完結後的重要最新動態。",
+        "watchNext": "留意官方YouTube頻道後續限定配信、劇場重映詳情，以及99項企劃中尚未落實日期的合作內容。",
+        "sourceName": "Attack on Titan Official Portal Site", "sourceUrl": "https://aot-portal.com/en/special/aotday2026/", "timeLabel": "9月9日23:18 HKT核實", "verifiedAt": "2026-09-09T23:18:00+08:00",
+        "sources": [{"name": "Attack on Titan Official Portal Site", "url": "https://aot-portal.com/en/special/aotday2026/"}]
+    },
     "football": {
         "id": "football-belgium-courtois-nations-league-20260909", "desk": "football", "deskSlugs": ["football"], "section": "足球｜比利時", "status": "LATEST",
         "title": "古圖奧斯獲准缺席比利時歐國聯賽程　未退出國家隊", "dek": "比利時門將古圖奧斯獲准避戰未來數月的歐國聯賽事，但強調仍會代表國家隊，並計劃參與明年歐洲國家盃外圍賽。",
