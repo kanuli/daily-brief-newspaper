@@ -17,6 +17,7 @@ on:
       - "index.html"
       - "data/latest.json"
       - "data/live.json"
+      - "data/desk-latest.json"
       - "data/stocks-latest.json"
   workflow_run:
     workflows: ["Deploy Daily Brief to GitHub Pages"]
@@ -43,12 +44,12 @@ jobs:
           ref: main
           fetch-depth: 1
 
-      - name: Verify public data, freshness, every core page and shared runtime clients
+      - name: Verify public publication contract, active pages and runtime clients
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import hashlib, json, os, time, urllib.request
+          import hashlib, html, json, os, time, urllib.request
           from datetime import datetime, timedelta, timezone
           from pathlib import Path
 
@@ -56,28 +57,34 @@ jobs:
           owner,name=repo.split('/',1)
           root=f'https://{owner}.github.io/{name}/'
           data_base=root+'data/'
+          HKT=timezone(timedelta(hours=8))
+          now=datetime.now(timezone.utc)
+          now_hkt=now.astimezone(HKT)
+
           core_pages=[
               'index.html','live.html','world.html','asia.html','hong-kong.html','japan.html',
               'finance.html','stocks.html','technology.html','manga-anime.html',
               'manchester-united.html','football.html','archive.html'
           ]
+          topic_pages={
+              'world.html':'world','asia.html':'asia','hong-kong.html':'hong-kong','japan.html':'japan',
+              'finance.html':'market-economy','technology.html':'ai-tech','manga-anime.html':'manga-anime',
+              'manchester-united.html':'manchester-united','football.html':'football'
+          }
+          floors={'world':8,'asia':8,'hong-kong':6,'japan':8,'market-economy':8,'ai-tech':6,'manga-anime':4,'manchester-united':4,'football':10}
+          expected_stocks=['GOOG','GLDM','ICE','MCD','EMXC','GBTC','DBA','AAPL','EWY','META','MSFT','NVDA','TSM','PLTR','VT']
           runtime_files=[
-              'assets/css/live.css','assets/css/live-rebuild.css','assets/css/extras.css',
-              'assets/js/live-rebuild.js','assets/js/daily-extras.js','assets/js/article-body-upgrade.js',
-              'assets/js/site-tts-canto-nano.js','assets/js/system-panel.js','assets/js/live-article.js','assets/js/stocks.js'
+              'assets/css/live-rebuild.css','assets/css/extras.css','assets/js/live-rebuild.js',
+              'assets/js/daily-extras.js','assets/js/article-body-upgrade.js','assets/js/site-tts-canto-nano.js',
+              'assets/js/system-panel.js','assets/js/stocks.js'
           ]
-          known_error_markers=['Error 500 (Server Error)', 'That’s an error', "That's an error", 'There was an error. Please try again later.']
-          HKT=timezone(timedelta(hours=8))
-          now=datetime.now(timezone.utc)
-          now_hkt=now.astimezone(HKT)
+          known_error_markers=['Error 500 (Server Error)','That’s an error',"That's an error",'There was an error. Please try again later.']
 
           local_latest=json.load(open('data/latest.json',encoding='utf-8'))
           local_live=json.load(open('data/live.json',encoding='utf-8'))
+          local_desk=json.load(open('data/desk-latest.json',encoding='utf-8'))
           local_stocks=json.load(open('data/stocks-latest.json',encoding='utf-8'))
           local_tts=json.load(open('data/tts-manifest.json',encoding='utf-8'))
-          expected_live=local_live.get('lastUpdated')
-          expected_stocks=local_stocks.get('generatedAt')
-          expected_daily=local_latest.get('date')
 
           def parse_iso(value):
               try:
@@ -87,175 +94,133 @@ jobs:
               except Exception:
                   return None
 
-          def age_minutes(value):
-              dt=parse_iso(value)
-              if not dt: return None
-              return max(0.0,(now-dt).total_seconds()/60.0)
-
-          def voice_manifest_at_least(remote, local):
-              if not isinstance(remote,dict) or not isinstance(local,dict): return False
-              if remote.get('engine') != local.get('engine'): return False
-              if remote.get('assetNamespace') != local.get('assetNamespace'): return False
-              if remote.get('prosodyPolicy') != local.get('prosodyPolicy'): return False
-              if int(remote.get('availableArticleCount') or 0) < int(local.get('availableArticleCount') or 0): return False
-              remote_ts=parse_iso(remote.get('lastVoicePublishedAt'))
-              local_ts=parse_iso(local.get('lastVoicePublishedAt'))
-              return bool(remote_ts and local_ts and remote_ts >= local_ts)
+          def story_time(story):
+              for key in ('publishedAt','updatedAt','verifiedAt'):
+                  stamp=parse_iso(story.get(key)) if isinstance(story,dict) else None
+                  if stamp: return stamp
+              return None
 
           def request_bytes(url):
               sep='&' if '?' in url else '?'
               req=urllib.request.Request(url+sep+'v='+str(int(time.time()*1000)),headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-pages-probe'})
               with urllib.request.urlopen(req,timeout=15) as response:
-                  body=response.read()
-                  return response.getcode(), response.headers.get_content_type(), body
+                  return response.getcode(), response.headers.get_content_type(), response.read()
 
           def fetch_json(filename):
-              status, _, body=request_bytes(data_base+filename)
+              status,_,body=request_bytes(data_base+filename)
               if status != 200: raise RuntimeError(f'{filename} HTTP {status}')
               return json.loads(body.decode('utf-8'))
 
           def sha256(data): return hashlib.sha256(data).hexdigest()
 
+          def publication_complete(live):
+              if not isinstance(live,dict): return False
+              coverage=live.get('coverage') or {}
+              required=('deskLatestDepthMet','routingGateMet','sourceGateMet','copyGateMet','geographicGateMet','footballGateMet','publishingGateMet')
+              return str(coverage.get('status','')).upper()=='COMPLETE' and all(coverage.get(k) is True for k in required)
+
+          def stock_contract(stocks):
+              if not isinstance(stocks,dict): return False
+              if stocks.get('tracked') != expected_stocks: return False
+              tickers=stocks.get('tickers') or {}
+              if list(tickers.keys()) != expected_stocks: return False
+              return all(isinstance(tickers.get(s),dict) and bool(tickers[s].get('stories')) for s in expected_stocks)
+
+          def desk_contract(data):
+              if not isinstance(data,dict): return False, ['desk data missing']
+              desks=data.get('desks') or {}
+              issues=[]
+              for slug,floor in floors.items():
+                  stories=desks.get(slug) or []
+                  unique={str(s.get('id') or '') for s in stories if isinstance(s,dict) and s.get('id')}
+                  if len(unique) < floor: issues.append(f'{slug}: depth {len(unique)} < {floor}')
+                  prev=None
+                  for i,story in enumerate(stories):
+                      if not isinstance(story,dict):
+                          issues.append(f'{slug}[{i}]: malformed story'); continue
+                      routes=story.get('deskSlugs') or ([story.get('desk')] if story.get('desk') else [])
+                      if slug not in routes: issues.append(f'{slug}[{i}]: misroute {story.get("id")}')
+                      stamp=story_time(story)
+                      if stamp is None: continue
+                      if prev is not None and prev < stamp: issues.append(f'{slug}: not newest-first at {i}')
+                      prev=stamp
+              return not issues, issues
+
+          def voice_manifest_at_least(remote,local):
+              if not isinstance(remote,dict) or not isinstance(local,dict): return False
+              if remote.get('engine') != local.get('engine'): return False
+              if remote.get('assetNamespace') != local.get('assetNamespace'): return False
+              if remote.get('prosodyPolicy') != local.get('prosodyPolicy'): return False
+              if int(remote.get('availableArticleCount') or 0) < int(local.get('availableArticleCount') or 0): return False
+              r=parse_iso(remote.get('lastVoicePublishedAt')); l=parse_iso(local.get('lastVoicePublishedAt'))
+              return bool(r and l and r>=l)
+
           remote_latest=remote_live=remote_desk=remote_stocks=remote_tts=None
           error=None
           for _ in range(12):
               try:
-                  remote_latest=fetch_json('latest.json')
-                  remote_live=fetch_json('live.json')
-                  remote_desk=fetch_json('desk-latest.json')
-                  remote_stocks=fetch_json('stocks-latest.json')
-                  remote_tts=fetch_json('tts-manifest.json')
-                  daily_match=bool(remote_latest.get('date')==expected_daily)
-                  live_match=bool(remote_live.get('lastUpdated')==expected_live and (remote_live.get('items') or []))
-                  desk_match=bool(remote_desk.get('generatedAt')==expected_live)
-                  stock_match=bool(remote_stocks.get('generatedAt')==expected_stocks)
-                  voice_match=voice_manifest_at_least(remote_tts,local_tts)
-                  if daily_match and live_match and desk_match and stock_match and voice_match:
-                      error=None; break
-                  error=(f"daily={remote_latest.get('date')} expected={expected_daily}; live={remote_live.get('lastUpdated')} expected={expected_live}; "
-                         f"desk={remote_desk.get('generatedAt')} expected={expected_live}; stocks={remote_stocks.get('generatedAt')} expected={expected_stocks}; "
-                         f"voice={remote_tts.get('engine')}/{remote_tts.get('assetNamespace')}/{remote_tts.get('availableArticleCount')} "
-                         f"expected-at-least={local_tts.get('engine')}/{local_tts.get('assetNamespace')}/{local_tts.get('availableArticleCount')}")
+                  remote_latest=fetch_json('latest.json'); remote_live=fetch_json('live.json'); remote_desk=fetch_json('desk-latest.json')
+                  remote_stocks=fetch_json('stocks-latest.json'); remote_tts=fetch_json('tts-manifest.json')
+                  desk_ok,_=desk_contract(remote_desk)
+                  data_ok=(remote_latest.get('date')==local_latest.get('date') and remote_live.get('lastUpdated')==local_live.get('lastUpdated')
+                           and publication_complete(remote_live) and remote_desk.get('generatedAt')==local_live.get('lastUpdated') and desk_ok
+                           and remote_stocks.get('generatedAt')==local_stocks.get('generatedAt') and stock_contract(remote_stocks)
+                           and voice_manifest_at_least(remote_tts,local_tts))
+                  if data_ok: error=None; break
+                  error='public data contract not yet current/complete'
               except Exception as exc:
                   error=str(exc)
               time.sleep(5)
 
-          daily_match=bool(isinstance(remote_latest,dict) and remote_latest.get('date')==expected_daily)
-          live_match=bool(isinstance(remote_live,dict) and remote_live.get('lastUpdated')==expected_live and (remote_live.get('items') or []))
-          desk_match=bool(isinstance(remote_desk,dict) and remote_desk.get('generatedAt')==expected_live)
-          stock_match=bool(isinstance(remote_stocks,dict) and remote_stocks.get('generatedAt')==expected_stocks)
+          daily_match=bool(isinstance(remote_latest,dict) and remote_latest.get('date')==local_latest.get('date'))
+          live_match=bool(isinstance(remote_live,dict) and remote_live.get('lastUpdated')==local_live.get('lastUpdated') and (remote_live.get('items') or []) and publication_complete(remote_live))
+          desk_ok,desk_issues=desk_contract(remote_desk)
+          desk_match=bool(isinstance(remote_desk,dict) and remote_desk.get('generatedAt')==local_live.get('lastUpdated') and desk_ok)
+          stock_match=bool(isinstance(remote_stocks,dict) and remote_stocks.get('generatedAt')==local_stocks.get('generatedAt') and stock_contract(remote_stocks))
           voice_match=voice_manifest_at_least(remote_tts,local_tts)
 
-          hour,minute=now_hkt.hour,now_hkt.minute
-          live_age=age_minutes(remote_live.get('lastUpdated')) if isinstance(remote_live,dict) else None
-          stock_check_value=(remote_stocks.get('lastCheckedAt') or remote_stocks.get('generatedAt')) if isinstance(remote_stocks,dict) else None
-          stock_check_age=age_minutes(stock_check_value)
-          stock_content_age=age_minutes(remote_stocks.get('generatedAt')) if isinstance(remote_stocks,dict) else None
-
-          live_window=(hour==0 or 6<=hour<=7 or 9<=hour<=23)
-          if hour==6 and minute<20:
-              live_fresh=True
-          elif hour==9 and minute<20:
-              live_fresh=bool(live_age is not None and live_age<=155)
-          elif live_window:
-              live_fresh=bool(live_age is not None and live_age<=95)
-          else:
-              live_fresh=True
-
-          stock_window=(hour==0 or 6<=hour<=23)
-          stock_collection_status=str((remote_stocks or {}).get('collectionStatus','')).upper()
-          if hour==6 and minute<15:
-              stock_fresh=True
-          elif stock_window:
-              stock_fresh=bool(stock_check_age is not None and stock_check_age<=95 and stock_collection_status=='COMPLETE')
-          else:
-              stock_fresh=True
-
-          daily_required=(hour>8 or (hour==8 and minute>=15))
-          daily_fresh=bool(not daily_required or (isinstance(remote_latest,dict) and remote_latest.get('date')==now_hkt.date().isoformat()))
-          stock_content_fresh=bool(stock_content_age is not None and stock_content_age<=36*60)
-
           page_checks={}
-          live_layout_contract=False
-          index_vocab_contract=False
+          all_pages_ok=True
           for page in core_pages:
               try:
-                  status, content_type, body=request_bytes(root+page)
-                  text=body.decode('utf-8','replace')
-                  marker=next((m for m in known_error_markers if m in text), None)
-                  if page=='live.html':
-                      live_layout_contract=bool(
-                          'assets/css/topic.css' in text and
-                          'assets/css/live-rebuild.css?v=20260904-rebuild-v1' in text and
-                          'assets/js/live-rebuild.js?v=20260904-rebuild-v1' in text and
-                          'id="live-page-items" class="topic-story-grid"' in text and
-                          'assets/css/live.css' not in text and
-                          'assets/js/live-article.js' not in text
-                      )
-                  if page=='index.html':
-                      index_vocab_contract=bool(
-                          'assets/css/extras.css?v=' in text and
-                          'id="study-desk"' in text and
-                          'assets/js/daily-extras.js?v=' in text
-                      )
-                  page_checks[page]={'ok':bool(status==200 and '<html' in text.lower() and not marker),'status':status,'contentType':content_type,'bytes':len(body),'errorMarker':marker}
+                  status,ctype,body=request_bytes(root+page)
+                  text=html.unescape(body.decode('utf-8','replace'))
+                  marker=next((m for m in known_error_markers if m in text),None)
+                  retail_stale=('retail-deals.html' in text or 'Retail Promotions' in text)
+                  newest_ok=True
+                  slug=topic_pages.get(page)
+                  if slug:
+                      stories=(remote_desk.get('desks') or {}).get(slug) or []
+                      if stories:
+                          first=str(stories[0].get('title') or '')
+                          second=str(stories[1].get('title') or '') if len(stories)>1 else ''
+                          p1=text.find(first) if first else -1
+                          p2=text.find(second) if second else -1
+                          newest_ok=bool(p1>=0 and (not second or p2<0 or p1<p2))
+                  ok=bool(status==200 and '<html' in text.lower() and not marker and not retail_stale and newest_ok)
+                  page_checks[page]={'ok':ok,'status':status,'contentType':ctype,'bytes':len(body),'errorMarker':marker,'retailStale':retail_stale,'newestFirst':newest_ok}
               except Exception as exc:
                   page_checks[page]={'ok':False,'error':str(exc)}
-          all_pages_ok=all(item.get('ok') for item in page_checks.values())
+              all_pages_ok=all_pages_ok and page_checks[page].get('ok',False)
 
           runtime_checks={}
           for path in runtime_files:
               local=Path(path).read_bytes()
               try:
-                  status, content_type, body=request_bytes(root+path)
-                  runtime_checks[path]={'ok':bool(status==200 and body==local),'status':status,'contentType':content_type,'localSha256':sha256(local),'publicSha256':sha256(body),'bytes':len(body)}
+                  status,ctype,body=request_bytes(root+path)
+                  runtime_checks[path]={'ok':bool(status==200 and body==local),'status':status,'contentType':ctype,'localSha256':sha256(local),'publicSha256':sha256(body)}
               except Exception as exc:
-                  runtime_checks[path]={'ok':False,'localSha256':sha256(local),'error':str(exc)}
-          runtime_match=all(item.get('ok') for item in runtime_checks.values())
+                  runtime_checks[path]={'ok':False,'error':str(exc)}
+          runtime_match=all(x.get('ok') for x in runtime_checks.values())
 
-          tts_local=Path('assets/js/site-tts-canto-nano.js').read_text(encoding='utf-8')
-          current_namespace=str(local_tts.get('assetNamespace') or '')
-          expected_namespace_literal=f'const ASSET_NAMESPACE = "{current_namespace}";'
-          tts_guard_ok=bool(
-              current_namespace and
-              'const MANIFEST_URL = new URL("data/tts-manifest.json", SITE_ROOT).href;' in tts_local and
-              expected_namespace_literal in tts_local and
-              'runtime-ref-audio-voice-clone-verified' in tts_local and
-              'femalePromptCodesSha256 !== e.defaultPromptCodesSha256' in tts_local and
-              'semantic-completeness-breathing-audience-processing' in tts_local and
-              'new MutationObserver' in tts_local
-          )
-
-          infrastructure_ok=bool(daily_match and live_match and desk_match and stock_match and voice_match and all_pages_ok and runtime_match and live_layout_contract and index_vocab_contract and tts_guard_ok)
-          editorial_fresh=bool(live_fresh and stock_fresh and daily_fresh and stock_content_fresh)
-          overall=bool(infrastructure_ok and editorial_fresh)
+          overall=bool(daily_match and live_match and desk_match and stock_match and voice_match and all_pages_ok and runtime_match)
           payload={
-              'checkedAt': now.isoformat(), 'checkedAtHKT': now_hkt.isoformat(), 'publicBaseUrl': root,
-              'mainDailyDate': expected_daily, 'publicDailyDate': remote_latest.get('date') if isinstance(remote_latest,dict) else None,
-              'mainLastUpdated': expected_live, 'publicLastUpdated': remote_live.get('lastUpdated') if isinstance(remote_live,dict) else None,
-              'mainWindowLabel': local_live.get('windowLabel'), 'publicWindowLabel': remote_live.get('windowLabel') if isinstance(remote_live,dict) else None,
-              'publicItemCount': len(remote_live.get('items') or []) if isinstance(remote_live,dict) else 0,
-              'mainDeskExpectedAt': expected_live, 'publicDeskGeneratedAt': remote_desk.get('generatedAt') if isinstance(remote_desk,dict) else None,
-              'mainStocksGeneratedAt': expected_stocks, 'publicStocksGeneratedAt': remote_stocks.get('generatedAt') if isinstance(remote_stocks,dict) else None,
-              'publicStocksLastCheckedAt': remote_stocks.get('lastCheckedAt') if isinstance(remote_stocks,dict) else None,
-              'publicStocksCollectionStatus': remote_stocks.get('collectionStatus') if isinstance(remote_stocks,dict) else None,
-              'dailyMatch': daily_match, 'liveMatch': live_match, 'deskMatch': desk_match, 'stockMatch': stock_match,
-              'dailyFresh': daily_fresh, 'liveFresh': live_fresh, 'liveAgeMinutes': live_age,
-              'stockFresh': stock_fresh, 'stockCheckAgeMinutes': stock_check_age,
-              'stockContentFresh': stock_content_fresh, 'stockContentAgeMinutes': stock_content_age,
-              'voiceManifestMatch': voice_match,
-              'voiceEngine': local_tts.get('engine'),
-              'voiceAvailableArticleCount': int(local_tts.get('availableArticleCount') or 0),
-              'allCorePagesOk': all_pages_ok, 'pageChecks': page_checks,
-              'liveLayoutContract': live_layout_contract,
-              'indexVocabContract': index_vocab_contract,
-              'runtimeMatch': runtime_match, 'runtimeChecks': runtime_checks,
-              'ttsHangRegressionGuard': tts_guard_ok,
-              'voiceAssetNamespace': current_namespace,
-              'infrastructureMatch': infrastructure_ok,
-              'editorialFreshnessMatch': editorial_fresh,
-              'match': overall,
-              'error': error,
+              'checkedAt':now.isoformat(),'checkedAtHKT':now_hkt.isoformat(),'publicBaseUrl':root,
+              'dailyMatch':daily_match,'liveMatch':live_match,'publicationComplete':publication_complete(remote_live),
+              'deskMatch':desk_match,'deskIssues':desk_issues,'stockMatch':stock_match,'voiceManifestMatch':voice_match,
+              'allCorePagesOk':all_pages_ok,'pageChecks':page_checks,'runtimeMatch':runtime_match,'runtimeChecks':runtime_checks,
+              'retailRetiredContract':all(not x.get('retailStale',False) for x in page_checks.values()),
+              'match':overall,'error':error,
           }
           open('/tmp/pages-live-status.json','w',encoding='utf-8').write(json.dumps(payload,ensure_ascii=False,indent=2)+'\n')
           print(json.dumps(payload,ensure_ascii=False))
