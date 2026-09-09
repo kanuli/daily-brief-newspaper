@@ -90,6 +90,10 @@ def routed_slugs(story: dict[str, Any]) -> list[str]:
     finance tag so football cannot leak into World/Asia/Japan/Finance and
     manga/anime cannot leak into Japan/general desks. Manchester United-specific
     football belongs to both its dedicated MU desk and the general Football desk.
+
+    Daily v3 story IDs are also accepted as explicit primary-desk ownership.
+    This keeps verified Daily copy routable even when a producer omits legacy
+    ``desk`` metadata; specialist content still wins before generic ID routing.
     """
     text = _routing_text(story)
     story_id = str(story.get("id") or "").strip().lower()
@@ -127,6 +131,24 @@ def routed_slugs(story: dict[str, Any]) -> list[str]:
 
     if raw_desk in EXPECTED_DESKS:
         return [raw_desk]
+
+    # Daily v3 canonical IDs carry primary desk ownership. This fallback is
+    # deliberately after football/manga classification so specialist stories
+    # can never leak into a geographic or market desk merely because of an ID.
+    id_prefixes = (
+        ("manchester-united-", "manchester-united"),
+        ("hong-kong-", "hong-kong"),
+        ("market-economy-", "market-economy"),
+        ("market-", "market-economy"),
+        ("ai-tech-", "ai-tech"),
+        ("manga-anime-", "manga-anime"),
+        ("world-", "world"),
+        ("asia-", "asia"),
+        ("japan-", "japan"),
+    )
+    for prefix, slug in id_prefixes:
+        if story_id.startswith(prefix):
+            return [slug]
     return []
 
 
