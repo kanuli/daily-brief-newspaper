@@ -79,18 +79,26 @@ jobs:
         if: steps.inputs.outputs.staging_available == 'true'
         shell: bash
         run: |
-          set -euo pipefail
-          python scripts/promote_verified_stock_draft.py /tmp/stock-prepublish.json
+          set -uo pipefail
+          if python scripts/promote_verified_stock_draft.py /tmp/stock-prepublish.json; then
+            echo "PRIMARY_STOCK_PROMOTION_ACCEPTED"
+          else
+            echo "PRIMARY_STOCK_PROMOTION_REJECTED retaining current verified text artifact"
+          fi
 
       - name: Promote newer manual verified tracked-stock material when available
         if: steps.inputs.outputs.draft_available == 'true'
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           # Manual/editor-generated VERIFIED_DRAFT remains a supported higher-detail
-          # path. The normal max-age/current checks prevent an old generic Live
-          # draft from overwriting the new primary-source producer output.
-          python scripts/promote_verified_stock_draft.py /tmp/prepublish.json
+          # path. Invalid/stale drafts must not block publication of the current
+          # verified Stock News artifact.
+          if python scripts/promote_verified_stock_draft.py /tmp/prepublish.json; then
+            echo "MANUAL_STOCK_PROMOTION_ACCEPTED"
+          else
+            echo "MANUAL_STOCK_PROMOTION_REJECTED retaining current verified text artifact"
+          fi
 
       - name: Remove repeated verification boilerplate
         shell: bash
@@ -174,4 +182,4 @@ jobs:
             -d "$payload"
           echo "STOCK_PAGES_DEPLOY_DISPATCHED"
 
-# Existing publisher invocation marker: 2026-09-10 00:04 HKT
+# Existing publisher invocation marker: 2026-09-10 00:07 HKT
