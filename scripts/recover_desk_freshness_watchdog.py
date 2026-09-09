@@ -21,9 +21,7 @@ DESK_PATH = DATA / "desk-latest.json"
 LATEST_PATH = DATA / "latest.json"
 HKT = dt.timezone(dt.timedelta(hours=8))
 
-# Source-backed specialist recovery for the current publication window. The
-# official Manchester United site still lists United v Sabah as the next match
-# and carries the current match preview; verification was refreshed on Sep 9.
+# Source-backed specialist recovery for the current publication window.
 RECOVERY = {
     "manchester-united": {
         "id": "manchester-united-sabah-champions-league-preview-20260909",
@@ -45,6 +43,27 @@ RECOVERY = {
         "sources": [
             {"name": "Manchester United", "url": "https://www.manutd.com/en"},
             {"name": "Manchester United Matches", "url": "https://www.manutd.com/en/mutv/matches/mens-team"}
+        ]
+    },
+    "football": {
+        "id": "football-belgium-courtois-nations-league-20260909",
+        "desk": "football",
+        "deskSlugs": ["football"],
+        "section": "足球｜比利時",
+        "status": "LATEST",
+        "title": "古圖奧斯獲准缺席比利時歐國聯賽程　未退出國家隊",
+        "dek": "比利時門將古圖奧斯獲准避戰未來數月的歐國聯賽事，但強調仍會代表國家隊，並計劃參與明年歐洲國家盃外圍賽。",
+        "summary": "路透社9月9日報道，古圖奧斯獲比利時隊批准缺席即將展開的歐國聯賽程；他表示決定主要與賽程及身體負荷有關，並非退出國家隊。",
+        "body": "比利時門將古圖奧斯將不參與球隊未來數月的歐國聯賽程。路透社引述比利時媒體報道，國家隊已批准這名34歲門將暫時避戰；古圖奧斯同時表明自己沒有退出國際賽，仍計劃在明年3月開始的歐洲國家盃外圍賽重新為國家隊候命。\n\n比利時在今屆歐國聯將與法國、意大利及土耳其交手，三個月內共有六場比賽。古圖奧斯表示，高密度球會與國際賽賽程令身體負荷增加，因此選擇在今輪賽事休息；新任主帥雲邦美據報亦支持這項安排。",
+        "context": "古圖奧斯仍是比利時重要門將，他今次缺席屬賽程管理決定，而非國際賽退役。",
+        "why": "門將人選及主力球員可用性直接影響比利時接下來六場歐國聯比賽的部署，亦涉及球會與國家隊之間的工作量管理。",
+        "watchNext": "留意比利時公布歐國聯正式名單、門將排序，以及古圖奧斯在明年歐洲國家盃外圍賽前是否恢復入選。",
+        "sourceName": "Reuters",
+        "sourceUrl": "https://www.reuters.com/sports/soccer/courtois-given-green-light-skip-belgiums-nations-league-campaign-reports-say-2026-09-09/",
+        "timeLabel": "9月9日18:12 HKT核實",
+        "verifiedAt": "2026-09-09T18:12:00+08:00",
+        "sources": [
+            {"name": "Reuters", "url": "https://www.reuters.com/sports/soccer/courtois-given-green-light-skip-belgiums-nations-league-campaign-reports-say-2026-09-09/"}
         ]
     }
 }
@@ -97,8 +116,6 @@ def main():
             print(f"DESK_FRESHNESS_RECOVERY_SKIP slug={slug} age_h={age:.2f} sla_h={sla}")
             continue
 
-        # Prefer already-verified Daily copy. This avoids a static recovery
-        # template when today's publication itself contains a current story.
         candidates = []
         for story in daily:
             if slug not in routed_slugs(story):
