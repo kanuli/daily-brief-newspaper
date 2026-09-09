@@ -98,9 +98,21 @@ def validate_live(latest, live, desk):
         actual[status] += 1
         ids.append(story["id"])
     need(len(ids) == len(set(ids)), "Live has duplicate story ids")
-    need(live.get("newCount") == actual["NEW"], "Live newCount mismatch")
-    need(live.get("updatedCount") == actual["UPDATED"], "Live updatedCount mismatch")
-    need(live.get("developingCount") == actual["DEVELOPING"], "Live developingCount mismatch")
+
+    # newCount / updatedCount describe publication actions. DEVELOPING is an
+    # orthogonal story-state flag: a newly published story may already be
+    # DEVELOPING, so it must not force newCount to zero. Keep the action
+    # counters exhaustive while validating the explicit status buckets.
+    new_count = live.get("newCount")
+    updated_count = live.get("updatedCount")
+    developing_count = live.get("developingCount")
+    need(isinstance(new_count, int) and new_count >= 0, "Live newCount must be a non-negative integer")
+    need(isinstance(updated_count, int) and updated_count >= 0, "Live updatedCount must be a non-negative integer")
+    need(isinstance(developing_count, int) and developing_count >= 0, "Live developingCount must be a non-negative integer")
+    need(new_count + updated_count == len(items), "Live newCount + updatedCount must equal item count")
+    need(new_count >= actual["NEW"], "Live newCount cannot be lower than NEW-status stories")
+    need(updated_count >= actual["UPDATED"], "Live updatedCount cannot be lower than UPDATED-status stories")
+    need(developing_count == actual["DEVELOPING"], "Live developingCount mismatch")
 
 
 def validate_desks(desk):
