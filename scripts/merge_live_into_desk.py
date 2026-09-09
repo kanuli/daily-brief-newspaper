@@ -132,6 +132,29 @@ def unique_count(stories):
     return len(dedupe(stories))
 
 
+def repair_required_cross_posts(desks):
+    """Restore only cross-posts explicitly required by canonical routing.
+
+    At present this principally guarantees Manchester United stories appear on
+    both Manchester United and Football. It never creates a generic geographic
+    or finance duplicate because routed_slugs() returns one desk for ordinary
+    stories and specialist ownership overrides generic tags.
+    """
+    pool = {}
+    for slug in FLOORS:
+        for story in desks.get(slug, []):
+            if isinstance(story, dict):
+                pool.setdefault(story_identity(story), story)
+    for story in pool.values():
+        routes = list(dict.fromkeys(routed_slugs(story)))
+        for slug in routes:
+            if slug not in FLOORS or not keep_on_desk(story, slug):
+                continue
+            candidate = copy.deepcopy(story)
+            candidate["deskSlugs"] = routes
+            desks[slug] = newest_first([candidate] + desks.get(slug, []))
+
+
 def routing_integrity(desks):
     """Verify the repaired public desk state against canonical routing policy.
 
@@ -180,7 +203,7 @@ def main():
             desired_routes = set(routed_slugs(raw))
             if ident in current_routes:
                 desired_routes = current_routes[ident]
-            if desired_routes and slug not in desired_routes:
+            if not desired_routes or slug not in desired_routes:
                 expired_cross_posts.append((slug, str(raw.get("id") or raw.get("title") or "unknown")))
                 continue
             if not keep_on_desk(raw, slug):
@@ -220,6 +243,7 @@ def main():
                         and re.sub(r"\s+", " ", str(s.get("title") or "")).strip().lower() != story_title]
             desks[slug] = newest_first([story] + existing)
 
+    repair_required_cross_posts(desks)
     for slug in FLOORS:
         desks[slug] = newest_first(desks.get(slug, []))
 
