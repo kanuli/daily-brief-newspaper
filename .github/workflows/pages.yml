@@ -126,7 +126,7 @@ jobs:
           if mode == 'DAILY_BASELINE':
               if items: raise SystemExit('Daily baseline must not contain Live items')
           else:
-              if mode not in {'LIVE','HOURLY_LIVE','LIVE_INCREMENTAL'} or not items: raise SystemExit(f'Hourly Live mode/items invalid: {mode}')
+              if mode not in {'LIVE','HOURLY_LIVE','LIVE_INCREMENTAL','LIVE_UPDATE'} or not items: raise SystemExit(f'Hourly Live mode/items invalid: {mode}')
               if coverage.get('status') != 'COMPLETE' or coverage.get('publishingGateMet') is not True or coverage.get('deskLatestDepthMet') is not True or coverage.get('footballGateMet') is not True: raise SystemExit('Hourly Live coverage hard gates are not complete')
           if desk.get('generatedAt') != live.get('lastUpdated'): raise SystemExit(f"Rolling Desk behind Live: desk={desk.get('generatedAt')} live={live.get('lastUpdated')}")
           print('PUBLIC_AVAILABILITY_GATE_OK',mode,live.get('windowLabel'),len(items),desk.get('generatedAt'))
