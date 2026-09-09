@@ -17,24 +17,27 @@ HKT = dt.timezone(dt.timedelta(hours=8))
 
 RECOVERY = {
     "manga-anime": {
-        "id": "manga-anime-marriage-toxin-season2-visual-20260908",
+        "id": "manga-anime-attack-on-titan-day-99-news-20260909",
         "desk": "manga-anime",
         "deskSlugs": ["manga-anime"],
-        "section": "漫畫／動畫｜電視動畫",
+        "section": "漫畫／動畫｜《進擊的巨人》",
         "status": "LATEST",
-        "title": "《Marriage Toxin》動畫第2季公開主視覺　2027年1月接續播出",
-        "dek": "改編自《少年Jump+》同名漫畫的《Marriage Toxin》公開第2季主視覺及宣傳影片，續篇定於2027年1月在關西電視台／富士電視台動畫時段播出。",
-        "summary": "MANTANWEB 9月8日報道，《Marriage Toxin》電視動畫第2季公開主視覺及宣傳影片；畫面延續殺手下呂光與婚姻詐欺師城崎梅的搭檔主線，並確認2027年1月開播。",
-        "body": "MANTANWEB於9月8日上午10時報道，集英社《少年Jump+》連載漫畫《Marriage Toxin》改編電視動畫已公開第2季主視覺及宣傳影片。主視覺描繪使用毒術的下呂光手持注射器、城崎梅手持花束，背景取自第一季的重要場景。\n\n第1季已於2026年4月至6月在關西電視台／富士電視台動畫時段播出；第2季確認於2027年1月在同一時段接續推出。動畫由Bones Film製作，主要聲優陣容亦隨新一輪宣傳資料列出。",
-        "context": "《Marriage Toxin》原作由靜脈負責故事、依田瑞稀作畫，2022年起於《少年Jump+》連載，結合戰鬥、殺手世界觀與戀愛喜劇元素。",
-        "why": "第2季主視覺、宣傳影片及2027年1月播映安排屬當日實質動畫製作進展，應只歸入漫畫／動畫版。",
-        "watchNext": "留意第2季確實首播日期、追加聲優、主題曲及後續正式預告。",
-        "sourceName": "MANTANWEB",
-        "sourceUrl": "https://en.mantan-web.jp/e_article/20260907dog00m200073000a.html",
-        "timeLabel": "9月8日10:00 HKT報道",
-        "publishedAt": "2026-09-08T10:00:00+08:00",
-        "verifiedAt": "2026-09-08T18:18:00+08:00",
-        "sources": [{"name": "MANTANWEB", "url": "https://en.mantan-web.jp/e_article/20260907dog00m200073000a.html"}],
+        "title": "9月9日首個「進擊的巨人之日」公布99項企劃　諫山創公開全新紀念插畫",
+        "dek": "《進擊的巨人》官方為9月9日正式紀念日公布99項企劃，包括諫山創新繪、漫畫99話限時99小時免費，以及劇場版10月在日本以SCREENX、4DX等格式重映。",
+        "summary": "《進擊的巨人》官方入口網站9月9日公開紀念日企劃；同日MANTANWEB報道，原作連載開始日獲正式認定為「進擊的巨人之日」，並一次公布99項相關消息。",
+        "body": "《進擊的巨人》官方入口網站在9月9日首個正式「進擊的巨人之日」公開大型紀念企劃，包括集合九大巨人的紀念視覺、原作者諫山創全新插畫，以及官方YouTube頻道等內容。講談社旗下「Magazine Pocket」亦由9月9日起把原作首99話限時99小時免費公開。\n\nMANTANWEB同日凌晨報道，劇場版《進擊的巨人 前編～紅蓮的弓矢～》亦將於10月23日起在日本以SCREENX、4DX及ULTRA 4DX等格式重映。這些安排屬漫畫／動畫作品的當日正式企劃與發行消息，應只歸入漫畫／動畫版，不回流日本一般時政版。",
+        "context": "《進擊的巨人》於2009年9月9日在講談社《別冊少年Magazine》創刊號開始連載；日本紀念日協會其後把9月9日正式認定為作品紀念日。",
+        "why": "官方在紀念日當天一次公布新插畫、限時閱讀、影音頻道及劇場重映等實質安排，屬可即時更新漫畫／動畫版的有效新發展。",
+        "watchNext": "留意9月9日晚間官方特別直播是否再公布動畫、遊戲或其他新企劃，以及10月劇場版重映的上映院線與後續票務安排。",
+        "sourceName": "Attack on Titan Official Portal / MANTANWEB",
+        "sourceUrl": "https://aot-portal.com/en/special/aotday2026/",
+        "timeLabel": "9月9日00:00 JST報道；10:20 HKT核實",
+        "publishedAt": "2026-09-09T00:00:00+09:00",
+        "verifiedAt": "2026-09-09T10:20:00+08:00",
+        "sources": [
+            {"name": "Attack on Titan Official Portal", "url": "https://aot-portal.com/en/special/aotday2026/"},
+            {"name": "MANTANWEB", "url": "https://mantan-web.jp/article/20260908dog00m200076000a.html"}
+        ]
     },
     "japan": {
         "id": "japan-us-fx-policy-alignment-20260908",
