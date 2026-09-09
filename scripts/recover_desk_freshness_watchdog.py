@@ -23,6 +23,27 @@ HKT = dt.timezone(dt.timedelta(hours=8))
 
 # Source-backed specialist recovery for the current publication window.
 RECOVERY = {
+    "world": {
+        "id": "world-iran-us-tanker-attacks-hormuz-20260909",
+        "desk": "world",
+        "deskSlugs": ["world"],
+        "section": "國際｜中東",
+        "status": "LATEST",
+        "title": "伊朗與美國擴大海上互擊　霍爾木茲海峽航運風險急升",
+        "dek": "伊朗與美國9月9日擴大針對海上目標的報復行動，多艘油輪及商船受波及，霍爾木茲海峽能源運輸再受衝擊。",
+        "summary": "路透社9月9日報道，伊朗與美國展開這場衝突以來最大規模的海上互擊；伊朗稱襲擊海峽附近多艘船隻，美方則打擊伊朗油輪，區內航運與能源供應風險同步上升。",
+        "body": "伊朗與美國9月9日把持續數月的軍事對抗進一步延伸至海上航運。路透社報道，伊朗在霍爾木茲海峽附近攻擊多艘船隻，稱是回應美方摧毀伊朗油輪；美方則表示其行動與伊朗對美軍及海上力量的威脅有關。\n\n霍爾木茲海峽是全球重要能源運輸通道，今次互擊令商船、油輪及液化天然氣運輸面對更高安全風險，油價亦隨局勢升級而上升。事件屬跨國軍事與外交局勢，只歸World，不回流Asia、Football、Manga/Anime或Finance。",
+        "context": "美伊衝突持續升級之際，海上航線已成為新的直接交鋒場域，並牽動全球能源運輸與區內安全。",
+        "why": "霍爾木茲海峽承載全球大量石油運輸，任何持續攻擊都可能迅速擴大至航運、能源價格及區域安全層面。",
+        "watchNext": "留意美伊是否再擴大海上打擊、主要航運公司是否改道，以及區內國家與國際斡旋方能否降低衝突強度。",
+        "sourceName": "Reuters",
+        "sourceUrl": "https://www.reuters.com/world/middle-east/iran-attacks-us-base-jordan-ships-near-hormuz-after-tankers-sunk-2026-09-09/",
+        "timeLabel": "9月9日21:10 HKT核實",
+        "verifiedAt": "2026-09-09T21:10:00+08:00",
+        "sources": [
+            {"name": "Reuters", "url": "https://www.reuters.com/world/middle-east/iran-attacks-us-base-jordan-ships-near-hormuz-after-tankers-sunk-2026-09-09/"}
+        ]
+    },
     "manchester-united": {
         "id": "manchester-united-sabah-champions-league-preview-20260909",
         "desk": "manchester-united",
