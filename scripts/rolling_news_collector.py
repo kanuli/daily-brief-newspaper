@@ -103,11 +103,22 @@ QUERY_PLAN: dict[str, list[str]] = {
         '(Treasury yields OR dollar OR yen OR euro OR commodities) when:6h',
     ],
     "stock-news": [
-        '(NVDA OR Nvidia OR AAPL OR Apple OR TSM OR TSMC) earnings guidance product analyst SEC when:8h',
-        '(PLTR OR Palantir OR MSFT OR Microsoft OR GOOG OR Google OR Alphabet) earnings guidance product analyst SEC when:8h',
-        '(EMXC OR EWY OR VT) ETF market flows holdings when:12h',
-        '(NVDA OR AAPL OR TSM OR PLTR OR MSFT OR GOOG OR EMXC OR EWY OR VT) when:12h',
-    ],
+    '(GOOG OR Google OR Alphabet) earnings guidance product analyst SEC filing partnership regulation when:12h',
+    '(GLDM OR "SPDR Gold MiniShares" OR gold price rates dollar) when:12h',
+    '(ICE OR "Intercontinental Exchange" OR NYSE parent) earnings analyst SEC filing market data when:12h',
+    '(MCD OR McDonald) earnings guidance product analyst SEC filing when:12h',
+    '(EMXC OR "emerging markets ex China" OR Taiwan Korea India equities flows) when:12h',
+    '(GBTC OR "Grayscale Bitcoin Trust" OR bitcoin ETF crypto regulation flows) when:12h',
+    '(DBA OR "Invesco DB Agriculture" OR agriculture commodities weather supply demand) when:12h',
+    '(AAPL OR Apple) earnings guidance product analyst SEC filing when:12h',
+    '(EWY OR "iShares MSCI South Korea" OR KOSPI Samsung "SK Hynix" Korea equities) when:12h',
+    '(META OR "Meta Platforms") earnings guidance product AI analyst SEC filing regulation when:12h',
+    '(MSFT OR Microsoft) earnings guidance product AI analyst SEC filing partnership when:12h',
+    '(NVDA OR Nvidia) earnings guidance product AI analyst SEC filing partnership when:12h',
+    '(TSM OR TSMC OR "Taiwan Semiconductor") earnings guidance supply chain analyst SEC when:12h',
+    '(PLTR OR Palantir) earnings guidance contract analyst SEC filing when:12h',
+    '(VT OR "Vanguard Total World" OR global equities rates dollar oil geopolitics) when:12h',
+],
     "ai-tech": [
         '(AI OR "artificial intelligence" OR generative AI OR model) when:6h',
         '(semiconductor OR chip OR GPU OR foundry) when:6h',
@@ -166,9 +177,21 @@ FOOTBALL_POSITIVE = re.compile(
 )
 
 STOCK_TERMS = (
-    "nvda", "nvidia", "aapl", "apple", "tsm", "tsmc", "taiwan semiconductor",
-    "pltr", "palantir", "msft", "microsoft", "goog", "google", "alphabet",
-    "emxc", "ewy", " vt ", "vanguard total world", "emerging markets ex china",
+    "goog", "google", "alphabet",
+    "gldm", "spdr gold minishares", "gold price", "gold rates",
+    "intercontinental exchange", "ice stock", "nyse parent",
+    "mcd", "mcdonald",
+    "emxc", "emerging markets ex china", "taiwan korea india equities",
+    "gbtc", "grayscale bitcoin trust", "bitcoin etf", "crypto regulation",
+    "invesco db agriculture", "dba etf", "agriculture commodities",
+    "aapl", "apple",
+    "ewy", "ishares msci south korea", "kospi", "samsung", "sk hynix", "korea equities",
+    "meta", "meta platforms",
+    "msft", "microsoft",
+    "nvda", "nvidia",
+    "tsm", "tsmc", "taiwan semiconductor",
+    "pltr", "palantir",
+    " vt ", "vanguard total world", "global equities",
 )
 
 
