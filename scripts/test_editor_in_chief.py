@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from datetime import datetime, timezone
 from editor_in_chief import audit
+from semantic_copy_guard import semantic_copy_errors
 
 UTC = timezone.utc
 NOW = datetime(2026, 8, 26, 21, 35, tzinfo=UTC)  # 05:35 HKT, outside normal Live/Stock window
@@ -14,6 +15,7 @@ def story(slug, ident):
         "summary": "這是一段足夠長度的測試摘要，用來驗證新聞稿基本結構。",
         "body": "這是一段足夠長度的測試新聞內文。" * 8,
         "sourceUrl": "https://example.com/story",
+        "sourceName": "Example",
         "sources": [{"name": "Example", "url": "https://example.com/story"}],
     }
 
@@ -41,6 +43,7 @@ args = base()
 result = audit(*args, NOW)
 assert result["status"] == "HEALTHY", result
 assert result["repairPlan"] == [], result
+assert result["policy"]["semanticCopyeditingGate"] is True, result
 
 args = list(base())
 args[6] = {"lastSearchAt": "2026-08-26T20:00:00+00:00"}
@@ -86,5 +89,28 @@ assert result["status"] == "AUTO_REPAIRING", result
 assert any(f["code"] == "STALE_CROSS_DESK_FOOTBALL" and f["area"] == "japan" for f in result["findings"]), result
 assert any(x["workflow"] == "merge-live-into-desk.yml" for x in result["repairPlan"]), result
 assert not any(f["code"] in {"DUPLICATE_ARTICLE_ID", "DUPLICATE_HEADLINE"} and "舊J-League" in f.get("message", "") for f in result["findings"]), result
+
+# Regression: the corruption that escaped the old audit must now be a hard
+# semantic-copyediting failure, not qualityErrorCount=0.
+corrupt = story("hong-kong", "hk-dow-jones-journalists-association-regression")
+corrupt["title"] = "道瓊斯指數 鍾斯阻鄭嘉如參選記協主席罪成　解僱相關控罪不成立"
+corrupt["summary"] = "案件涉及《華爾街日報》僱主與香港記者協會主席鄭嘉如之間的僱傭爭議。"
+corrupt["body"] = "《華爾街日報》母公司 Dow Jones Publishing 涉及一宗僱傭及解僱案件。" * 8
+corrupt["sourceName"] = "Wall Street Journal / court reporting"
+assert semantic_copy_errors(corrupt), "corrupt Dow Jones headline must be rejected"
+args = list(base())
+args[2]["desks"]["hong-kong"] = [corrupt]
+result = audit(*args, NOW)
+assert result["status"] == "EDITORIAL_ATTENTION_REQUIRED", result
+assert result["deskAudit"]["hong-kong"]["semanticCopyErrorCount"] >= 1, result
+assert result["deskAudit"]["hong-kong"]["qualityErrorCount"] >= 1, result
+assert any(f["code"] == "SEMANTIC_COPY_CORRUPTION" and f["area"] == "hong-kong" for f in result["findings"]), result
+
+# Normal market-index usage must remain valid; the guard should not over-block.
+normal = story("market-economy", "market-dow-jones-normal")
+normal["title"] = "道瓊斯工業平均指數升逾200點　市場等待通脹數據"
+normal["summary"] = "美股主要指數上升，投資者等待最新通脹數據。"
+normal["body"] = "美國股市上升，道瓊斯工業平均指數錄得升幅，市場關注利率前景。" * 8
+assert semantic_copy_errors(normal) == [], semantic_copy_errors(normal)
 
 print("EDITOR_IN_CHIEF_TESTS_OK")
