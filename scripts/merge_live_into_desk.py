@@ -282,6 +282,8 @@ def main():
     coverage["footballGateMet"] = football_gate
     coverage["publishingGateMet"] = publication_ready
     coverage["status"] = "DAILY_BASELINE" if str(live.get("mode") or "").upper() == "DAILY_BASELINE" else ("COMPLETE" if publication_ready else "INCOMPLETE")
+    if publication_ready:
+        coverage.pop("blockingIssues", None)
 
     DESK.write_text(json.dumps(desk, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     LIVE.write_text(json.dumps(live, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
