@@ -27,6 +27,8 @@ from stock_news_rules import match_tickers
 ROOT = Path(__file__).resolve().parents[1]
 STOCKS_PATH = ROOT / "data" / "stocks-latest.json"
 HKT = timezone(timedelta(hours=8))
+TRACKED = ["GOOG", "GLDM", "ICE", "MCD", "EMXC", "GBTC", "DBA", "AAPL", "EWY", "META", "MSFT", "NVDA", "TSM", "PLTR", "VT"]
+MAX_COVERAGE_CHECK_AGE_HOURS = 3.0
 
 
 def load(path: Path):
@@ -71,6 +73,50 @@ def strict_candidates(staging: dict) -> tuple[list[dict], list[dict]]:
     return valid, current
 
 
+def refresh_coverage_freshness(stocks: dict, published: datetime) -> None:
+    """Write the per-symbol freshness contract consumed by publication QA.
+
+    Freshness here means that the current retained story/read-through set has
+    been reviewed against a recent strict tracked-stock source-search snapshot;
+    it does not pretend that an older still-current corporate event happened
+    again today. A missing ticker story or an old/missing source check fails the
+    gate closed.
+    """
+    checked_raw = stocks.get("lastCheckedAt")
+    try:
+        checked = parse_iso(checked_raw) if checked_raw else None
+    except Exception:
+        checked = None
+
+    if checked is None:
+        check_age = float("inf")
+    else:
+        check_age = max(0.0, (published - checked).total_seconds() / 3600.0)
+
+    tickers = stocks.get("tickers") if isinstance(stocks.get("tickers"), dict) else {}
+    freshness: dict[str, dict] = {}
+    stale_symbols: list[str] = []
+    for ticker in TRACKED:
+        block = tickers.get(ticker) if isinstance(tickers.get(ticker), dict) else {}
+        stories = block.get("stories") if isinstance(block.get("stories"), list) else []
+        has_story = any(isinstance(story, dict) and str(story.get("title") or "").strip() for story in stories)
+        stale = (not has_story) or checked is None or check_age > MAX_COVERAGE_CHECK_AGE_HOURS
+        if stale:
+            stale_symbols.append(ticker)
+        freshness[ticker] = {
+            "lastReviewedAt": checked.isoformat() if checked is not None else None,
+            "hoursAgo": round(check_age, 3) if check_age != float("inf") else 999999.0,
+            "stale": stale,
+            "storyCount": len(stories),
+        }
+
+    stocks["coverageFreshness"] = freshness
+    stocks["staleSymbols"] = stale_symbols
+    quality = stocks.get("qualityGates") if isinstance(stocks.get("qualityGates"), dict) else {}
+    quality["freshnessGateMet"] = not stale_symbols
+    stocks["qualityGates"] = quality
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("staging")
@@ -108,6 +154,7 @@ def main() -> int:
         "generatedAt": "actual completion time of the current verified Stock News publication",
         "verifiedContentUpdatedAt": "time the verified story set last changed",
         "lastCheckedAt": "source-search time after strict tracked-ticker identity filtering",
+        "coverageFreshness": "per-symbol retained-story coverage reviewed against the latest strict source-search snapshot",
     }
 
     if refresh_collection:
@@ -155,8 +202,13 @@ def main() -> int:
             f"last_checked={stocks.get('lastCheckedAt')}"
         )
 
+    refresh_coverage_freshness(stocks, published)
     STOCKS_PATH.write_text(json.dumps(stocks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(message)
+    if stocks.get("staleSymbols"):
+        print("STOCK_COVERAGE_FRESHNESS_FAIL", ",".join(stocks["staleSymbols"]))
+    else:
+        print("STOCK_COVERAGE_FRESHNESS_PASS", len(TRACKED), "symbols")
     return 0
 
 
