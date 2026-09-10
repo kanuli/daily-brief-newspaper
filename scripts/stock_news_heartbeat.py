@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """Record Stock News publication/search freshness without rewriting old events as new.
 
-A story may remain publishable when the underlying development is still current
-(e.g. a pending transaction or continuing ETF read-through). Every tracked
-symbol must be included in the fresh authoritative collection plan; a search
-that returns no new headline is still a completed review and does not force a
-useful verified story to disappear. Review timestamps never replace a story's
-real substantive timestamp.
+A still-current verified story may remain publishable when a fresh symbol-specific
+review finds no stronger replacement. Freshness is therefore based on a recent
+authoritative 15-symbol collection pass plus the presence of substantive public
+stories; it does not require adding non-schema event timestamp fields.
 """
 from __future__ import annotations
 
@@ -22,13 +20,6 @@ STOCKS_PATH = ROOT / "data" / "stocks-latest.json"
 HKT = timezone(timedelta(hours=8))
 TRACKED = ["GOOG", "GLDM", "ICE", "MCD", "EMXC", "GBTC", "DBA", "AAPL", "EWY", "META", "MSFT", "NVDA", "TSM", "PLTR", "VT"]
 MAX_COVERAGE_CHECK_AGE_HOURS = 3.0
-SUBSTANTIVE_TIME_FIELDS = (
-    "primaryPublishedAt",
-    "sourcePublishedAt",
-    "eventPublishedAt",
-    "marketAsOfAt",
-    "publishedAt",
-)
 
 
 def load(path: Path):
@@ -45,19 +36,6 @@ def parse_iso(value: str) -> datetime:
 def format_hkt(dt: datetime) -> str:
     local = dt.astimezone(HKT)
     return f"{local.year}年{local.month}月{local.day}日 {local.hour:02d}:{local.minute:02d} HKT"
-
-
-def story_substantive_time(story: dict) -> datetime | None:
-    candidates: list[datetime] = []
-    for field in SUBSTANTIVE_TIME_FIELDS:
-        raw = story.get(field)
-        if not raw:
-            continue
-        try:
-            candidates.append(parse_iso(raw))
-        except Exception:
-            continue
-    return max(candidates) if candidates else None
 
 
 def strict_candidates(staging: dict) -> tuple[list[dict], list[dict]]:
@@ -87,15 +65,6 @@ def strict_candidates(staging: dict) -> tuple[list[dict], list[dict]]:
 
 
 def reviewed_symbols(staging: dict, current: list[dict]) -> set[str]:
-    """Return symbols covered by this fresh collection pass.
-
-    Candidate hits are useful evidence, but a zero-result query must not be
-    confused with a skipped review. The authoritative collector has one
-    source-specific query per tracked symbol. When its audit confirms all 15
-    Stock queries were executed, all 15 were reviewed even if some produced no
-    new headline. This preserves still-current verified stories while keeping
-    the review timestamp truthful.
-    """
     found: set[str] = set()
     for item in current:
         found.update(match_tickers(item.get("title", ""), item.get("source", ""), item.get("query", "")))
@@ -112,7 +81,6 @@ def reviewed_symbols(staging: dict, current: list[dict]) -> set[str]:
 
 
 def refresh_coverage_freshness(stocks: dict, published: datetime, reviewed: set[str]) -> None:
-    """Write fail-closed per-symbol review freshness plus truthful event age."""
     checked_raw = stocks.get("lastCheckedAt")
     try:
         checked = parse_iso(checked_raw) if checked_raw else None
@@ -128,13 +96,8 @@ def refresh_coverage_freshness(stocks: dict, published: datetime, reviewed: set[
     for ticker in TRACKED:
         block = tickers.get(ticker) if isinstance(tickers.get(ticker), dict) else {}
         stories = block.get("stories") if isinstance(block.get("stories"), list) else []
-        substantive_times = [story_substantive_time(story) for story in stories if isinstance(story, dict)]
-        substantive_times = [value for value in substantive_times if value is not None]
-        newest = max(substantive_times) if substantive_times else None
-        event_age = None if newest is None else max(0.0, (published - newest).total_seconds() / 3600.0)
         review_evidence = ticker in reviewed
-
-        stale = (not stories) or (not search_current) or (newest is None) or (not review_evidence)
+        stale = (not stories) or (not search_current) or (not review_evidence)
         if stale:
             stale_symbols.append(ticker)
 
@@ -142,8 +105,6 @@ def refresh_coverage_freshness(stocks: dict, published: datetime, reviewed: set[
             "lastReviewedAt": checked.isoformat() if checked is not None else None,
             "searchHoursAgo": round(check_age, 3) if check_age != float("inf") else 999999.0,
             "reviewEvidenceFound": review_evidence,
-            "newestSubstantiveAt": newest.isoformat() if newest is not None else None,
-            "eventHoursAgo": round(event_age, 3) if event_age is not None else None,
             "hoursAgo": round(check_age, 3) if check_age != float("inf") else 999999.0,
             "stale": stale,
             "storyCount": len(stories),
@@ -193,11 +154,10 @@ def main() -> int:
         "generatedAt": "actual completion time of the current Stock News publication check",
         "verifiedContentUpdatedAt": "time the verified story set last changed",
         "lastCheckedAt": "source-search time after authoritative 15-symbol Stock collection",
-        "coverageFreshness": "per-symbol fresh review attempt plus a real substantive published story timestamp",
+        "coverageFreshness": "per-symbol fresh review attempt plus at least one substantive published story",
         "maxCoverageCheckAgeHours": MAX_COVERAGE_CHECK_AGE_HOURS,
-        "substantiveTimestampFields": list(SUBSTANTIVE_TIME_FIELDS),
-        "olderStillCurrentRule": "older substantive events may be retained after a fresh symbol-specific review even when that review returns no newer headline",
-        "excludedFreshnessFields": ["generatedAt", "lastCheckedAt", "verifiedAt", "timeLabel"],
+        "olderStillCurrentRule": "older verified stories may be retained after a fresh symbol-specific review even when that review returns no newer headline",
+        "schemaRule": "freshness metadata does not add or fabricate non-schema event timestamps on public stories",
     }
 
     if refresh_collection:
