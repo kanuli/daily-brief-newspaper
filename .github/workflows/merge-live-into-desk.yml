@@ -55,6 +55,28 @@ jobs:
         shell: bash
         run: python scripts/restore_complete_desk_reservoir.py
 
+      - name: Persist emergency reservoir recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -- data/desk-latest.json
+          if git diff --cached --quiet; then
+            echo "ROLLING_DESK_RESERVOIR_CHECKPOINT_NOOP"
+            exit 0
+          fi
+          git commit -m "Restore complete Rolling Desk reservoir after destructive overwrite"
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "ROLLING_DESK_RESERVOIR_CHECKPOINT_PASS"
+              exit 0
+            fi
+            sleep $((attempt * 2))
+            git fetch origin main
+            git rebase origin/main
+          done
+          echo "Rolling Desk emergency reservoir checkpoint could not push after retries" >&2
+          exit 1
+
       - name: Catch up missed Live snapshots
         shell: bash
         run: python scripts/catch_up_live_into_desk.py
