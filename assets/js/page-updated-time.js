@@ -88,6 +88,196 @@
     }
   }
 
+  // ============================================================
+  // Idle Auto Reload
+  //
+  // A page becomes reload-eligible after 30 minutes without genuine
+  // user activity. Reload is still blocked while the visitor is using
+  // media, an editor/form, an open overlay, or has just returned to the
+  // page. Once eligible, blocked pages recheck every minute instead of
+  // restarting the full idle period.
+  // ============================================================
+
+  const IDLE_RELOAD_FLAG = "__dailyBriefIdleAutoReloadInitialized";
+  const IDLE_RELOAD_IDLE_MS = 30 * 60 * 1000;
+  const IDLE_RELOAD_RECHECK_MS = 60 * 1000;
+  const IDLE_RELOAD_RETURN_GRACE_MS = 2 * 60 * 1000;
+  const IDLE_RELOAD_ACTIVITY_THROTTLE_MS = 1000;
+
+  function initIdleAutoReload() {
+    if (window[IDLE_RELOAD_FLAG]) return;
+    window[IDLE_RELOAD_FLAG] = true;
+
+    let lastActivity = Date.now();
+    let lastForegroundAt = Date.now();
+    let reloadPending = false;
+    let checkTimer = null;
+    let lastHighFrequencyUpdate = 0;
+
+    function clearCheckTimer() {
+      if (checkTimer !== null) {
+        window.clearTimeout(checkTimer);
+        checkTimer = null;
+      }
+    }
+
+    function scheduleNextCheck() {
+      clearCheckTimer();
+
+      const idleFor = Date.now() - lastActivity;
+      const remaining = Math.max(IDLE_RELOAD_IDLE_MS - idleFor, 1000);
+      checkTimer = window.setTimeout(checkIdleState, remaining);
+    }
+
+    function markActivity() {
+      lastActivity = Date.now();
+      reloadPending = false;
+      scheduleNextCheck();
+    }
+
+    function markHighFrequencyActivity() {
+      const now = Date.now();
+      if (now - lastHighFrequencyUpdate < IDLE_RELOAD_ACTIVITY_THROTTLE_MS) return;
+      lastHighFrequencyUpdate = now;
+      markActivity();
+    }
+
+    function isTypingOrEditing() {
+      const el = document.activeElement;
+      if (!el) return false;
+
+      const tag = el.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+      return Boolean(el.isContentEditable);
+    }
+
+    function isMediaPlaying() {
+      return Array.from(document.querySelectorAll("audio, video")).some((item) => (
+        !item.paused && !item.ended
+      ));
+    }
+
+    function isOverlayOpen() {
+      const selectors = [
+        "dialog[open]",
+        '[role="dialog"][aria-modal="true"]',
+        ".modal.show",
+        ".modal.is-open",
+        ".modal.open",
+        ".dialog.open",
+        ".dialog.is-open",
+        ".menu.open",
+        ".menu.show",
+        ".dropdown-menu.show",
+        ".offcanvas.show",
+        '[aria-expanded="true"][aria-haspopup]',
+        '[data-state="open"]'
+      ];
+
+      return selectors.some((selector) => {
+        try {
+          return document.querySelector(selector) !== null;
+        } catch (_) {
+          return false;
+        }
+      });
+    }
+
+    function justReturnedToPage() {
+      if (document.visibilityState !== "visible") return false;
+      return Date.now() - lastForegroundAt < IDLE_RELOAD_RETURN_GRACE_MS;
+    }
+
+    function isSafeToReload() {
+      if (isMediaPlaying()) return false;
+      if (isTypingOrEditing()) return false;
+      if (isOverlayOpen()) return false;
+      if (justReturnedToPage()) return false;
+      return true;
+    }
+
+    function checkIdleState() {
+      checkTimer = null;
+
+      const idleFor = Date.now() - lastActivity;
+      if (idleFor < IDLE_RELOAD_IDLE_MS) {
+        reloadPending = false;
+        scheduleNextCheck();
+        return;
+      }
+
+      reloadPending = true;
+
+      if (isSafeToReload()) {
+        window.location.reload();
+        return;
+      }
+
+      checkTimer = window.setTimeout(checkIdleState, IDLE_RELOAD_RECHECK_MS);
+    }
+
+    const immediateActivityEvents = [
+      "mousedown",
+      "click",
+      "keydown",
+      "pointerdown",
+      "touchstart",
+      "input",
+      "change",
+      "contextmenu"
+    ];
+
+    const highFrequencyActivityEvents = [
+      "mousemove",
+      "pointermove",
+      "scroll",
+      "touchmove"
+    ];
+
+    immediateActivityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, markActivity, {
+        passive: eventName !== "keydown" && eventName !== "input" && eventName !== "change"
+      });
+    });
+
+    highFrequencyActivityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, markHighFrequencyActivity, { passive: true });
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        lastForegroundAt = Date.now();
+
+        // Returning to the tab does not reset the original 30-minute idle
+        // clock. If reload was already pending, only add the short grace.
+        if (reloadPending) {
+          clearCheckTimer();
+          checkTimer = window.setTimeout(checkIdleState, IDLE_RELOAD_RETURN_GRACE_MS);
+        }
+        return;
+      }
+
+      // A background tab keeps its existing idle clock and may refresh once
+      // the threshold is reached, as long as the safety gate allows it.
+      scheduleNextCheck();
+    });
+
+    window.addEventListener("focus", () => {
+      lastForegroundAt = Date.now();
+
+      if (reloadPending) {
+        clearCheckTimer();
+        checkTimer = window.setTimeout(checkIdleState, IDLE_RELOAD_RETURN_GRACE_MS);
+      }
+    });
+
+    window.addEventListener("blur", scheduleNextCheck);
+
+    scheduleNextCheck();
+  }
+
+  initIdleAutoReload();
+
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
   else init();
 })();
