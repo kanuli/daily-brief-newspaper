@@ -11,6 +11,7 @@ on:
       - "scripts/stock_news_rules.py"
       - "scripts/clean_stock_boilerplate.py"
       - "scripts/validate_stock_news.py"
+      - "scripts/rolling_news_collector.py"
       - "data/stock-verified-seeds.json"
   schedule:
     # HKT 06:00-24:00, five minutes after each hour; skip 08:00 HKT because Daily Edition owns that slot. GitHub cron is UTC.
@@ -56,6 +57,73 @@ jobs:
           else
             echo "staging_available=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Enforce 15-symbol rolling collector contract and refresh Stock discovery
+        if: steps.inputs.outputs.staging_available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('scripts/rolling_news_collector.py')
+          text = path.read_text(encoding='utf-8')
+
+          old_queries = '''    "stock-news": [
+              '(NVDA OR Nvidia OR AAPL OR Apple OR TSM OR TSMC) earnings guidance product analyst SEC when:8h',
+              '(PLTR OR Palantir OR MSFT OR Microsoft OR GOOG OR Google OR Alphabet) earnings guidance product analyst SEC when:8h',
+              '(EMXC OR EWY OR VT) ETF market flows holdings when:12h',
+              '(NVDA OR AAPL OR TSM OR PLTR OR MSFT OR GOOG OR EMXC OR EWY OR VT) when:12h',
+          ],'''
+          new_queries = '''    "stock-news": [
+              '(GOOG OR Google OR Alphabet OR ICE OR "Intercontinental Exchange" OR MCD OR McDonald OR META OR "Meta Platforms") earnings guidance product analyst SEC filing partnership regulation when:8h',
+              '(AAPL OR Apple OR MSFT OR Microsoft OR NVDA OR Nvidia OR TSM OR TSMC OR "Taiwan Semiconductor" OR PLTR OR Palantir) earnings guidance product analyst SEC filing partnership regulation when:8h',
+              '(GLDM OR "SPDR Gold MiniShares" OR gold rates dollar OR EMXC OR "emerging markets ex China" OR GBTC OR "Grayscale Bitcoin Trust" OR bitcoin ETF) when:12h',
+              '(DBA OR "Invesco DB Agriculture" OR agriculture commodities OR EWY OR "iShares MSCI South Korea" OR Korea equities OR VT OR "Vanguard Total World" OR global equities) when:12h',
+              '(GOOG OR GLDM OR ICE OR MCD OR EMXC OR GBTC OR DBA OR AAPL OR EWY OR META OR MSFT OR NVDA OR TSM OR PLTR OR VT) when:12h',
+          ],'''
+
+          old_terms = '''STOCK_TERMS = (
+              "nvda", "nvidia", "aapl", "apple", "tsm", "tsmc", "taiwan semiconductor",
+              "pltr", "palantir", "msft", "microsoft", "goog", "google", "alphabet",
+              "emxc", "ewy", " vt ", "vanguard total world", "emerging markets ex china",
+          )'''
+          new_terms = '''STOCK_TERMS = (
+              "goog", "google", "alphabet",
+              "gldm", "spdr gold minishares", "gold minishares",
+              "intercontinental exchange", "ice stock", "nyse parent",
+              "mcd", "mcdonald",
+              "emxc", "emerging markets ex china",
+              "gbtc", "grayscale bitcoin trust",
+              "invesco db agriculture", "dba etf", "agriculture fund",
+              "aapl", "apple",
+              "ewy", "ishares msci south korea", "south korea etf",
+              "meta", "meta platforms",
+              "msft", "microsoft",
+              "nvda", "nvidia",
+              "tsm", "tsmc", "taiwan semiconductor",
+              "pltr", "palantir",
+              " vt ", "vanguard total world", "total world stock etf",
+          )'''
+
+          if old_queries in text:
+              text = text.replace(old_queries, new_queries)
+          elif new_queries not in text:
+              raise SystemExit('rolling collector Stock query block is neither recognized 9-symbol nor authoritative 15-symbol form')
+
+          if old_terms in text:
+              text = text.replace(old_terms, new_terms)
+          elif new_terms not in text:
+              raise SystemExit('rolling collector Stock relevance block is neither recognized 9-symbol nor authoritative 15-symbol form')
+
+          path.write_text(text, encoding='utf-8')
+          print('STOCK_COLLECTOR_15_SYMBOL_CONTRACT_PASS')
+          PY
+
+          python scripts/rolling_news_collector.py \
+            --existing /tmp/search-staging.json \
+            --output /tmp/search-staging-current.json
+          mv /tmp/search-staging-current.json /tmp/search-staging.json
 
       - name: Record truthful hourly Stock News check
         if: steps.inputs.outputs.staging_available == 'true'
@@ -144,7 +212,7 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- data/stocks-latest.json
+          git add -- data/stocks-latest.json scripts/rolling_news_collector.py
 
           if git diff --cached --quiet; then
             echo "STOCK_HOURLY_NOOP no newer check state or verified story"
