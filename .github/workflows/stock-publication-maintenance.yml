@@ -10,6 +10,7 @@ on:
       - "scripts/stock_verified_producer.py"
       - "scripts/stock_news_rules.py"
       - "scripts/clean_stock_boilerplate.py"
+      - "scripts/validate_stock_news.py"
       - "data/stock-verified-seeds.json"
   schedule:
     # HKT 06:00-24:00, five minutes after each hour; skip 08:00 HKT because Daily Edition owns that slot. GitHub cron is UTC.
@@ -181,5 +182,3 @@ jobs:
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/pages.yml/dispatches" \
             -d "$payload"
           echo "STOCK_PAGES_DEPLOY_DISPATCHED"
-
-# Existing publisher invocation marker: 2026-09-10 12:02 HKT
