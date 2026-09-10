@@ -27,8 +27,11 @@ def nonempty(value):
 
 
 def measure(text):
-    cjk = len(re.findall(r"[\u3400-\u9fff]", str(text or "")))
-    return cjk if cjk >= 50 else len(re.sub(r"\s+", "", str(text or "")))
+    # Newspaper copy legitimately code-switches into English proper nouns,
+    # competition names, ticker symbols and numerals. Count all visible
+    # non-whitespace characters so the 100-character floor measures the
+    # complete published copy rather than silently discarding Latin text.
+    return len(re.sub(r"\s+", "", str(text or "")))
 
 
 def validate_story(story, label):
