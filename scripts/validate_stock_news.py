@@ -209,13 +209,12 @@ def main():
         require(substantive_ages,
                 f"{ticker}: no story carries a real substantive timestamp/date")
         youngest_age, youngest_id, time_source = min(substantive_ages, key=lambda row: row[0])
-        if youngest_age > MAX_SUBSTANTIVE_STORY_AGE_HOURS:
-            require(
-                row.get("reviewEvidenceFound") is True and row.get("stale") is False and search_age <= MAX_COVERAGE_CHECK_AGE_HOURS,
-                f"{ticker}: older substantive story lacks a current authoritative review ({youngest_age:.1f}h old; story={youngest_id}; source={time_source})",
-            )
+        require(
+            youngest_age <= MAX_SUBSTANTIVE_STORY_AGE_HOURS,
+            f"{ticker}: newest substantive story/read-through is stale ({youngest_age:.1f}h old; maximum {MAX_SUBSTANTIVE_STORY_AGE_HOURS}h; story={youngest_id}; source={time_source}); a fresh review alone cannot refresh old content",
+        )
 
-    print(f"Stock News validation OK: {len(EXPECTED)} tickers, {len(seen)} stories; authoritative review + substantive per-symbol freshness OK")
+    print(f"Stock News validation OK: {len(EXPECTED)} tickers, {len(seen)} stories; hard substantive per-symbol freshness OK")
 
 
 if __name__ == "__main__":
