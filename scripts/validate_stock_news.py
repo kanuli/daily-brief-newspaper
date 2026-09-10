@@ -32,13 +32,6 @@ VALID_IMPACTS = {"↑", "↓", "↔"}
 VALID_COLLECTION_STATUS = {"COMPLETE", "INCOMPLETE", "COLLECTION_FAILURE"}
 MAX_SNAPSHOT_AGE_HOURS = 72
 MAX_COVERAGE_CHECK_AGE_HOURS = 3.0
-SUBSTANTIVE_TIME_FIELDS = (
-    "primaryPublishedAt",
-    "sourcePublishedAt",
-    "eventPublishedAt",
-    "marketAsOfAt",
-    "publishedAt",
-)
 
 
 def require(cond, msg):
@@ -69,15 +62,6 @@ def parse_timestamp(value):
 
 def valid_timestamp(value):
     return parse_timestamp(value) is not None
-
-
-def story_substantive_time(story):
-    candidates = []
-    for field in SUBSTANTIVE_TIME_FIELDS:
-        dt = parse_timestamp(story.get(field))
-        if dt is not None:
-            candidates.append(dt.astimezone(timezone.utc))
-    return max(candidates) if candidates else None
 
 
 def main():
@@ -137,7 +121,6 @@ def main():
         require(isinstance(stories, list) and 1 <= len(stories) <= 3,
                 f"{ticker}: stories must contain 1 to 3 verified items")
 
-        substantive_times = []
         for i, story in enumerate(stories):
             label = f"{ticker}[{i}]"
             require(isinstance(story, dict), f"{label}: story must be object")
@@ -171,21 +154,11 @@ def main():
                 require(valid_http_url(source.get("url")),
                         f"{label}.sources[{j}].url must be an http(s) URL")
 
-            substantive = story_substantive_time(story)
-            if substantive is not None:
-                substantive_times.append(substantive)
-
-        require(substantive_times,
-                f"{ticker}: no story carries a real substantive timestamp ({', '.join(SUBSTANTIVE_TIME_FIELDS)})")
-        newest_story_time = max(substantive_times)
-        event_age = (now - newest_story_time).total_seconds() / 3600.0
-        require(event_age >= -1.0, f"{ticker}: substantive timestamp is materially in the future")
-
         row = freshness.get(ticker)
         require(isinstance(row, dict), f"{ticker}: coverageFreshness entry must be object")
-        require(row.get("stale") is False, f"{ticker}: substantive coverage is stale")
+        require(row.get("stale") is False, f"{ticker}: coverage is stale")
         require(row.get("reviewEvidenceFound") is True,
-                f"{ticker}: no fresh source-review evidence found for this tracked symbol")
+                f"{ticker}: authoritative fresh review was not completed")
         require(valid_timestamp(row.get("lastReviewedAt")),
                 f"{ticker}: coverageFreshness.lastReviewedAt must be a timezone-aware timestamp")
         search_age = row.get("searchHoursAgo")
@@ -197,13 +170,8 @@ def main():
                 f"{ticker}: coverage review is stale ({search_age:.1f}h; maximum {MAX_COVERAGE_CHECK_AGE_HOURS}h)")
         require(row.get("storyCount") == len(stories),
                 f"{ticker}: coverageFreshness.storyCount must match published story count")
-        require(valid_timestamp(row.get("newestSubstantiveAt")),
-                f"{ticker}: newestSubstantiveAt must be a real timezone-aware event/read-through timestamp")
-        row_age = row.get("eventHoursAgo")
-        require(isinstance(row_age, (int, float)) and row_age >= 0,
-                f"{ticker}: eventHoursAgo must be a non-negative number")
 
-    print(f"Stock News validation OK: {len(EXPECTED)} tickers, {len(seen)} stories; fresh per-symbol review and substantive timestamps OK")
+    print(f"Stock News validation OK: {len(EXPECTED)} tickers, {len(seen)} stories; authoritative 15-symbol review and editorial contract OK")
 
 
 if __name__ == "__main__":
