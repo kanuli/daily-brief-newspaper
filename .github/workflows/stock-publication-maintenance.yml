@@ -64,69 +64,44 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
+          import ast
           from pathlib import Path
-          import re
 
+          required = ["GOOG", "GLDM", "ICE", "MCD", "EMXC", "GBTC", "DBA", "AAPL", "EWY", "META", "MSFT", "NVDA", "TSM", "PLTR", "VT"]
           path = Path('scripts/rolling_news_collector.py')
           text = path.read_text(encoding='utf-8')
+          tree = ast.parse(text, str(path))
 
-          queries = '''    "stock-news": [
-              '(GOOG OR Google OR Alphabet) earnings guidance product analyst SEC filing partnership regulation when:12h',
-              '(GLDM OR "SPDR Gold MiniShares" OR gold price rates dollar) when:12h',
-              '(ICE OR "Intercontinental Exchange" OR NYSE parent) earnings analyst SEC filing market data when:12h',
-              '(MCD OR McDonald) earnings guidance product analyst SEC filing when:12h',
-              '(EMXC OR "emerging markets ex China" OR Taiwan Korea India equities flows) when:12h',
-              '(GBTC OR "Grayscale Bitcoin Trust" OR bitcoin ETF crypto regulation flows) when:12h',
-              '(DBA OR "Invesco DB Agriculture" OR agriculture commodities weather supply demand) when:12h',
-              '(AAPL OR Apple) earnings guidance product analyst SEC filing when:12h',
-              '(EWY OR "iShares MSCI South Korea" OR KOSPI Samsung "SK Hynix" Korea equities) when:12h',
-              '(META OR "Meta Platforms") earnings guidance product AI analyst SEC filing regulation when:12h',
-              '(MSFT OR Microsoft) earnings guidance product AI analyst SEC filing partnership when:12h',
-              '(NVDA OR Nvidia) earnings guidance product AI analyst SEC filing partnership when:12h',
-              '(TSM OR TSMC OR "Taiwan Semiconductor") earnings guidance supply chain analyst SEC when:12h',
-              '(PLTR OR Palantir) earnings guidance contract analyst SEC filing when:12h',
-              '(VT OR "Vanguard Total World" OR global equities rates dollar oil geopolitics) when:12h',
-          ],'''
-          text, n1 = re.subn(
-              r'    "stock-news": \[\n.*?\n    \],(?=\n    "ai-tech":)',
-              queries,
-              text,
-              count=1,
-              flags=re.S,
-          )
-          if n1 != 1:
-              raise SystemExit(f'could not replace Stock query plan safely: replacements={n1}')
+          query_plan = None
+          stock_terms = None
+          for node in tree.body:
+              if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                  targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                  value = node.value
+                  for target in targets:
+                      if isinstance(target, ast.Name) and target.id == 'QUERY_PLAN':
+                          query_plan = ast.literal_eval(value)
+                      if isinstance(target, ast.Name) and target.id == 'STOCK_TERMS':
+                          stock_terms = ast.literal_eval(value)
 
-          terms = '''STOCK_TERMS = (
-              "goog", "google", "alphabet",
-              "gldm", "spdr gold minishares", "gold price", "gold rates",
-              "intercontinental exchange", "ice stock", "nyse parent",
-              "mcd", "mcdonald",
-              "emxc", "emerging markets ex china", "taiwan korea india equities",
-              "gbtc", "grayscale bitcoin trust", "bitcoin etf", "crypto regulation",
-              "invesco db agriculture", "dba etf", "agriculture commodities",
-              "aapl", "apple",
-              "ewy", "ishares msci south korea", "kospi", "samsung", "sk hynix", "korea equities",
-              "meta", "meta platforms",
-              "msft", "microsoft",
-              "nvda", "nvidia",
-              "tsm", "tsmc", "taiwan semiconductor",
-              "pltr", "palantir",
-              " vt ", "vanguard total world", "global equities",
-          )'''
-          text, n2 = re.subn(
-              r'STOCK_TERMS = \(\n.*?\n\)(?=\n\n\ndef now_utc)',
-              terms,
-              text,
-              count=1,
-              flags=re.S,
-          )
-          if n2 != 1:
-              raise SystemExit(f'could not replace Stock relevance terms safely: replacements={n2}')
+          if not isinstance(query_plan, dict) or not isinstance(query_plan.get('stock-news'), list):
+              raise SystemExit('Stock collector QUERY_PLAN[stock-news] is missing')
+          queries = query_plan['stock-news']
+          if len(queries) != len(required):
+              raise SystemExit(f'Stock collector query count mismatch: expected {len(required)}, got {len(queries)}')
+          for symbol, query in zip(required, queries):
+              if symbol.lower() not in str(query).lower():
+                  raise SystemExit(f'Stock collector query order/coverage mismatch at {symbol}: {query!r}')
 
-          path.write_text(text, encoding='utf-8')
+          if not isinstance(stock_terms, (tuple, list)):
+              raise SystemExit('Stock collector STOCK_TERMS is missing')
+          joined_terms = ' '.join(str(term).lower() for term in stock_terms)
+          missing_terms = [symbol for symbol in required if symbol.lower() not in joined_terms]
+          if missing_terms:
+              raise SystemExit(f'Stock collector relevance terms missing tracked symbols: {missing_terms}')
+
           compile(text, str(path), 'exec')
-          print('STOCK_COLLECTOR_15_SYMBOL_CONTRACT_PASS')
+          print('STOCK_COLLECTOR_15_SYMBOL_CONTRACT_PASS', ','.join(required))
           PY
 
           python scripts/rolling_news_collector.py \
