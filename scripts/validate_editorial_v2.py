@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import json, pathlib, re, sys
+from semantic_copy_guard import semantic_copy_errors
+
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 DATA=ROOT/'data'
 MANDATORY_FOOTBALL=list('ABCDEFGHIJK')
@@ -21,6 +23,11 @@ def validate_story(story,label,strict=False):
     combined=' '.join(str(story.get(k,'')) for k in ('title','dek','summary','body','context','why','watchNext'))
     for pattern in BASE_META_PATTERNS:
         if re.search(pattern,combined,re.I): fail(f'{label}: meta/coverage text cannot be published ({pattern})')
+
+    semantic=semantic_copy_errors(story)
+    if semantic:
+        fail(f'{label}: semantic copyediting failed: {"; ".join(semantic)}')
+
     if strict:
         for pattern in V3_PROCESS_PATTERNS:
             if re.search(pattern,combined,re.I): fail(f'{label}: editorial/process text cannot be published ({pattern})')
