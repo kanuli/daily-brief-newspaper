@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import json
 import pathlib
-from datetime import datetime, timezone
+import re
+from datetime import datetime, time, timedelta, timezone
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PATH = ROOT / "data" / "stocks-latest.json"
@@ -32,6 +34,12 @@ VALID_IMPACTS = {"↑", "↓", "↔"}
 VALID_COLLECTION_STATUS = {"COMPLETE", "INCOMPLETE", "COLLECTION_FAILURE"}
 MAX_SNAPSHOT_AGE_HOURS = 72
 MAX_COVERAGE_CHECK_AGE_HOURS = 3.0
+MAX_SUBSTANTIVE_STORY_AGE_HOURS = 48.0
+SUBSTANTIVE_TIME_FIELDS = (
+    "primaryPublishedAt", "sourcePublishedAt", "eventPublishedAt", "marketAsOfAt", "publishedAt"
+)
+ID_DATE_RE = re.compile(r"(?:^|[-_])(20\d{6})(?:$|[-_])")
+HKT = ZoneInfo("Asia/Hong_Kong")
 
 
 def require(cond, msg):
@@ -62,6 +70,26 @@ def parse_timestamp(value):
 
 def valid_timestamp(value):
     return parse_timestamp(value) is not None
+
+
+def substantive_story_time(story):
+    for field in SUBSTANTIVE_TIME_FIELDS:
+        dt = parse_timestamp(story.get(field))
+        if dt is not None:
+            return dt.astimezone(timezone.utc), field
+
+    # Legacy artifacts often encode the real event date in the stable story id.
+    # This is accepted only as a conservative fallback; display/check timestamps
+    # such as timeLabel/verifiedAt/generatedAt never make an old story current.
+    match = ID_DATE_RE.search(str(story.get("id") or ""))
+    if match:
+        try:
+            day = datetime.strptime(match.group(1), "%Y%m%d").date()
+            end_hkt = datetime.combine(day, time(23, 59, 59), tzinfo=HKT)
+            return end_hkt.astimezone(timezone.utc), "story-id-date"
+        except Exception:
+            pass
+    return None, None
 
 
 def main():
@@ -121,6 +149,7 @@ def main():
         require(isinstance(stories, list) and 1 <= len(stories) <= 3,
                 f"{ticker}: stories must contain 1 to 3 verified items")
 
+        substantive_ages = []
         for i, story in enumerate(stories):
             label = f"{ticker}[{i}]"
             require(isinstance(story, dict), f"{label}: story must be object")
@@ -154,6 +183,18 @@ def main():
                 require(valid_http_url(source.get("url")),
                         f"{label}.sources[{j}].url must be an http(s) URL")
 
+            substantive_dt, source_field = substantive_story_time(story)
+            if substantive_dt is not None:
+                story_age = (now - substantive_dt).total_seconds() / 3600.0
+                if story_age >= -1.0:
+                    substantive_ages.append((story_age, story.get("id"), source_field))
+
+        require(substantive_ages,
+                f"{ticker}: no story carries a real substantive timestamp/date")
+        youngest_age, youngest_id, time_source = min(substantive_ages, key=lambda row: row[0])
+        require(youngest_age <= MAX_SUBSTANTIVE_STORY_AGE_HOURS,
+                f"{ticker}: newest substantive story is stale ({youngest_age:.1f}h; maximum {MAX_SUBSTANTIVE_STORY_AGE_HOURS}h; story={youngest_id}; source={time_source})")
+
         row = freshness.get(ticker)
         require(isinstance(row, dict), f"{ticker}: coverageFreshness entry must be object")
         require(row.get("stale") is False, f"{ticker}: coverage is stale")
@@ -171,7 +212,7 @@ def main():
         require(row.get("storyCount") == len(stories),
                 f"{ticker}: coverageFreshness.storyCount must match published story count")
 
-    print(f"Stock News validation OK: {len(EXPECTED)} tickers, {len(seen)} stories; authoritative 15-symbol review and editorial contract OK")
+    print(f"Stock News validation OK: {len(EXPECTED)} tickers, {len(seen)} stories; authoritative review + substantive per-symbol freshness OK")
 
 
 if __name__ == "__main__":
