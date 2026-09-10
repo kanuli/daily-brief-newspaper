@@ -18,10 +18,23 @@ BANNED_PUBLIC_FRAGMENTS = (
     "已通過Stock News核實",
     "Stock News核實",
     "Stock News 核實",
+    "自動核實器",
+    "本自動稿",
+    "人工編輯核實稿",
+    "自動速報",
+    "第一手來源確認，不依賴市場轉述",
 )
 VALID_IMPACTS = {"↑", "↓", "↔"}
 VALID_COLLECTION_STATUS = {"COMPLETE", "INCOMPLETE", "COLLECTION_FAILURE"}
 MAX_SNAPSHOT_AGE_HOURS = 72
+MAX_STORY_AGE_HOURS = 36
+SUBSTANTIVE_TIME_FIELDS = (
+    "primaryPublishedAt",
+    "sourcePublishedAt",
+    "eventPublishedAt",
+    "marketAsOfAt",
+    "publishedAt",
+)
 
 
 def require(cond, msg):
@@ -54,6 +67,15 @@ def valid_timestamp(value):
     return parse_timestamp(value) is not None
 
 
+def story_substantive_time(story):
+    values = []
+    for field in SUBSTANTIVE_TIME_FIELDS:
+        dt = parse_timestamp(story.get(field))
+        if dt is not None:
+            values.append(dt.astimezone(timezone.utc))
+    return max(values) if values else None
+
+
 def main():
     require(PATH.exists(), "data/stocks-latest.json is missing")
     data = json.loads(PATH.read_text(encoding="utf-8"))
@@ -62,15 +84,13 @@ def main():
     generated = parse_timestamp(data.get("generatedAt"))
     require(generated is not None, "generatedAt must be a timezone-aware ISO timestamp")
     generated_utc = generated.astimezone(timezone.utc)
-    age_hours = (datetime.now(timezone.utc) - generated_utc).total_seconds() / 3600.0
+    now = datetime.now(timezone.utc)
+    age_hours = (now - generated_utc).total_seconds() / 3600.0
     require(age_hours >= -1.0, "generatedAt must not be materially in the future")
     require(age_hours <= MAX_SNAPSHOT_AGE_HOURS,
             f"generatedAt is stale ({age_hours:.1f}h old; maximum {MAX_SNAPSHOT_AGE_HOURS}h)")
     require(text(data.get("lastUpdatedLabel")), "lastUpdatedLabel is required")
 
-    # Snapshot heartbeat is not substantive freshness.  The producer carries a
-    # per-symbol freshness audit; publication QA must fail closed when any tracked
-    # symbol is stale instead of allowing a fresh generatedAt to mask old news.
     quality = data.get("qualityGates") if isinstance(data.get("qualityGates"), dict) else {}
     stale_symbols = data.get("staleSymbols")
     freshness = data.get("coverageFreshness")
@@ -80,15 +100,7 @@ def main():
     require(quality.get("freshnessGateMet") is True,
             f"per-symbol substantive freshness gate failed; staleSymbols={stale_symbols}")
     require(not stale_symbols, f"stale tracked symbols are not publishable: {stale_symbols}")
-    for ticker in EXPECTED:
-        row = freshness.get(ticker)
-        require(isinstance(row, dict), f"{ticker}: coverageFreshness entry must be object")
-        require(row.get("stale") is False, f"{ticker}: substantive content is stale")
-        require(isinstance(row.get("hoursAgo"), (int, float)) and row.get("hoursAgo") >= 0,
-                f"{ticker}: coverageFreshness.hoursAgo must be a non-negative number")
 
-    # lastCheckedAt is deliberately distinct from generatedAt. It is optional for
-    # legacy snapshots, but once the heartbeat exists its contract is validated.
     if data.get("lastCheckedAt") is not None:
         require(valid_timestamp(data.get("lastCheckedAt")), "lastCheckedAt must be a timezone-aware ISO timestamp")
         require(text(data.get("lastCheckedLabel")), "lastCheckedLabel is required when lastCheckedAt exists")
@@ -115,6 +127,7 @@ def main():
         require(isinstance(stories, list) and 1 <= len(stories) <= 3,
                 f"{ticker}: stories must contain 1 to 3 verified items")
 
+        substantive = []
         for i, story in enumerate(stories):
             label = f"{ticker}[{i}]"
             require(isinstance(story, dict), f"{label}: story must be object")
@@ -123,7 +136,7 @@ def main():
             for field in PUBLIC_COPY_FIELDS:
                 public_text = str(story.get(field) or "")
                 require(not any(fragment in public_text for fragment in BANNED_PUBLIC_FRAGMENTS),
-                        f"{label}: {field} contains internal Stock News verification/process copy")
+                        f"{label}: {field} contains internal verification/process copy")
             require(story["id"] not in seen, f"duplicate story id {story['id']}")
             seen.add(story["id"])
 
@@ -147,6 +160,25 @@ def main():
                 require(text(source.get("name")), f"{label}.sources[{j}].name is required")
                 require(valid_http_url(source.get("url")),
                         f"{label}.sources[{j}].url must be an http(s) URL")
+
+            event_time = story_substantive_time(story)
+            if event_time is not None:
+                substantive.append(event_time)
+
+        require(substantive,
+                f"{ticker}: no story carries a real substantive timestamp ({', '.join(SUBSTANTIVE_TIME_FIELDS)})")
+        newest = max(substantive)
+        substantive_age = (now - newest).total_seconds() / 3600.0
+        require(substantive_age >= -1.0, f"{ticker}: substantive timestamp is materially in the future")
+        require(substantive_age <= MAX_STORY_AGE_HOURS,
+                f"{ticker}: newest substantive story/read-through is stale ({substantive_age:.1f}h; maximum {MAX_STORY_AGE_HOURS}h)")
+
+        row = freshness.get(ticker)
+        require(isinstance(row, dict), f"{ticker}: coverageFreshness entry must be object")
+        require(row.get("stale") is False, f"{ticker}: substantive content is stale")
+        require(text(row.get("newestSubstantiveAt")), f"{ticker}: coverageFreshness.newestSubstantiveAt is required")
+        require(isinstance(row.get("hoursAgo"), (int, float)) and row.get("hoursAgo") >= 0,
+                f"{ticker}: coverageFreshness.hoursAgo must be a non-negative number")
 
     print(f"Stock News validation OK: {len(EXPECTED)} tickers, {len(seen)} stories; substantive freshness OK")
 
