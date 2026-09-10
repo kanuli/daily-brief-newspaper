@@ -1,19 +1,10 @@
 #!/usr/bin/env python3
-"""Record a truthful Stock News publication check and currentness state.
+"""Record Stock News publication checks without disguising stale stories.
 
-The rolling discovery branch proves that the tracked-stock desk was searched.
-Each successful scheduled publication check advances ``generatedAt`` and
-``lastUpdatedLabel`` to the actual publication completion time, even when the
-latest rolling-search snapshot has already been consumed. The separate
-``verifiedContentUpdatedAt`` field preserves when the verified story set last
-changed, while ``lastCheckedAt`` continues to describe the newest source-search
-snapshot actually evaluated.
-
-A check heartbeat never promotes raw discovery candidates and never rewrites
-verified copy. Stock discovery health is recalculated with strict ticker identity
-rules rather than trusting the broad collector's raw count. This prevents
-examples such as Virginia Tech (VT) or Navitas Semiconductor carrying a bad NVDA
-tag from making the tracked-stock desk appear healthier than it really is.
+``generatedAt`` and ``lastCheckedAt`` describe publication/search operations.
+They are never evidence that a retained story is current.  Per-symbol freshness
+is derived only from a real editorial/source timestamp carried by the story
+itself (for example ``primaryPublishedAt`` or ``marketAsOfAt``).
 """
 from __future__ import annotations
 
@@ -29,6 +20,14 @@ STOCKS_PATH = ROOT / "data" / "stocks-latest.json"
 HKT = timezone(timedelta(hours=8))
 TRACKED = ["GOOG", "GLDM", "ICE", "MCD", "EMXC", "GBTC", "DBA", "AAPL", "EWY", "META", "MSFT", "NVDA", "TSM", "PLTR", "VT"]
 MAX_COVERAGE_CHECK_AGE_HOURS = 3.0
+MAX_STORY_AGE_HOURS = 36.0
+SUBSTANTIVE_TIME_FIELDS = (
+    "primaryPublishedAt",
+    "sourcePublishedAt",
+    "eventPublishedAt",
+    "marketAsOfAt",
+    "publishedAt",
+)
 
 
 def load(path: Path):
@@ -45,6 +44,20 @@ def parse_iso(value: str) -> datetime:
 def format_hkt(dt: datetime) -> str:
     local = dt.astimezone(HKT)
     return f"{local.year}年{local.month}月{local.day}日 {local.hour:02d}:{local.minute:02d} HKT"
+
+
+def story_substantive_time(story: dict) -> datetime | None:
+    """Return a real event/read-through time; never use verification heartbeat."""
+    candidates: list[datetime] = []
+    for field in SUBSTANTIVE_TIME_FIELDS:
+        raw = story.get(field)
+        if not raw:
+            continue
+        try:
+            candidates.append(parse_iso(raw))
+        except Exception:
+            continue
+    return max(candidates) if candidates else None
 
 
 def strict_candidates(staging: dict) -> tuple[list[dict], list[dict]]:
@@ -74,13 +87,12 @@ def strict_candidates(staging: dict) -> tuple[list[dict], list[dict]]:
 
 
 def refresh_coverage_freshness(stocks: dict, published: datetime) -> None:
-    """Write the per-symbol freshness contract consumed by publication QA.
+    """Write a fail-closed per-symbol substantive freshness contract.
 
-    Freshness here means that the current retained story/read-through set has
-    been reviewed against a recent strict tracked-stock source-search snapshot;
-    it does not pretend that an older still-current corporate event happened
-    again today. A missing ticker story or an old/missing source check fails the
-    gate closed.
+    A recent source-search heartbeat is necessary operational evidence, but it
+    cannot make an old corporate event current.  Every tracked ticker needs at
+    least one story/read-through with a real source/editorial timestamp no more
+    than MAX_STORY_AGE_HOURS old.  Missing substantive timestamps fail closed.
     """
     checked_raw = stocks.get("lastCheckedAt")
     try:
@@ -88,10 +100,8 @@ def refresh_coverage_freshness(stocks: dict, published: datetime) -> None:
     except Exception:
         checked = None
 
-    if checked is None:
-        check_age = float("inf")
-    else:
-        check_age = max(0.0, (published - checked).total_seconds() / 3600.0)
+    check_age = float("inf") if checked is None else max(0.0, (published - checked).total_seconds() / 3600.0)
+    search_current = checked is not None and check_age <= MAX_COVERAGE_CHECK_AGE_HOURS
 
     tickers = stocks.get("tickers") if isinstance(stocks.get("tickers"), dict) else {}
     freshness: dict[str, dict] = {}
@@ -99,13 +109,18 @@ def refresh_coverage_freshness(stocks: dict, published: datetime) -> None:
     for ticker in TRACKED:
         block = tickers.get(ticker) if isinstance(tickers.get(ticker), dict) else {}
         stories = block.get("stories") if isinstance(block.get("stories"), list) else []
-        has_story = any(isinstance(story, dict) and str(story.get("title") or "").strip() for story in stories)
-        stale = (not has_story) or checked is None or check_age > MAX_COVERAGE_CHECK_AGE_HOURS
+        substantive_times = [story_substantive_time(story) for story in stories if isinstance(story, dict)]
+        substantive_times = [value for value in substantive_times if value is not None]
+        newest = max(substantive_times) if substantive_times else None
+        story_age = float("inf") if newest is None else max(0.0, (published - newest).total_seconds() / 3600.0)
+        stale = (not stories) or (not search_current) or newest is None or story_age > MAX_STORY_AGE_HOURS
         if stale:
             stale_symbols.append(ticker)
         freshness[ticker] = {
             "lastReviewedAt": checked.isoformat() if checked is not None else None,
-            "hoursAgo": round(check_age, 3) if check_age != float("inf") else 999999.0,
+            "searchHoursAgo": round(check_age, 3) if check_age != float("inf") else 999999.0,
+            "newestSubstantiveAt": newest.isoformat() if newest is not None else None,
+            "hoursAgo": round(story_age, 3) if story_age != float("inf") else 999999.0,
             "stale": stale,
             "storyCount": len(stories),
         }
@@ -142,19 +157,17 @@ def main() -> int:
             refresh_collection = False
             refresh_reason = "minimum-interval-not-reached"
 
-    # Publication currentness is independent of whether a newer discovery
-    # snapshot exists. A successful edition run must never leave generatedAt
-    # looking stale merely because the retained verified story set is unchanged.
     previous_verified_update = stocks.get("verifiedContentUpdatedAt") or stocks.get("generatedAt")
     published = datetime.now(timezone.utc)
     stocks["generatedAt"] = published.isoformat()
     stocks["lastUpdatedLabel"] = format_hkt(published)
     stocks["verifiedContentUpdatedAt"] = previous_verified_update
     stocks["freshnessContract"] = {
-        "generatedAt": "actual completion time of the current verified Stock News publication",
+        "generatedAt": "actual completion time of the current Stock News publication check",
         "verifiedContentUpdatedAt": "time the verified story set last changed",
         "lastCheckedAt": "source-search time after strict tracked-ticker identity filtering",
-        "coverageFreshness": "per-symbol retained-story coverage reviewed against the latest strict source-search snapshot",
+        "coverageFreshness": "per-symbol substantive event/read-through time; verification/search heartbeat never refreshes story age",
+        "maxStoryAgeHours": MAX_STORY_AGE_HOURS,
     }
 
     if refresh_collection:
@@ -185,20 +198,15 @@ def main() -> int:
 
         message = (
             "STOCK_HEARTBEAT_UPDATED "
-            f"published={published.isoformat()} "
-            f"checked={checked.isoformat()} "
-            f"status={collection_status} "
-            f"strict_discovered={unique_this_run} "
-            f"strict_reservoir={reservoir_count} "
-            f"raw_reservoir={stocks['rawDiscoveryCandidateCount']} "
-            f"rejected_noise={stocks['rejectedDiscoveryNoiseCount']} "
-            f"floor_met={floor_met}"
+            f"published={published.isoformat()} checked={checked.isoformat()} "
+            f"status={collection_status} strict_discovered={unique_this_run} "
+            f"strict_reservoir={reservoir_count} raw_reservoir={stocks['rawDiscoveryCandidateCount']} "
+            f"rejected_noise={stocks['rejectedDiscoveryNoiseCount']} floor_met={floor_met}"
         )
     else:
         message = (
             "STOCK_HEARTBEAT_PUBLICATION_REFRESHED "
-            f"published={published.isoformat()} "
-            f"collection_refresh={refresh_reason} "
+            f"published={published.isoformat()} collection_refresh={refresh_reason} "
             f"last_checked={stocks.get('lastCheckedAt')}"
         )
 
@@ -206,9 +214,9 @@ def main() -> int:
     STOCKS_PATH.write_text(json.dumps(stocks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(message)
     if stocks.get("staleSymbols"):
-        print("STOCK_COVERAGE_FRESHNESS_FAIL", ",".join(stocks["staleSymbols"]))
+        print("STOCK_SUBSTANTIVE_FRESHNESS_FAIL", ",".join(stocks["staleSymbols"]))
     else:
-        print("STOCK_COVERAGE_FRESHNESS_PASS", len(TRACKED), "symbols")
+        print("STOCK_SUBSTANTIVE_FRESHNESS_PASS", len(TRACKED), "symbols")
     return 0
 
 
