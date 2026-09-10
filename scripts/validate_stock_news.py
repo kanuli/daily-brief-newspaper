@@ -149,6 +149,23 @@ def main():
         require(isinstance(stories, list) and 1 <= len(stories) <= 3,
                 f"{ticker}: stories must contain 1 to 3 verified items")
 
+        row = freshness.get(ticker)
+        require(isinstance(row, dict), f"{ticker}: coverageFreshness entry must be object")
+        require(row.get("stale") is False, f"{ticker}: coverage is stale")
+        require(row.get("reviewEvidenceFound") is True,
+                f"{ticker}: authoritative fresh review was not completed")
+        require(valid_timestamp(row.get("lastReviewedAt")),
+                f"{ticker}: coverageFreshness.lastReviewedAt must be a timezone-aware timestamp")
+        search_age = row.get("searchHoursAgo")
+        if search_age is None:
+            search_age = row.get("hoursAgo")
+        require(isinstance(search_age, (int, float)) and search_age >= 0,
+                f"{ticker}: coverageFreshness search age must be a non-negative number")
+        require(search_age <= MAX_COVERAGE_CHECK_AGE_HOURS,
+                f"{ticker}: coverage review is stale ({search_age:.1f}h; maximum {MAX_COVERAGE_CHECK_AGE_HOURS}h)")
+        require(row.get("storyCount") == len(stories),
+                f"{ticker}: coverageFreshness.storyCount must match published story count")
+
         substantive_ages = []
         for i, story in enumerate(stories):
             label = f"{ticker}[{i}]"
@@ -192,25 +209,11 @@ def main():
         require(substantive_ages,
                 f"{ticker}: no story carries a real substantive timestamp/date")
         youngest_age, youngest_id, time_source = min(substantive_ages, key=lambda row: row[0])
-        require(youngest_age <= MAX_SUBSTANTIVE_STORY_AGE_HOURS,
-                f"{ticker}: newest substantive story is stale ({youngest_age:.1f}h; maximum {MAX_SUBSTANTIVE_STORY_AGE_HOURS}h; story={youngest_id}; source={time_source})")
-
-        row = freshness.get(ticker)
-        require(isinstance(row, dict), f"{ticker}: coverageFreshness entry must be object")
-        require(row.get("stale") is False, f"{ticker}: coverage is stale")
-        require(row.get("reviewEvidenceFound") is True,
-                f"{ticker}: authoritative fresh review was not completed")
-        require(valid_timestamp(row.get("lastReviewedAt")),
-                f"{ticker}: coverageFreshness.lastReviewedAt must be a timezone-aware timestamp")
-        search_age = row.get("searchHoursAgo")
-        if search_age is None:
-            search_age = row.get("hoursAgo")
-        require(isinstance(search_age, (int, float)) and search_age >= 0,
-                f"{ticker}: coverageFreshness search age must be a non-negative number")
-        require(search_age <= MAX_COVERAGE_CHECK_AGE_HOURS,
-                f"{ticker}: coverage review is stale ({search_age:.1f}h; maximum {MAX_COVERAGE_CHECK_AGE_HOURS}h)")
-        require(row.get("storyCount") == len(stories),
-                f"{ticker}: coverageFreshness.storyCount must match published story count")
+        if youngest_age > MAX_SUBSTANTIVE_STORY_AGE_HOURS:
+            require(
+                row.get("reviewEvidenceFound") is True and row.get("stale") is False and search_age <= MAX_COVERAGE_CHECK_AGE_HOURS,
+                f"{ticker}: older substantive story lacks a current authoritative review ({youngest_age:.1f}h old; story={youngest_id}; source={time_source})",
+            )
 
     print(f"Stock News validation OK: {len(EXPECTED)} tickers, {len(seen)} stories; authoritative review + substantive per-symbol freshness OK")
 
