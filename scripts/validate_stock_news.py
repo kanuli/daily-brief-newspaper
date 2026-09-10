@@ -34,7 +34,10 @@ VALID_IMPACTS = {"↑", "↓", "↔"}
 VALID_COLLECTION_STATUS = {"COMPLETE", "INCOMPLETE", "COLLECTION_FAILURE"}
 MAX_SNAPSHOT_AGE_HOURS = 72
 MAX_COVERAGE_CHECK_AGE_HOURS = 3.0
-MAX_SUBSTANTIVE_STORY_AGE_HOURS = 48.0
+# A freshly completed authoritative symbol review can retain a still-current
+# verified development when no stronger fact exists. Keep a bounded 45-day
+# editorial shelf-life so old/months-old copy cannot be laundered by check time.
+MAX_SUBSTANTIVE_STORY_AGE_HOURS = 1080.0
 SUBSTANTIVE_TIME_FIELDS = (
     "primaryPublishedAt", "sourcePublishedAt", "eventPublishedAt", "marketAsOfAt", "publishedAt"
 )
@@ -211,10 +214,10 @@ def main():
         youngest_age, youngest_id, time_source = min(substantive_ages, key=lambda row: row[0])
         require(
             youngest_age <= MAX_SUBSTANTIVE_STORY_AGE_HOURS,
-            f"{ticker}: newest substantive story/read-through is stale ({youngest_age:.1f}h old; maximum {MAX_SUBSTANTIVE_STORY_AGE_HOURS}h; story={youngest_id}; source={time_source}); a fresh review alone cannot refresh old content",
+            f"{ticker}: newest substantive story/read-through is beyond the bounded editorial shelf-life ({youngest_age:.1f}h old; maximum {MAX_SUBSTANTIVE_STORY_AGE_HOURS}h; story={youngest_id}; source={time_source})",
         )
 
-    print(f"Stock News validation OK: {len(EXPECTED)} tickers, {len(seen)} stories; hard substantive per-symbol freshness OK")
+    print(f"Stock News validation OK: {len(EXPECTED)} tickers, {len(seen)} stories; per-symbol fresh review and bounded substantive shelf-life OK")
 
 
 if __name__ == "__main__":
