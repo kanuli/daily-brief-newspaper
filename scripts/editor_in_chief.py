@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Editor-in-Chief supervisory audit for Daily Brief.
 
-This module never fabricates or promotes news. It classifies newsroom health and
-emits a targeted repair plan that can only invoke already-gated maintenance
-workflows.
+The supervisor never fabricates or promotes news.  It classifies newsroom
+health, enforces structural/routing/freshness rules, and performs deterministic
+semantic copyediting checks before declaring copy healthy.
 """
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from typing import Any
 
 from desk_retention import expired_cross_desk_football
 from desk_freshness_policy import editorial_story_time, routed_slugs
+from semantic_copy_guard import semantic_copy_errors
 
 HKT = timezone(timedelta(hours=8))
 EXPECTED_DESKS = (
@@ -31,6 +32,7 @@ REPAIR_WORKFLOWS = {
     "pages": "pages.yml",
     "voice": "canto-nano-production.yml",
 }
+
 
 @dataclass
 class Finding:
@@ -74,7 +76,8 @@ def age_minutes(value: Any, now: datetime) -> float | None:
     return max(0.0, (now - dt).total_seconds() / 60.0)
 
 
-def add(findings: list[Finding], code: str, severity: str, area: str, message: str, repair: str | None = None) -> None:
+def add(findings: list[Finding], code: str, severity: str, area: str, message: str,
+        repair: str | None = None) -> None:
     findings.append(Finding(code, severity, area, message, repair))
 
 
@@ -113,6 +116,9 @@ def audit(
             f"Live publication age is {live_age if live_age is not None else 'unknown'} min", "live")
 
     # Desk coverage, retention, hard routing, newest-first order and article quality.
+    # qualityErrorCount now includes BOTH article-shape and deterministic semantic
+    # copyediting defects.  Semantic defects are hard failures: they must not be
+    # reported as healthy merely because title/body/source fields exist.
     desks = desk.get("desks") if isinstance(desk.get("desks"), dict) else {}
     all_ids: dict[str, str] = {}
     all_titles: dict[str, str] = {}
@@ -121,6 +127,7 @@ def audit(
         stories = desks.get(slug) if isinstance(desks.get(slug), list) else []
         newest = None
         quality_errors = 0
+        semantic_errors = 0
         stale_cross_desk_football = 0
         routing_errors = 0
         newest_first_errors = 0
@@ -137,6 +144,20 @@ def audit(
             routes = set(routed_slugs(story))
             if not sid or not title or len(body) < 80 or len(summary) < 20 or not source_url.startswith("http"):
                 quality_errors += 1
+
+            semantic = semantic_copy_errors(story)
+            if semantic:
+                quality_errors += 1
+                semantic_errors += 1
+                for reason in semantic:
+                    add(
+                        findings,
+                        "SEMANTIC_COPY_CORRUPTION",
+                        "critical",
+                        slug,
+                        f"story {sid or title}: {reason}",
+                        None,
+                    )
 
             # Hard routing ownership. A story is not allowed to remain on an old or
             # unrelated page merely because stale deskSlugs still say so.
@@ -188,6 +209,7 @@ def audit(
             "storyCount": len(stories),
             "newestAgeMinutes": newest_age,
             "qualityErrorCount": quality_errors,
+            "semanticCopyErrorCount": semantic_errors,
             "staleCrossDeskFootballCount": stale_cross_desk_football,
             "hardRoutingErrorCount": routing_errors,
             "newestFirstErrorCount": newest_first_errors,
@@ -195,12 +217,26 @@ def audit(
         if not stories:
             add(findings, "DESK_EMPTY", "critical", slug,
                 f"{slug} has no Rolling Desk stories", "collection")
-        elif quality_errors:
+        elif quality_errors and not semantic_errors:
             add(findings, "ARTICLE_SHAPE_INVALID", "warning", slug,
                 f"{quality_errors} story/stories fail basic article-shape checks")
         if newest_age is not None and newest_age > 48 * 60:
             add(findings, "DESK_EDITORIAL_GAP", "critical", slug,
                 f"newest parseable story is {newest_age/60:.1f} hours old", "collection")
+
+    # Live is a public surface too.  It may contain a story before Rolling Desk
+    # catches up, so semantic copyediting must inspect it independently.
+    live_semantic_errors = 0
+    for story in live.get("items") or []:
+        if not isinstance(story, dict):
+            continue
+        semantic = semantic_copy_errors(story)
+        if semantic:
+            live_semantic_errors += 1
+            sid = str(story.get("id") or story.get("title") or "live-story")
+            for reason in semantic:
+                add(findings, "SEMANTIC_COPY_CORRUPTION", "critical", "live",
+                    f"story {sid}: {reason}", None)
 
     # Stock: hourly checks should be fresh; verified content staleness triggers the
     # gated primary-source producer, never timestamp rewriting.
@@ -223,10 +259,10 @@ def audit(
         add(findings, "PUBLIC_PROBE_STALE", "critical", "pages",
             "public Pages probe is missing or older than 30 minutes", "pages")
     else:
-        if not bool(pages.get("infrastructureMatch")):
+        if not bool(pages.get("infrastructureMatch", pages.get("match"))):
             add(findings, "PUBLIC_INFRASTRUCTURE_MISMATCH", "critical", "pages",
                 "public site differs from repository or a core page/runtime check failed", "pages")
-        if not bool(pages.get("editorialFreshnessMatch")):
+        if pages.get("editorialFreshnessMatch") is False:
             add(findings, "PUBLIC_EDITORIAL_STALE", "warning", "pages",
                 "public probe reports editorial freshness failure; root-cause freshness checks are evaluated separately")
 
@@ -258,7 +294,7 @@ def audit(
             add(findings, "PERSISTENT_" + f.code, "critical", f.area,
                 f"{f.code} remains unresolved after the previous Editor-in-Chief cycle; automatic repair alone is no longer sufficient")
 
-    repair_keys = []
+    repair_keys: list[str] = []
     for f in findings:
         if f.repair and f.repair not in repair_keys:
             repair_keys.append(f.repair)
@@ -277,7 +313,7 @@ def audit(
         status = "HEALTHY"
 
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "role": "Editor-in-Chief",
         "checkedAt": now.isoformat(),
         "checkedAtHKT": now_hkt.isoformat(),
@@ -288,6 +324,7 @@ def audit(
             "weakenVerificationGates": False,
             "autoRepairDeterministicInfrastructure": True,
             "escalateUnverifiableEditorialGaps": True,
+            "semanticCopyeditingGate": True,
         },
         "summary": {
             "criticalCount": len(critical),
@@ -295,6 +332,7 @@ def audit(
             "findingCount": len(findings),
             "repairWorkflowCount": len(workflows),
             "unresolvedCriticalCount": len(unresolved),
+            "liveSemanticCopyErrorCount": live_semantic_errors,
         },
         "deskAudit": desk_summary,
         "freshness": {
@@ -334,6 +372,7 @@ def main() -> int:
     Path(args.output).write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False))
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
