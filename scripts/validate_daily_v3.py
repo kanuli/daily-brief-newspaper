@@ -105,7 +105,10 @@ def validate_file(path, label, require_top=False):
         fail(f"{label}: v3 content requires editorialStandardVersion>=3")
     validate_sections(data, label)
     for i, story in enumerate(data.get("articles", [])):
-        validate_story(story, f"{label}: articles[{i}]")
+        story_label = f"{label}: articles[{i}]"
+        if isinstance(story, dict):
+            story_label += f" id={story.get('id')} title={story.get('title')}"
+        validate_story(story, story_label)
     if require_top:
         known = {a.get("id") for a in data.get("articles", [])}
         if data.get("leadId") not in known:
