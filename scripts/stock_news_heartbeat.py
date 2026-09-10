@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Record Stock News publication checks without disguising stale coverage.
+"""Record Stock News checks without disguising stale substantive coverage.
 
-``generatedAt`` and ``lastCheckedAt`` describe publication/search operations.
-A retained story can remain current even when its original event is older than
-one day, provided the symbol was freshly reviewed against the latest strict
-source-search snapshot and no stronger verified replacement was available.
-Event/source timestamps are retained as diagnostics only; a search heartbeat
-never rewrites the underlying event date.
+``generatedAt`` and ``lastCheckedAt`` describe publication/search operations only.
+A tracked symbol is publishable only when it has at least one real current
+verified event or market read-through timestamp. Review/check timestamps never
+refresh an old story's editorial age.
 """
 from __future__ import annotations
 
@@ -22,6 +20,7 @@ STOCKS_PATH = ROOT / "data" / "stocks-latest.json"
 HKT = timezone(timedelta(hours=8))
 TRACKED = ["GOOG", "GLDM", "ICE", "MCD", "EMXC", "GBTC", "DBA", "AAPL", "EWY", "META", "MSFT", "NVDA", "TSM", "PLTR", "VT"]
 MAX_COVERAGE_CHECK_AGE_HOURS = 3.0
+MAX_SUBSTANTIVE_EVENT_AGE_HOURS = 36.0
 SUBSTANTIVE_TIME_FIELDS = (
     "primaryPublishedAt",
     "sourcePublishedAt",
@@ -48,7 +47,7 @@ def format_hkt(dt: datetime) -> str:
 
 
 def story_substantive_time(story: dict) -> datetime | None:
-    """Return a real event/read-through timestamp when the story carries one."""
+    """Return the newest real event/read-through timestamp carried by a story."""
     candidates: list[datetime] = []
     for field in SUBSTANTIVE_TIME_FIELDS:
         raw = story.get(field)
@@ -88,14 +87,7 @@ def strict_candidates(staging: dict) -> tuple[list[dict], list[dict]]:
 
 
 def refresh_coverage_freshness(stocks: dict, published: datetime) -> None:
-    """Write fail-closed per-symbol editorial-review freshness.
-
-    Publication eligibility is based on two things: the symbol still has at
-    least one substantive public story/read-through, and the complete tracked
-    set was reviewed against a sufficiently recent strict search snapshot.
-    Older still-live events (pending M&A, regulation, product cycles, etc.) are
-    allowed to remain when that fresh review finds no better verified item.
-    """
+    """Write fail-closed per-symbol search + substantive-content freshness."""
     checked_raw = stocks.get("lastCheckedAt")
     try:
         checked = parse_iso(checked_raw) if checked_raw else None
@@ -115,8 +107,9 @@ def refresh_coverage_freshness(stocks: dict, published: datetime) -> None:
         substantive_times = [value for value in substantive_times if value is not None]
         newest = max(substantive_times) if substantive_times else None
         event_age = None if newest is None else max(0.0, (published - newest).total_seconds() / 3600.0)
+        substantive_current = newest is not None and event_age is not None and event_age <= MAX_SUBSTANTIVE_EVENT_AGE_HOURS
 
-        stale = (not stories) or (not search_current)
+        stale = (not stories) or (not search_current) or (not substantive_current)
         if stale:
             stale_symbols.append(ticker)
 
@@ -171,9 +164,11 @@ def main() -> int:
         "generatedAt": "actual completion time of the current Stock News publication check",
         "verifiedContentUpdatedAt": "time the verified story set last changed",
         "lastCheckedAt": "source-search time after strict tracked-ticker identity filtering",
-        "coverageFreshness": "per-symbol retained-story coverage freshly reviewed against the latest strict source-search snapshot",
+        "coverageFreshness": "per-symbol search freshness plus real substantive event/read-through freshness",
         "maxCoverageCheckAgeHours": MAX_COVERAGE_CHECK_AGE_HOURS,
-        "eventTimestamps": "diagnostic only; older still-current verified events may remain after fresh editorial review",
+        "maxSubstantiveEventAgeHours": MAX_SUBSTANTIVE_EVENT_AGE_HOURS,
+        "substantiveTimestampFields": list(SUBSTANTIVE_TIME_FIELDS),
+        "excludedFreshnessFields": ["generatedAt", "lastCheckedAt", "verifiedAt", "timeLabel"],
     }
 
     if refresh_collection:
