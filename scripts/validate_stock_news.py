@@ -68,6 +68,25 @@ def main():
             f"generatedAt is stale ({age_hours:.1f}h old; maximum {MAX_SNAPSHOT_AGE_HOURS}h)")
     require(text(data.get("lastUpdatedLabel")), "lastUpdatedLabel is required")
 
+    # Snapshot heartbeat is not substantive freshness.  The producer carries a
+    # per-symbol freshness audit; publication QA must fail closed when any tracked
+    # symbol is stale instead of allowing a fresh generatedAt to mask old news.
+    quality = data.get("qualityGates") if isinstance(data.get("qualityGates"), dict) else {}
+    stale_symbols = data.get("staleSymbols")
+    freshness = data.get("coverageFreshness")
+    require(isinstance(stale_symbols, list), "staleSymbols must be an array")
+    require(isinstance(freshness, dict), "coverageFreshness must be an object")
+    require(list(freshness.keys()) == EXPECTED, "coverageFreshness key order/set must match tracked list")
+    require(quality.get("freshnessGateMet") is True,
+            f"per-symbol substantive freshness gate failed; staleSymbols={stale_symbols}")
+    require(not stale_symbols, f"stale tracked symbols are not publishable: {stale_symbols}")
+    for ticker in EXPECTED:
+        row = freshness.get(ticker)
+        require(isinstance(row, dict), f"{ticker}: coverageFreshness entry must be object")
+        require(row.get("stale") is False, f"{ticker}: substantive content is stale")
+        require(isinstance(row.get("hoursAgo"), (int, float)) and row.get("hoursAgo") >= 0,
+                f"{ticker}: coverageFreshness.hoursAgo must be a non-negative number")
+
     # lastCheckedAt is deliberately distinct from generatedAt. It is optional for
     # legacy snapshots, but once the heartbeat exists its contract is validated.
     if data.get("lastCheckedAt") is not None:
@@ -129,7 +148,7 @@ def main():
                 require(valid_http_url(source.get("url")),
                         f"{label}.sources[{j}].url must be an http(s) URL")
 
-    print(f"Stock News validation OK: {len(EXPECTED)} tickers, {len(seen)} stories")
+    print(f"Stock News validation OK: {len(EXPECTED)} tickers, {len(seen)} stories; substantive freshness OK")
 
 
 if __name__ == "__main__":
