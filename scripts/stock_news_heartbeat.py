@@ -51,15 +51,16 @@ def substantive_story_time(story: dict) -> tuple[datetime | None, str | None]:
         except Exception:
             pass
 
-    # Conservative compatibility for legacy stories whose stable id encodes the
-    # real event date. Use the end of that HKT calendar day so this fallback never
-    # invents intraday precision. Check/display timestamps are intentionally absent.
+    # Conservative compatibility for legacy stories whose stable id encodes only
+    # the real event calendar date. Map it to 00:00 HKT so the fallback deliberately
+    # overstates age and can never make an old story look fresher. Check/display
+    # timestamps are intentionally absent.
     match = ID_DATE_RE.search(str(story.get("id") or ""))
     if match:
         try:
             day = datetime.strptime(match.group(1), "%Y%m%d").date()
-            end_hkt = datetime.combine(day, time(23, 59, 59), tzinfo=HKT)
-            return end_hkt.astimezone(timezone.utc), "story-id-date"
+            start_hkt = datetime.combine(day, time(0, 0, 0), tzinfo=HKT)
+            return start_hkt.astimezone(timezone.utc), "story-id-date"
         except Exception:
             pass
     return None, None
