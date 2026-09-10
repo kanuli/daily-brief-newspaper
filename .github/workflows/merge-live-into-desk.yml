@@ -16,6 +16,7 @@ on:
       - "scripts/recover_desk_depth.py"
       - "scripts/recover_desk_depth_watchdog.py"
       - "scripts/recover_desk_freshness_watchdog.py"
+      - "scripts/restore_complete_desk_reservoir.py"
       - "scripts/validate_publication_current.py"
       - ".github/workflows/merge-live-into-desk.yml"
   schedule:
@@ -49,6 +50,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
           git reset --hard origin/main
+
+      - name: Restore complete reservoir after destructive overwrite
+        shell: bash
+        run: python scripts/restore_complete_desk_reservoir.py
 
       - name: Catch up missed Live snapshots
         shell: bash
