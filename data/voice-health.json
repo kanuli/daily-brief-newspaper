@@ -1,20 +1,20 @@
 {
-  "checkedAt": "2026-09-10T11:06:29.039425+00:00",
+  "checkedAt": "2026-09-10T11:16:35.204938+00:00",
   "engine": "typangaa/canto-tts-nano",
   "engineVersion": "canto-tts-nano-v1",
   "voice": "verified-female-reference",
   "assetNamespace": "cnf4",
   "speakerMode": "runtime-ref-audio-voice-clone-verified",
   "latestRunId": 34469515908,
-  "latestStatus": "pending",
+  "latestStatus": "in_progress",
   "latestConclusion": "",
   "latestHeadSha": "5a1ecd7803e712e79e6bef96e49ba0d3a4ee08b9",
-  "availableArticleCount": 775,
-  "collectedStoryCount": 775,
-  "pendingArticleCount": 0,
-  "coverageComplete": true,
-  "lastVoicePublishedAt": "2026-09-10T10:47:19.194258+00:00",
-  "progressAgeSeconds": 1149,
+  "availableArticleCount": 763,
+  "collectedStoryCount": 777,
+  "pendingArticleCount": 14,
+  "coverageComplete": false,
+  "lastVoicePublishedAt": "2026-09-10T11:15:35.007905+00:00",
+  "progressAgeSeconds": 60,
   "prosodyPolicy": "canto-nano-female-hk-news-anchor-v1",
   "pacingPolicy": "hk-tv-news-semantic-pauses-v1",
   "runs": [
@@ -24,8 +24,8 @@
       "databaseId": 34469515908,
       "event": "push",
       "headSha": "5a1ecd7803e712e79e6bef96e49ba0d3a4ee08b9",
-      "status": "pending",
-      "updatedAt": "2026-09-10T11:06:09Z",
+      "status": "in_progress",
+      "updatedAt": "2026-09-10T11:16:11Z",
       "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/34469515908"
     },
     {
@@ -39,13 +39,13 @@
       "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/34469239217"
     },
     {
-      "conclusion": "",
+      "conclusion": "success",
       "createdAt": "2026-09-10T11:02:52Z",
       "databaseId": 34469224037,
       "event": "push",
       "headSha": "5531a457f490f09f2f31c4df503af78f02a53c5b",
-      "status": "in_progress",
-      "updatedAt": "2026-09-10T11:03:35Z",
+      "status": "completed",
+      "updatedAt": "2026-09-10T11:16:09Z",
       "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/34469224037"
     },
     {
@@ -99,7 +99,91 @@
       "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/34464059964"
     }
   ],
-  "jobs": [],
+  "jobs": [
+    {
+      "completedAt": "0001-01-01T00:00:00Z",
+      "conclusion": "",
+      "databaseId": 102848686890,
+      "name": "initialize",
+      "startedAt": "2026-09-10T11:16:11Z",
+      "status": "in_progress",
+      "steps": [
+        {
+          "completedAt": "2026-09-10T11:16:12Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-10T11:16:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-10T11:16:24Z",
+          "conclusion": "success",
+          "name": "Checkout latest main",
+          "number": 2,
+          "startedAt": "2026-09-10T11:16:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Validate Hong Kong mixed-language newsroom policy",
+          "number": 3,
+          "startedAt": "2026-09-10T11:16:24Z",
+          "status": "in_progress"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Stop and disable every old voice generator",
+          "number": 4,
+          "startedAt": "0001-01-01T00:00:00Z",
+          "status": "pending"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Delete old CosyVoice/F01 generated audio if still present",
+          "number": 5,
+          "startedAt": "0001-01-01T00:00:00Z",
+          "status": "pending"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Preserve legacy Canto Nano female release namespace",
+          "number": 6,
+          "startedAt": "0001-01-01T00:00:00Z",
+          "status": "pending"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Reset manifest only when old engine is still active",
+          "number": 7,
+          "startedAt": "0001-01-01T00:00:00Z",
+          "status": "pending"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Publish cleanup state without resetting new coverage",
+          "number": 8,
+          "startedAt": "0001-01-01T00:00:00Z",
+          "status": "pending"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Post Checkout latest main",
+          "number": 16,
+          "startedAt": "0001-01-01T00:00:00Z",
+          "status": "pending"
+        }
+      ],
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/34469515908/job/102848686890"
+    }
+  ],
   "failedLogTail": [
     "run 34469515908 is still in progress; logs will be available when it is complete"
   ]
