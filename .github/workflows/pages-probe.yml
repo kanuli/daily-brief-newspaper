@@ -5,6 +5,8 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/pages-probe.yml"
+      - "scripts/validate_stock_news.py"
+      - "scripts/stock_news_heartbeat.py"
       - "assets/css/live.css"
       - "assets/css/live-rebuild.css"
       - "assets/css/extras.css"
@@ -49,7 +51,7 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import hashlib, html, json, os, time, urllib.request
+          import hashlib, html, json, os, subprocess, sys, time, urllib.request
           from datetime import datetime, timedelta, timezone
           from pathlib import Path
 
@@ -85,6 +87,13 @@ jobs:
           local_desk=json.load(open('data/desk-latest.json',encoding='utf-8'))
           local_stocks=json.load(open('data/stocks-latest.json',encoding='utf-8'))
           local_tts=json.load(open('data/tts-manifest.json',encoding='utf-8'))
+
+          stock_validation=subprocess.run(
+              [sys.executable,'scripts/validate_stock_news.py'],
+              text=True,capture_output=True,check=False
+          )
+          stock_semantic_ok=(stock_validation.returncode==0)
+          stock_semantic_detail=(stock_validation.stdout or stock_validation.stderr).strip()[-1200:]
 
           def parse_iso(value):
               try:
@@ -162,12 +171,13 @@ jobs:
                   remote_latest=fetch_json('latest.json'); remote_live=fetch_json('live.json'); remote_desk=fetch_json('desk-latest.json')
                   remote_stocks=fetch_json('stocks-latest.json'); remote_tts=fetch_json('tts-manifest.json')
                   desk_ok,_=desk_contract(remote_desk)
-                  data_ok=(remote_latest.get('date')==local_latest.get('date') and remote_live.get('lastUpdated')==local_live.get('lastUpdated')
+                  data_ok=(stock_semantic_ok and remote_latest.get('date')==local_latest.get('date') and remote_live.get('lastUpdated')==local_live.get('lastUpdated')
                            and publication_complete(remote_live) and remote_desk.get('generatedAt')==local_live.get('lastUpdated') and desk_ok
                            and remote_stocks.get('generatedAt')==local_stocks.get('generatedAt') and stock_contract(remote_stocks)
                            and voice_manifest_at_least(remote_tts,local_tts))
                   if data_ok: error=None; break
                   error='public data contract not yet current/complete'
+                  if not stock_semantic_ok: error='Stock News substantive freshness validation failed: '+stock_semantic_detail
               except Exception as exc:
                   error=str(exc)
               time.sleep(5)
@@ -176,7 +186,8 @@ jobs:
           live_match=bool(isinstance(remote_live,dict) and remote_live.get('lastUpdated')==local_live.get('lastUpdated') and (remote_live.get('items') or []) and publication_complete(remote_live))
           desk_ok,desk_issues=desk_contract(remote_desk)
           desk_match=bool(isinstance(remote_desk,dict) and remote_desk.get('generatedAt')==local_live.get('lastUpdated') and desk_ok)
-          stock_match=bool(isinstance(remote_stocks,dict) and remote_stocks.get('generatedAt')==local_stocks.get('generatedAt') and stock_contract(remote_stocks))
+          stock_data_match=bool(isinstance(remote_stocks,dict) and remote_stocks.get('generatedAt')==local_stocks.get('generatedAt') and stock_contract(remote_stocks))
+          stock_match=bool(stock_data_match and stock_semantic_ok)
           voice_match=voice_manifest_at_least(remote_tts,local_tts)
 
           page_checks={}
@@ -217,8 +228,10 @@ jobs:
           payload={
               'checkedAt':now.isoformat(),'checkedAtHKT':now_hkt.isoformat(),'publicBaseUrl':root,
               'dailyMatch':daily_match,'liveMatch':live_match,'publicationComplete':publication_complete(remote_live),
-              'deskMatch':desk_match,'deskIssues':desk_issues,'stockMatch':stock_match,'voiceManifestMatch':voice_match,
-              'allCorePagesOk':all_pages_ok,'pageChecks':page_checks,'runtimeMatch':runtime_match,'runtimeChecks':runtime_checks,
+              'deskMatch':desk_match,'deskIssues':desk_issues,'stockDataMatch':stock_data_match,
+              'stockSemanticValid':stock_semantic_ok,'stockSemanticDetail':stock_semantic_detail,'stockMatch':stock_match,
+              'voiceManifestMatch':voice_match,'allCorePagesOk':all_pages_ok,'pageChecks':page_checks,
+              'runtimeMatch':runtime_match,'runtimeChecks':runtime_checks,
               'retailRetiredContract':all(not x.get('retailStale',False) for x in page_checks.values()),
               'match':overall,'error':error,
           }
