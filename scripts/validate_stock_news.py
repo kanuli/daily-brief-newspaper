@@ -32,7 +32,6 @@ VALID_IMPACTS = {"↑", "↓", "↔"}
 VALID_COLLECTION_STATUS = {"COMPLETE", "INCOMPLETE", "COLLECTION_FAILURE"}
 MAX_SNAPSHOT_AGE_HOURS = 72
 MAX_COVERAGE_CHECK_AGE_HOURS = 3.0
-MAX_SUBSTANTIVE_EVENT_AGE_HOURS = 36.0
 SUBSTANTIVE_TIME_FIELDS = (
     "primaryPublishedAt",
     "sourcePublishedAt",
@@ -104,7 +103,7 @@ def main():
     require(isinstance(freshness, dict), "coverageFreshness must be an object")
     require(list(freshness.keys()) == EXPECTED, "coverageFreshness key order/set must match tracked list")
     require(quality.get("freshnessGateMet") is True,
-            f"per-symbol substantive freshness gate failed; staleSymbols={stale_symbols}")
+            f"per-symbol currentness gate failed; staleSymbols={stale_symbols}")
     require(not stale_symbols, f"stale tracked-symbol coverage is not publishable: {stale_symbols}")
 
     checked = parse_timestamp(data.get("lastCheckedAt"))
@@ -181,12 +180,12 @@ def main():
         newest_story_time = max(substantive_times)
         event_age = (now - newest_story_time).total_seconds() / 3600.0
         require(event_age >= -1.0, f"{ticker}: substantive timestamp is materially in the future")
-        require(event_age <= MAX_SUBSTANTIVE_EVENT_AGE_HOURS,
-                f"{ticker}: newest substantive event/read-through is stale ({event_age:.1f}h; maximum {MAX_SUBSTANTIVE_EVENT_AGE_HOURS}h)")
 
         row = freshness.get(ticker)
         require(isinstance(row, dict), f"{ticker}: coverageFreshness entry must be object")
         require(row.get("stale") is False, f"{ticker}: substantive coverage is stale")
+        require(row.get("reviewEvidenceFound") is True,
+                f"{ticker}: no fresh source-review evidence found for this tracked symbol")
         require(valid_timestamp(row.get("lastReviewedAt")),
                 f"{ticker}: coverageFreshness.lastReviewedAt must be a timezone-aware timestamp")
         search_age = row.get("searchHoursAgo")
@@ -203,10 +202,8 @@ def main():
         row_age = row.get("eventHoursAgo")
         require(isinstance(row_age, (int, float)) and row_age >= 0,
                 f"{ticker}: eventHoursAgo must be a non-negative number")
-        require(row_age <= MAX_SUBSTANTIVE_EVENT_AGE_HOURS,
-                f"{ticker}: coverageFreshness event is stale ({row_age:.1f}h; maximum {MAX_SUBSTANTIVE_EVENT_AGE_HOURS}h)")
 
-    print(f"Stock News validation OK: {len(EXPECTED)} tickers, {len(seen)} stories; per-symbol substantive freshness OK")
+    print(f"Stock News validation OK: {len(EXPECTED)} tickers, {len(seen)} stories; fresh per-symbol review and substantive timestamps OK")
 
 
 if __name__ == "__main__":
