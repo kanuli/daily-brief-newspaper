@@ -65,58 +65,67 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('scripts/rolling_news_collector.py')
           text = path.read_text(encoding='utf-8')
 
-          old_queries = '''    "stock-news": [
-              '(NVDA OR Nvidia OR AAPL OR Apple OR TSM OR TSMC) earnings guidance product analyst SEC when:8h',
-              '(PLTR OR Palantir OR MSFT OR Microsoft OR GOOG OR Google OR Alphabet) earnings guidance product analyst SEC when:8h',
-              '(EMXC OR EWY OR VT) ETF market flows holdings when:12h',
-              '(NVDA OR AAPL OR TSM OR PLTR OR MSFT OR GOOG OR EMXC OR EWY OR VT) when:12h',
+          queries = '''    "stock-news": [
+              '(GOOG OR Google OR Alphabet) earnings guidance product analyst SEC filing partnership regulation when:12h',
+              '(GLDM OR "SPDR Gold MiniShares" OR gold price rates dollar) when:12h',
+              '(ICE OR "Intercontinental Exchange" OR NYSE parent) earnings analyst SEC filing market data when:12h',
+              '(MCD OR McDonald) earnings guidance product analyst SEC filing when:12h',
+              '(EMXC OR "emerging markets ex China" OR Taiwan Korea India equities flows) when:12h',
+              '(GBTC OR "Grayscale Bitcoin Trust" OR bitcoin ETF crypto regulation flows) when:12h',
+              '(DBA OR "Invesco DB Agriculture" OR agriculture commodities weather supply demand) when:12h',
+              '(AAPL OR Apple) earnings guidance product analyst SEC filing when:12h',
+              '(EWY OR "iShares MSCI South Korea" OR KOSPI Samsung "SK Hynix" Korea equities) when:12h',
+              '(META OR "Meta Platforms") earnings guidance product AI analyst SEC filing regulation when:12h',
+              '(MSFT OR Microsoft) earnings guidance product AI analyst SEC filing partnership when:12h',
+              '(NVDA OR Nvidia) earnings guidance product AI analyst SEC filing partnership when:12h',
+              '(TSM OR TSMC OR "Taiwan Semiconductor") earnings guidance supply chain analyst SEC when:12h',
+              '(PLTR OR Palantir) earnings guidance contract analyst SEC filing when:12h',
+              '(VT OR "Vanguard Total World" OR global equities rates dollar oil geopolitics) when:12h',
           ],'''
-          new_queries = '''    "stock-news": [
-              '(GOOG OR Google OR Alphabet OR ICE OR "Intercontinental Exchange" OR MCD OR McDonald OR META OR "Meta Platforms") earnings guidance product analyst SEC filing partnership regulation when:8h',
-              '(AAPL OR Apple OR MSFT OR Microsoft OR NVDA OR Nvidia OR TSM OR TSMC OR "Taiwan Semiconductor" OR PLTR OR Palantir) earnings guidance product analyst SEC filing partnership regulation when:8h',
-              '(GLDM OR "SPDR Gold MiniShares" OR gold rates dollar OR EMXC OR "emerging markets ex China" OR GBTC OR "Grayscale Bitcoin Trust" OR bitcoin ETF) when:12h',
-              '(DBA OR "Invesco DB Agriculture" OR agriculture commodities OR EWY OR "iShares MSCI South Korea" OR Korea equities OR VT OR "Vanguard Total World" OR global equities) when:12h',
-              '(GOOG OR GLDM OR ICE OR MCD OR EMXC OR GBTC OR DBA OR AAPL OR EWY OR META OR MSFT OR NVDA OR TSM OR PLTR OR VT) when:12h',
-          ],'''
+          text, n1 = re.subn(
+              r'    "stock-news": \[\n.*?\n    \],(?=\n    "ai-tech":)',
+              queries,
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if n1 != 1:
+              raise SystemExit(f'could not replace Stock query plan safely: replacements={n1}')
 
-          old_terms = '''STOCK_TERMS = (
-              "nvda", "nvidia", "aapl", "apple", "tsm", "tsmc", "taiwan semiconductor",
-              "pltr", "palantir", "msft", "microsoft", "goog", "google", "alphabet",
-              "emxc", "ewy", " vt ", "vanguard total world", "emerging markets ex china",
-          )'''
-          new_terms = '''STOCK_TERMS = (
+          terms = '''STOCK_TERMS = (
               "goog", "google", "alphabet",
-              "gldm", "spdr gold minishares", "gold minishares",
+              "gldm", "spdr gold minishares", "gold price", "gold rates",
               "intercontinental exchange", "ice stock", "nyse parent",
               "mcd", "mcdonald",
-              "emxc", "emerging markets ex china",
-              "gbtc", "grayscale bitcoin trust",
-              "invesco db agriculture", "dba etf", "agriculture fund",
+              "emxc", "emerging markets ex china", "taiwan korea india equities",
+              "gbtc", "grayscale bitcoin trust", "bitcoin etf", "crypto regulation",
+              "invesco db agriculture", "dba etf", "agriculture commodities",
               "aapl", "apple",
-              "ewy", "ishares msci south korea", "south korea etf",
+              "ewy", "ishares msci south korea", "kospi", "samsung", "sk hynix", "korea equities",
               "meta", "meta platforms",
               "msft", "microsoft",
               "nvda", "nvidia",
               "tsm", "tsmc", "taiwan semiconductor",
               "pltr", "palantir",
-              " vt ", "vanguard total world", "total world stock etf",
+              " vt ", "vanguard total world", "global equities",
           )'''
-
-          if old_queries in text:
-              text = text.replace(old_queries, new_queries)
-          elif new_queries not in text:
-              raise SystemExit('rolling collector Stock query block is neither recognized 9-symbol nor authoritative 15-symbol form')
-
-          if old_terms in text:
-              text = text.replace(old_terms, new_terms)
-          elif new_terms not in text:
-              raise SystemExit('rolling collector Stock relevance block is neither recognized 9-symbol nor authoritative 15-symbol form')
+          text, n2 = re.subn(
+              r'STOCK_TERMS = \(\n.*?\n\)(?=\n\n\ndef now_utc)',
+              terms,
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if n2 != 1:
+              raise SystemExit(f'could not replace Stock relevance terms safely: replacements={n2}')
 
           path.write_text(text, encoding='utf-8')
+          compile(text, str(path), 'exec')
           print('STOCK_COLLECTOR_15_SYMBOL_CONTRACT_PASS')
           PY
 
@@ -160,9 +169,6 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          # Manual/editor-generated VERIFIED_DRAFT remains a supported higher-detail
-          # path. Invalid/stale drafts must not block publication of the current
-          # verified Stock News artifact.
           if python scripts/promote_verified_stock_draft.py /tmp/prepublish.json; then
             echo "MANUAL_STOCK_PROMOTION_ACCEPTED"
           else
@@ -189,9 +195,6 @@ jobs:
           set -euo pipefail
           echo "changed=false" >> "$GITHUB_OUTPUT"
 
-          # generatedAt/lastUpdatedLabel describe the completed text artifact,
-          # not the start of collection. Stamp them only after editing/cleanup,
-          # then revalidate the exact file that will be committed.
           python - <<'PY'
           import json
           from datetime import datetime, timezone
