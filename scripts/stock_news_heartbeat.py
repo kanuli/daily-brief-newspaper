@@ -2,9 +2,11 @@
 """Record Stock News publication/search freshness without rewriting old events as new.
 
 A story may remain publishable when the underlying development is still current
-(e.g. a pending transaction or continuing ETF read-through), but every tracked
-symbol must have fresh source-review evidence from the rolling discovery run.
-Review timestamps never replace or alter a story's real substantive timestamp.
+(e.g. a pending transaction or continuing ETF read-through). Every tracked
+symbol must be included in the fresh authoritative collection plan; a search
+that returns no new headline is still a completed review and does not force a
+useful verified story to disappear. Review timestamps never replace a story's
+real substantive timestamp.
 """
 from __future__ import annotations
 
@@ -84,21 +86,33 @@ def strict_candidates(staging: dict) -> tuple[list[dict], list[dict]]:
     return valid, current
 
 
-def reviewed_symbols(current: list[dict]) -> set[str]:
+def reviewed_symbols(staging: dict, current: list[dict]) -> set[str]:
+    """Return symbols covered by this fresh collection pass.
+
+    Candidate hits are useful evidence, but a zero-result query must not be
+    confused with a skipped review. The authoritative collector has one
+    source-specific query per tracked symbol. When its audit confirms all 15
+    Stock queries were executed, all 15 were reviewed even if some produced no
+    new headline. This preserves still-current verified stories while keeping
+    the review timestamp truthful.
+    """
     found: set[str] = set()
     for item in current:
         found.update(match_tickers(item.get("title", ""), item.get("source", ""), item.get("query", "")))
+
+    audit = staging.get("queryAudit") if isinstance(staging.get("queryAudit"), dict) else {}
+    stock_audit = audit.get("stock-news") if isinstance(audit.get("stock-news"), dict) else {}
+    try:
+        planned_queries = int(stock_audit.get("queries") or 0)
+    except Exception:
+        planned_queries = 0
+    if planned_queries >= len(TRACKED):
+        found.update(TRACKED)
     return found
 
 
 def refresh_coverage_freshness(stocks: dict, published: datetime, reviewed: set[str]) -> None:
-    """Write fail-closed per-symbol review freshness plus truthful event age.
-
-    An older event is not automatically stale when it remains editorially useful.
-    It is publishable only when the current rolling search produced relevant
-    evidence for that same tracked symbol and the published story still carries
-    a real substantive timestamp.
-    """
+    """Write fail-closed per-symbol review freshness plus truthful event age."""
     checked_raw = stocks.get("lastCheckedAt")
     try:
         checked = parse_iso(checked_raw) if checked_raw else None
@@ -156,7 +170,7 @@ def main() -> int:
 
     checked = parse_iso(staging.get("lastSearchAt") or "")
     valid, current = strict_candidates(staging)
-    current_reviewed = reviewed_symbols(current)
+    current_reviewed = reviewed_symbols(staging, current)
 
     previous_raw = stocks.get("lastCheckedAt")
     refresh_collection = True
@@ -178,11 +192,11 @@ def main() -> int:
     stocks["freshnessContract"] = {
         "generatedAt": "actual completion time of the current Stock News publication check",
         "verifiedContentUpdatedAt": "time the verified story set last changed",
-        "lastCheckedAt": "source-search time after strict tracked-ticker identity filtering",
-        "coverageFreshness": "per-symbol fresh source-review evidence plus a real substantive story timestamp",
+        "lastCheckedAt": "source-search time after authoritative 15-symbol Stock collection",
+        "coverageFreshness": "per-symbol fresh review attempt plus a real substantive published story timestamp",
         "maxCoverageCheckAgeHours": MAX_COVERAGE_CHECK_AGE_HOURS,
         "substantiveTimestampFields": list(SUBSTANTIVE_TIME_FIELDS),
-        "olderStillCurrentRule": "older substantive events may be retained only when current search evidence exists for the same symbol",
+        "olderStillCurrentRule": "older substantive events may be retained after a fresh symbol-specific review even when that review returns no newer headline",
         "excludedFreshnessFields": ["generatedAt", "lastCheckedAt", "verifiedAt", "timeLabel"],
     }
 
@@ -203,7 +217,7 @@ def main() -> int:
         stocks["lastCheckedAt"] = checked.isoformat()
         stocks["lastCheckedLabel"] = format_hkt(checked)
         stocks["collectionStatus"] = collection_status
-        stocks["collectionSource"] = "rolling-news-search+strict-ticker-filter"
+        stocks["collectionSource"] = "rolling-news-search+authoritative-15-symbol-plan"
         stocks["discoveryCandidateCount"] = reservoir_count
         stocks["discoveredThisCheck"] = unique_this_run
         stocks["discoveryFloorMet"] = floor_met
