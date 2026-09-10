@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """Record Stock News publication/search freshness without rewriting old events as new.
 
-A still-current verified story may remain publishable when a fresh symbol-specific
-review finds no stronger replacement. Freshness is therefore based on a recent
-authoritative 15-symbol collection pass plus the presence of substantive public
-stories; it does not require adding non-schema event timestamp fields.
+A fresh symbol-specific review is necessary but is not sufficient publication
+freshness. Every tracked symbol must also carry at least one genuinely current
+substantive event or market read-through. Review/check/display timestamps never
+refresh an old public story.
 """
 from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timedelta, timezone
+import re
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 
 from stock_news_rules import match_tickers
@@ -20,6 +21,11 @@ STOCKS_PATH = ROOT / "data" / "stocks-latest.json"
 HKT = timezone(timedelta(hours=8))
 TRACKED = ["GOOG", "GLDM", "ICE", "MCD", "EMXC", "GBTC", "DBA", "AAPL", "EWY", "META", "MSFT", "NVDA", "TSM", "PLTR", "VT"]
 MAX_COVERAGE_CHECK_AGE_HOURS = 3.0
+MAX_SUBSTANTIVE_STORY_AGE_HOURS = 48.0
+SUBSTANTIVE_TIME_FIELDS = (
+    "primaryPublishedAt", "sourcePublishedAt", "eventPublishedAt", "marketAsOfAt", "publishedAt"
+)
+ID_DATE_RE = re.compile(r"(?:^|[-_])(20\d{6})(?:$|[-_])")
 
 
 def load(path: Path):
@@ -36,6 +42,41 @@ def parse_iso(value: str) -> datetime:
 def format_hkt(dt: datetime) -> str:
     local = dt.astimezone(HKT)
     return f"{local.year}年{local.month}月{local.day}日 {local.hour:02d}:{local.minute:02d} HKT"
+
+
+def substantive_story_time(story: dict) -> tuple[datetime | None, str | None]:
+    for field in SUBSTANTIVE_TIME_FIELDS:
+        try:
+            return parse_iso(story.get(field) or ""), field
+        except Exception:
+            pass
+
+    # Conservative compatibility for legacy stories whose stable id encodes the
+    # real event date. Use the end of that HKT calendar day so this fallback never
+    # invents intraday precision. Check/display timestamps are intentionally absent.
+    match = ID_DATE_RE.search(str(story.get("id") or ""))
+    if match:
+        try:
+            day = datetime.strptime(match.group(1), "%Y%m%d").date()
+            end_hkt = datetime.combine(day, time(23, 59, 59), tzinfo=HKT)
+            return end_hkt.astimezone(timezone.utc), "story-id-date"
+        except Exception:
+            pass
+    return None, None
+
+
+def newest_substantive_story(stories: list[dict], published: datetime) -> tuple[float | None, str | None, str | None]:
+    candidates: list[tuple[float, str | None, str | None]] = []
+    for story in stories:
+        if not isinstance(story, dict):
+            continue
+        dt, source = substantive_story_time(story)
+        if dt is None:
+            continue
+        age = (published - dt).total_seconds() / 3600.0
+        if age >= -1.0:
+            candidates.append((max(0.0, age), story.get("id"), source))
+    return min(candidates, key=lambda row: row[0]) if candidates else (None, None, None)
 
 
 def strict_candidates(staging: dict) -> tuple[list[dict], list[dict]]:
@@ -97,7 +138,9 @@ def refresh_coverage_freshness(stocks: dict, published: datetime, reviewed: set[
         block = tickers.get(ticker) if isinstance(tickers.get(ticker), dict) else {}
         stories = block.get("stories") if isinstance(block.get("stories"), list) else []
         review_evidence = ticker in reviewed
-        stale = (not stories) or (not search_current) or (not review_evidence)
+        substantive_age, substantive_story_id, substantive_time_source = newest_substantive_story(stories, published)
+        substantive_current = substantive_age is not None and substantive_age <= MAX_SUBSTANTIVE_STORY_AGE_HOURS
+        stale = (not stories) or (not search_current) or (not review_evidence) or (not substantive_current)
         if stale:
             stale_symbols.append(ticker)
 
@@ -106,6 +149,10 @@ def refresh_coverage_freshness(stocks: dict, published: datetime, reviewed: set[
             "searchHoursAgo": round(check_age, 3) if check_age != float("inf") else 999999.0,
             "reviewEvidenceFound": review_evidence,
             "hoursAgo": round(check_age, 3) if check_age != float("inf") else 999999.0,
+            "newestSubstantiveStoryHoursAgo": round(substantive_age, 3) if substantive_age is not None else None,
+            "newestSubstantiveStoryId": substantive_story_id,
+            "substantiveTimeSource": substantive_time_source,
+            "substantiveCurrent": substantive_current,
             "stale": stale,
             "storyCount": len(stories),
         }
@@ -154,10 +201,13 @@ def main() -> int:
         "generatedAt": "actual completion time of the current Stock News publication check",
         "verifiedContentUpdatedAt": "time the verified story set last changed",
         "lastCheckedAt": "source-search time after authoritative 15-symbol Stock collection",
-        "coverageFreshness": "per-symbol fresh review attempt plus at least one substantive published story",
+        "coverageFreshness": "per-symbol fresh review plus at least one genuinely current substantive event or market read-through",
         "maxCoverageCheckAgeHours": MAX_COVERAGE_CHECK_AGE_HOURS,
-        "olderStillCurrentRule": "older verified stories may be retained after a fresh symbol-specific review even when that review returns no newer headline",
-        "schemaRule": "freshness metadata does not add or fabricate non-schema event timestamps on public stories",
+        "maxSubstantiveStoryAgeHours": MAX_SUBSTANTIVE_STORY_AGE_HOURS,
+        "substantiveTimeFields": list(SUBSTANTIVE_TIME_FIELDS),
+        "legacyStoryIdDateFallback": True,
+        "reviewRule": "a fresh review cannot make stale substantive content current",
+        "schemaRule": "freshness metadata does not add or fabricate event timestamps on public stories",
     }
 
     if refresh_collection:
