@@ -78,15 +78,16 @@ def substantive_story_time(story):
         if dt is not None:
             return dt.astimezone(timezone.utc), field
 
-    # Legacy artifacts often encode the real event date in the stable story id.
-    # This is accepted only as a conservative fallback; display/check timestamps
-    # such as timeLabel/verifiedAt/generatedAt never make an old story current.
+    # Legacy artifacts can encode only the real event calendar date in the
+    # stable story id. Map that date to 00:00 HKT, not 23:59:59: start-of-day
+    # deliberately overstates age and therefore cannot make an old story look
+    # fresher. Display/check timestamps remain ineligible for freshness.
     match = ID_DATE_RE.search(str(story.get("id") or ""))
     if match:
         try:
             day = datetime.strptime(match.group(1), "%Y%m%d").date()
-            end_hkt = datetime.combine(day, time(23, 59, 59), tzinfo=HKT)
-            return end_hkt.astimezone(timezone.utc), "story-id-date"
+            start_hkt = datetime.combine(day, time(0, 0, 0), tzinfo=HKT)
+            return start_hkt.astimezone(timezone.utc), "story-id-date"
         except Exception:
             pass
     return None, None
