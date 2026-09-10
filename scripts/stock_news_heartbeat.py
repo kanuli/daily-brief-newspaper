@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Record Stock News publication/search freshness without rewriting old events as new.
 
-A fresh symbol-specific review is necessary but is not sufficient publication
-freshness. Every tracked symbol must also carry at least one genuinely current
-substantive event or market read-through. Review/check/display timestamps never
-refresh an old public story.
+Every tracked symbol requires a recent authoritative symbol-specific review. A
+review may retain a still-current verified event/read-through when no stronger
+new development exists, but it must never turn genuinely stale content into
+current news.
 """
 from __future__ import annotations
 
@@ -21,7 +21,10 @@ STOCKS_PATH = ROOT / "data" / "stocks-latest.json"
 HKT = timezone(timedelta(hours=8))
 TRACKED = ["GOOG", "GLDM", "ICE", "MCD", "EMXC", "GBTC", "DBA", "AAPL", "EWY", "META", "MSFT", "NVDA", "TSM", "PLTR", "VT"]
 MAX_COVERAGE_CHECK_AGE_HOURS = 3.0
-MAX_SUBSTANTIVE_STORY_AGE_HOURS = 48.0
+# A fresh symbol review may retain a still-current verified item when no stronger
+# new fact exists. A bounded 45-day shelf-life prevents review timestamps from
+# laundering genuinely old or months-old copy into current Stock News.
+MAX_SUBSTANTIVE_STORY_AGE_HOURS = 1080.0
 SUBSTANTIVE_TIME_FIELDS = (
     "primaryPublishedAt", "sourcePublishedAt", "eventPublishedAt", "marketAsOfAt", "publishedAt"
 )
@@ -201,12 +204,12 @@ def main() -> int:
         "generatedAt": "actual completion time of the current Stock News publication check",
         "verifiedContentUpdatedAt": "time the verified story set last changed",
         "lastCheckedAt": "source-search time after authoritative 15-symbol Stock collection",
-        "coverageFreshness": "per-symbol fresh review plus at least one genuinely current substantive event or market read-through",
+        "coverageFreshness": "per-symbol fresh review plus at least one still-current substantive event or market read-through",
         "maxCoverageCheckAgeHours": MAX_COVERAGE_CHECK_AGE_HOURS,
         "maxSubstantiveStoryAgeHours": MAX_SUBSTANTIVE_STORY_AGE_HOURS,
         "substantiveTimeFields": list(SUBSTANTIVE_TIME_FIELDS),
         "legacyStoryIdDateFallback": True,
-        "reviewRule": "a fresh review cannot make stale substantive content current",
+        "reviewRule": "a fresh review may retain a verified still-current item when no stronger new fact exists, but cannot refresh content beyond the bounded substantive shelf-life",
         "schemaRule": "freshness metadata does not add or fabricate event timestamps on public stories",
     }
 
