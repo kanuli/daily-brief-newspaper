@@ -6,6 +6,13 @@ import re
 import subprocess
 import sys
 
+from desk_freshness_policy import (
+    PUBLIC_DESK_FRESHNESS_HOURS,
+    editorial_story_time,
+    newest_age_hours,
+    routed_slugs,
+)
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 REQUIRED_STORY_FIELDS = (
@@ -101,10 +108,6 @@ def validate_live(latest, live, desk):
         ids.append(story["id"])
     need(len(ids) == len(set(ids)), "Live has duplicate story ids")
 
-    # newCount / updatedCount describe publication actions. DEVELOPING is an
-    # orthogonal story-state flag: a newly published story may already be
-    # DEVELOPING, so it must not force newCount to zero. Keep the action
-    # counters exhaustive while validating the explicit status buckets.
     new_count = live.get("newCount")
     updated_count = live.get("updatedCount")
     developing_count = live.get("developingCount")
@@ -125,24 +128,29 @@ def validate_desks(desk):
         stories = desks.get(slug)
         need(isinstance(stories, list), f"desk {slug} must be an array")
         need(len(stories) >= minimum, f"desk {slug} depth {len(stories)} < {minimum}")
+        age = newest_age_hours(stories)
+        max_age = PUBLIC_DESK_FRESHNESS_HOURS[slug]
+        need(age is not None and age <= max_age, f"desk {slug} stale: newest age={age!r}h > {max_age}h")
         seen = set()
+        previous = None
         for index, story in enumerate(stories):
             rich_story(story, f"desk {slug}[{index}]")
             need(story["id"] not in seen, f"desk {slug} duplicate id {story['id']}")
             seen.add(story["id"])
             slugs = story.get("deskSlugs")
             need(isinstance(slugs, list) and slug in slugs, f"desk {slug}[{index}] deskSlugs mismatch")
+            resolved = routed_slugs(story)
+            need(slug in resolved, f"desk {slug}[{index}] hard-routing mismatch: {story['id']} -> {resolved}")
+            stamp = editorial_story_time(story)
+            need(stamp is not None, f"desk {slug}[{index}] has no resolvable editorial timestamp")
+            if previous is not None:
+                need(previous >= stamp, f"desk {slug} not newest-first at index {index}: {story['id']}")
+            previous = stamp
     need(len(desks.get("japan", [])) >= 8, "Japan desk must contain at least 8 unique current stories")
 
 
 def report_voice_currentness_nonblocking():
-    """Surface voice health without delaying text publication.
-
-    Voice is asynchronous by policy, so missing/stale audio must never block a
-    Pages deployment. The watchdog still needs an explicit failure signal when
-    current eligible copy is not yet playable, rather than a misleading all-
-    green publication validation result.
-    """
+    """Surface voice health without delaying text publication."""
     validator = ROOT / "scripts" / "validate_voice_currentness.py"
     if not validator.exists():
         print("VOICE_CURRENTNESS_AUDIT_MISSING", file=sys.stderr)
