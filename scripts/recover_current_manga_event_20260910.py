@@ -14,30 +14,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "data" / "desk-latest.json"
 HKT = dt.timezone(dt.timedelta(hours=8))
-PUBLISHED = dt.datetime.fromisoformat("2026-09-10T17:38:00+08:00")
+PUBLISHED = dt.datetime.fromisoformat("2026-09-11T18:10:00+08:00")
 MAX_AGE = dt.timedelta(hours=24)
 
 STORY = {
-    "id": "manga-anime-apothecary-diaries-console-game-20260910",
+    "id": "manga-anime-sound-euphonium-final-chapter-part2-20260911",
     "desk": "manga-anime",
     "deskSlugs": ["manga-anime"],
-    "section": "漫畫・動畫｜《藥師少女的獨語》",
+    "section": "漫畫・動畫｜《吹響吧！上低音號》",
     "sectionLabel": "漫畫 / Anime",
     "status": "LATEST",
-    "title": "《藥師少女的獨語》首度改編家用主機遊戲　日向夏原案新故事2027年初推出",
-    "dek": "Koei Tecmo、Gust與TOHO Games公布《The Apothecary Diaries: The False Imperial Brother》，將登陸Switch 2、Switch、PS5及PC。",
-    "summary": "《藥師少女的獨語》首次推出家用主機遊戲，原作者日向夏負責新故事原案；玩家將操作貓貓調查後宮、市井與花街的「五個謎」與「五個詛咒」。",
-    "body": "Koei Tecmo與開發商Gust聯同TOHO Games公布《The Apothecary Diaries: The False Imperial Brother》，是《藥師少女的獨語》首次改編家用主機遊戲，預定2027年初登陸Nintendo Switch 2、Switch、PlayStation 5及Steam。原作者日向夏為遊戲構思全新故事與角色。\n\n遊戲延續貓貓以藥學知識和推理破解事件的核心設定，玩家需要蒐集證言及證據、調配藥物，再處理圍繞後宮、花街與京城的連串異象。由原作者參與新故事，加上跨四個平台推出，令這次企劃不只是授權商品，而是作品IP向互動娛樂擴張的重要一步。",
-    "context": "《藥師少女的獨語》已由輕小說、漫畫與電視動畫建立大型受眾；今次是系列首次把完整原創故事帶到家用主機及PC遊戲。",
-    "why": "原作者參與、TOHO Games與Gust合作及多平台同步布局，反映熱門漫畫動畫IP持續向遊戲市場延伸。",
-    "watchNext": "留意確實發售日期、價格、更多玩法展示，以及日本以外語言與發行安排。",
-    "sourceName": "Koei Tecmo / ABEMA",
-    "sourceUrl": "https://www.koeitecmoamerica.com/news/investigate-palace-conspiracies-in-koei-tecmos-the-apothecary-diaries-the-false-imperial-brother/",
-    "publishedAt": "2026-09-10T17:38:00+08:00",
-    "timeLabel": "9月10日17:38 HKT",
+    "title": "《吹響吧！上低音號》迎來動畫完結　《最終樂章》後篇日本上映",
+    "dek": "由電視動畫第三季重新構成並加入大量新畫面的《最終樂章 吹響吧！上低音號》後篇9月11日在日本上映，為這套自2015年起延續約11年的動畫系列收結。",
+    "summary": "《吹響吧！上低音號》動畫系列迎來最終章後篇。作品以北宇治高中吹奏樂部為舞台，劇場版在第三季素材基礎上重新剪輯並新增多段場面；製作團隊亦公開小川太一導演為上映繪製的紀念插畫。",
+    "body": "MANTANWEB報道，《最終樂章 吹響吧！上低音號》後篇於9月11日在日本上映。劇場版把《吹響吧！上低音號3》的內容重新構成，除重新處理既有畫面外，亦加入文化祭演奏、畢業禮等電視版未有呈現的新片段，為黃前久美子等北宇治高中吹奏樂部成員的故事收結。\n\n系列電視動畫第一季於2015年4月首播，其後推出第二、第三季及多部劇場作品。《最終樂章》前篇已於今年4月24日上映，後篇則標誌這套由京都動畫製作、延續約11年的動畫系列正式走到終點。上映同日，製作團隊亦公開由導演小川太一繪製、久美子與麗奈背靠背牽手的紀念插畫。",
+    "context": "《吹響吧！上低音號》改編自武田綾乃小說，以京都府宇治市為重要舞台。動畫系列長期由京都動畫製作，第三季於2024年播出。",
+    "why": "後篇上映為延續約11年的主要動畫敘事畫上句號，亦是京都動畫代表系列的一個重要節點，對長期觀眾與作品IP後續發展均具指標意義。",
+    "watchNext": "留意日本上映後的票房與觀眾反應、海外上映與串流安排，以及官方會否公布系列後續活動或紀念企劃。",
+    "sourceName": "MANTANWEB / Kyoto Animation",
+    "sourceUrl": "https://mantan-web.jp/article/20260911dog00m200047000a.html",
+    "publishedAt": "2026-09-11T18:10:00+08:00",
+    "timeLabel": "9月11日18:10 HKT",
     "sources": [
-        {"name": "Koei Tecmo", "url": "https://www.koeitecmoamerica.com/news/investigate-palace-conspiracies-in-koei-tecmos-the-apothecary-diaries-the-false-imperial-brother/"},
-        {"name": "ABEMA TIMES", "url": "https://times.abema.tv/articles/-/10272308"}
+        {"name": "MANTANWEB", "url": "https://mantan-web.jp/article/20260911dog00m200047000a.html"},
+        {"name": "Kyoto Animation", "url": "https://anime-eupho.com/"}
     ]
 }
 
