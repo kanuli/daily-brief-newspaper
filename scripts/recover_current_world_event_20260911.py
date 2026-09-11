@@ -14,30 +14,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "data" / "desk-latest.json"
 HKT = dt.timezone(dt.timedelta(hours=8))
-PUBLISHED = dt.datetime.fromisoformat("2026-09-11T12:03:34+08:00")
+PUBLISHED = dt.datetime.fromisoformat("2026-09-11T18:04:00+08:00")
 MAX_AGE = dt.timedelta(hours=8)
 
 STORY = {
-    "id": "world-us-exim-africell-network-financing-20260911",
+    "id": "world-us-september-11-25th-anniversary-20260911",
     "desk": "world",
     "deskSlugs": ["world"],
-    "section": "國際｜非洲電訊",
+    "section": "國際｜美國",
     "sectionLabel": "世界",
     "status": "LATEST",
-    "title": "美國擬向Africell提供近1億美元貸款　推動非華為網絡設備",
-    "dek": "美國政府計劃透過進出口銀行向非洲電訊商Africell提供近1億美元貸款，資金將用於採購美國及盟友供應商的流動網絡技術。",
-    "summary": "路透社9月11日引述知情人士及擬發布文件報道，美國進出口銀行計劃向Africell提供接近1億美元貸款，支持其在非洲市場升級流動網絡；華盛頓正推動更多可信賴、非華為設備進入海外電訊基建。",
-    "body": "美國政府計劃透過美國進出口銀行向Africell提供接近1億美元貸款。路透社引述知情人士及一份擬發布新聞稿報道，這筆融資將協助Africell採購美國及盟友供應商的最新流動網絡技術，以擴充其非洲市場的通訊基建。\n\nAfricell在安哥拉、剛果民主共和國、岡比亞及塞拉利昂營運流動網絡。今次融資亦反映華盛頓持續以出口信貸及科技政策，推動美國與盟友設備供應商在非洲電訊市場擴大角色，降低當地網絡對華為設備的依賴。",
-    "context": "美國近年把通訊基建、雲端及人工智能技術出口視為經濟與國家安全政策的一部分；Africell則是非洲少數具美國背景的大型流動網絡營運商。",
-    "why": "近1億美元官方出口信貸若落實，會直接影響非洲流動網絡投資及設備供應格局，也反映美中科技競爭繼續延伸至非洲關鍵基建市場。",
-    "watchNext": "留意美國進出口銀行正式公布的貸款條款、Africell實際採購哪些設備，以及相關投資會否擴展至更多非洲市場。",
-    "sourceName": "Reuters / Africell",
-    "sourceUrl": "https://www.reuters.com/world/china/trump-administration-lend-100-million-africell-countering-huawei-africa-2026-09-11/",
-    "publishedAt": "2026-09-11T12:03:34+08:00",
-    "timeLabel": "9月11日12:03 HKT",
+    "title": "美國紀念九一一25周年　遇難者家屬再讀近3,000名死者姓名",
+    "dek": "紐約、五角大樓及賓夕法尼亞州舉行紀念活動；紐約消防局表示，除當日殉職343名消防員外，已有逾600名消防員因相關疾病離世。",
+    "summary": "九一一襲擊25周年，美國多地舉行悼念。紐約世貿中心遺址的儀式再次由遇難者家屬讀出死者姓名，並按當年客機撞擊及雙塔倒塌時刻默哀；紀念活動亦聚焦救援人員長期健康後遺症及事件對美國社會與外交政策的持續影響。",
+    "body": "美國周五紀念九一一恐怖襲擊25周年。路透社報道，紐約世貿中心遺址、五角大樓及賓夕法尼亞州尚克斯維爾分別舉行活動，遇難者家屬在紐約儀式逐一讀出2,977名九一一死者，以及1993年世貿中心爆炸案6名死者的姓名，並在當年兩架客機撞擊雙塔及雙塔倒塌的時間默哀。\n\n紀念活動亦再次把焦點放在第一批救援人員的長期健康代價。紐約消防局在襲擊當日失去343名成員，其後已有逾600名曾參與救援的消防員因與九一一相關疾病死亡。事件同時深刻改變美國國土安全、反恐政策、海外軍事行動及社會對穆斯林社群的態度，25年後仍是美國公共生活的重要歷史分水嶺。",
+    "context": "2001年9月11日，四架被劫持客機分別撞向紐約世貿中心、五角大樓及墜毀於賓夕法尼亞州，造成近3,000人死亡，並觸發其後長達多年的反恐戰爭及國土安全制度重整。",
+    "why": "25周年不只是周年紀念，也重新呈現襲擊對救援人員健康、國家安全制度、外交政策及社會關係留下的長期影響。",
+    "watchNext": "留意紐約、華盛頓及尚克斯維爾後續紀念活動，以及聯邦和地方政府對九一一相關疾病醫療與補償計劃的最新安排。",
+    "sourceName": "Reuters / 9/11 Memorial & Museum",
+    "sourceUrl": "https://www.reuters.com/world/us/americans-mark-25-years-since-september-11-attacks-amid-enduring-grief-2026-09-11/",
+    "publishedAt": "2026-09-11T18:04:00+08:00",
+    "timeLabel": "9月11日18:04 HKT",
     "sources": [
-        {"name": "Reuters", "url": "https://www.reuters.com/world/china/trump-administration-lend-100-million-africell-countering-huawei-africa-2026-09-11/"},
-        {"name": "Africell", "url": "https://www.africell.com/"}
+        {"name": "Reuters", "url": "https://www.reuters.com/world/us/americans-mark-25-years-since-september-11-attacks-amid-enduring-grief-2026-09-11/"},
+        {"name": "9/11 Memorial & Museum", "url": "https://www.911memorial.org/"}
     ]
 }
 
