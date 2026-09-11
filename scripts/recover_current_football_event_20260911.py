@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One-event fail-closed recovery for current Manchester United/Football desks.
 
-Uses a genuinely current Reuters match report and its real publication time.
+Uses a genuinely current Reuters report and its real publication time.
 It never retimestamps stale content: after the 8-hour Football SLA the script
 becomes a no-op and lets freshness validation fail closed.
 """
@@ -14,30 +14,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "data" / "desk-latest.json"
 HKT = dt.timezone(dt.timedelta(hours=8))
-PUBLISHED = dt.datetime.fromisoformat("2026-09-11T03:25:00+08:00")
+PUBLISHED = dt.datetime.fromisoformat("2026-09-11T11:08:00+08:00")
 MAX_AGE = dt.timedelta(hours=8)
 
 STORY = {
-    "id": "manchester-united-sabah-4-0-champions-league-20260911",
+    "id": "manchester-united-sesko-city-derby-return-form-20260911",
     "desk": "manchester-united",
     "deskSlugs": ["manchester-united", "football"],
-    "section": "Manchester United｜歐聯",
+    "section": "Manchester United｜曼市打吡",
     "sectionLabel": "Manchester United",
     "status": "LATEST",
-    "title": "曼聯4球大勝Sabah　重返歐聯首戰零封開門紅",
-    "dek": "曼聯在奧脫福以4比0擊敗Sabah，古亞、般奴費南迪斯、錫斯高及利辛度馬天尼斯各建一功。",
-    "summary": "曼聯相隔兩季重返歐聯後取得理想開局，主場4比0擊敗阿塞拜疆球會Sabah；四名不同球員入球，球隊亦保持清白之身。",
-    "body": "曼聯在2026/27歐聯聯賽階段首戰主場以4比0擊敗Sabah。路透社報道，Matheus Cunha、Bruno Fernandes、Benjamin Sesko及Lisandro Martinez先後入球，令球隊在相隔兩季後重返歐聯即取得三分。\n\n大勝亦為曼聯在周日曼市打吡前建立正面勢頭。首輪同日拜仁慕尼黑以5比0擊敗Bodø/Glimt，而Como則在球會史上首次歐聯比賽以4比1大勝RB Leipzig，顯示首輪積分榜早段已出現多場大比分賽果。",
-    "context": "曼聯今季重返歐洲最高級別球會賽事，首輪主場取勝兼零封，有助減輕聯賽階段早段搶分壓力。",
-    "why": "歐聯新制要求各隊在單一聯賽階段累積積分，首輪三分及四球淨勝差均具實際排名價值；同時賽果會直接影響曼聯周末打吡前的輪換與體能部署。",
-    "watchNext": "留意周日曼市打吡的輪換、傷兵及體能狀況，以及曼聯下一輪歐聯作客馬德里體育會的部署。",
-    "sourceName": "Reuters",
-    "sourceUrl": "https://www.reuters.com/sports/soccer/psv-held-by-shakhtar-fenerbahce-draw-with-roma-return-champions-league-2026-09-10/",
-    "publishedAt": "2026-09-11T03:25:00+08:00",
-    "timeLabel": "9月11日03:25 HKT",
+    "title": "錫斯高連續兩仗入球　卡域克稱復勇為曼市打吡添助力",
+    "dek": "曼聯前鋒Benjamin Sesko傷癒後連續兩仗建功，領隊Michael Carrick指其速度、體格及衝擊防線能力，為周日對曼城前的重要增益。",
+    "summary": "路透社9月11日報道，Benjamin Sesko傷癒復出後先在英超對愛華頓後備入球，再於歐聯4比0擊敗Sabah一役建功；Michael Carrick表示，球員逐步恢復比賽狀態，對周日曼市打吡是正面消息。",
+    "body": "曼聯前鋒Benjamin Sesko在脛骨傷勢休戰近三個月後，近兩場比賽連續取得入球。路透社報道，他先在英超作客2比2賽和愛華頓一役後備上陣並於末段破門，其後在周四歐聯主場4比0擊敗Sabah時再度建功。\n\n領隊Michael Carrick表示，Sesko的體格、速度及在最後一線衝擊對手防線的能力，是目前陣容的重要選項。曼聯下一場將於周日主場迎戰曼城，Sesko亦表示兩場入球提升信心，當前重點是恢復體能並準備打吡。",
+    "context": "曼聯在歐聯大勝Sabah後轉回英超賽程，周日曼市打吡是球隊近期最重要的本土賽事之一。Sesko剛從長期傷患回歸，出場時間仍受到管理。",
+    "why": "主力前鋒傷癒後連續入球，直接影響曼聯對曼城時的正選、後備及進攻部署；Carrick公開確認其狀態回升，具有即時賽前新聞價值。",
+    "watchNext": "留意Carrick在曼市打吡前的傷兵及正選更新、Sesko能否首次傷癒後踢足更多時間，以及曼聯如何在歐聯後調整前場輪換。",
+    "sourceName": "Reuters / Manchester United",
+    "sourceUrl": "https://www.reuters.com/sports/soccer/man-uniteds-carrick-pleased-with-seskos-return-form-ahead-city-derby-2026-09-11/",
+    "publishedAt": "2026-09-11T11:08:00+08:00",
+    "timeLabel": "9月11日11:08 HKT",
     "sources": [
-        {"name": "Reuters", "url": "https://www.reuters.com/sports/soccer/psv-held-by-shakhtar-fenerbahce-draw-with-roma-return-champions-league-2026-09-10/"},
-        {"name": "Manchester United", "url": "https://www.manutd.com/en/matches/matchcenter/man-utd-vs-sabah-match-2727843"}
+        {"name": "Reuters", "url": "https://www.reuters.com/sports/soccer/man-uniteds-carrick-pleased-with-seskos-return-form-ahead-city-derby-2026-09-11/"},
+        {"name": "Manchester United", "url": "https://www.manutd.com/en"}
     ]
 }
 
