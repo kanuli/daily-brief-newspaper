@@ -14,29 +14,29 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "data" / "desk-latest.json"
 HKT = dt.timezone(dt.timedelta(hours=8))
-PUBLISHED = dt.datetime.fromisoformat("2026-09-11T10:30:00+08:00")
+PUBLISHED = dt.datetime.fromisoformat("2026-09-11T15:47:00+08:00")
 MAX_AGE = dt.timedelta(hours=12)
 
 STORY = {
-    "id": "japan-katayama-us-fx-coordination-20260911",
+    "id": "japan-kioxia-us-listing-ai-investor-spotlight-20260911",
     "desk": "japan",
     "deskSlugs": ["japan"],
-    "section": "日本｜政策",
+    "section": "日本｜產業",
     "sectionLabel": "日本",
     "status": "LATEST",
-    "title": "片山皋月：日美將續就匯市密切溝通　維持有序外匯市場",
-    "dek": "日本財相片山皋月表示，日美聯手干預日圓並發表聯合聲明後，政策立場沒有改變，政府會繼續與美國財政部保持密切溝通。",
-    "summary": "日本財相片山皋月周五表示，日本政府會繼續與美國密切溝通，以確保外匯市場有序運作。她強調，日美早前協調干預日圓並發表聯合聲明後，日本的政策立場沒有改變。",
-    "body": "日本財相片山皋月周五在例行記者會表示，日本會繼續與美國財政部保持密切溝通，確保外匯市場有序運作。她說，自日美早前採取協調干預並發表聯合聲明以來，政府的政策立場完全沒有改變。\n\n被問到美國財長貝森特近日警告市場不要押注日圓下跌，片山表示，有關說法是相當直接的市場觀點。日圓走勢、進口成本及日本央行下一步政策仍受市場密切注視，日美官方協調亦繼續成為匯市的重要政策訊號。",
-    "context": "日美早前曾採取協調行動支持日圓；市場目前同時評估日本通脹、油價及日本央行政策前景。",
-    "why": "日本政府確認與美國在匯市政策上的協調立場沒有改變，直接關乎日圓穩定、輸入通脹及日本宏觀政策環境。",
-    "watchNext": "留意日本財務省與美國財政部後續表態、日圓波動，以及日本央行下周政策會議對利率與通脹風險的最新判斷。",
+    "title": "鎧俠擬赴美掛牌　大型AI基金經理：可提升日本晶片股全球能見度",
+    "dek": "日本記憶體晶片商鎧俠準備以美國存託股份形式赴美上市；Voya旗下AI基金經理認為，美國市場較高流動性有助日本科技企業接觸全球投資者。",
+    "summary": "日本記憶體晶片商鎧俠正準備在美國發行存託股份。Voya Investments一名管理140億美元AI主題基金的投資經理表示，美國上市可改善流動性，令日本半導體企業更容易進入全球大型基金的投資視野。",
+    "body": "日本記憶體晶片商鎧俠正準備在美國發行存託股份，以擴大投資者基礎。Reuters報道，Voya Investments一名管理140億美元AI主題基金的投資經理表示，鎧俠若能在美國市場交易，可改善股份流動性，並提高日本科技企業在全球投資者之間的能見度。\n\n鎧俠今年股價升幅在日經225指數成分股中居前，公司早在5月已表示正為美國上市作準備。該基金經理指出，日本供應鏈內有不少具吸引力的企業，但大型海外基金能否建立足夠規模持倉，往往取決於流動性；美國掛牌可能降低這項門檻。",
+    "context": "日本半導體與記憶體企業近年受惠於AI基建需求，但海外大型機構投資者仍會衡量本地市場流動性及交易便利程度。",
+    "why": "鎧俠若成功建立美國交易渠道，不只是單一公司的融資安排，也可能影響海外資金配置日本半導體供應鏈的方式。",
+    "watchNext": "留意鎧俠正式提交美國上市文件、ADS規模與時間表，以及其他日本科技企業會否跟隨採取跨市場上市策略。",
     "sourceName": "Reuters",
-    "sourceUrl": "https://www.reuters.com/world/asia-pacific/japan-maintain-close-communication-with-us-currency-markets-katayama-says-2026-09-11/",
-    "publishedAt": "2026-09-11T10:30:00+08:00",
-    "timeLabel": "9月11日10:30 HKT",
+    "sourceUrl": "https://www.reuters.com/world/asia-pacific/us-listing-could-put-japans-kioxia-global-ai-spotlight-voyas-thomas-says-2026-09-11/",
+    "publishedAt": "2026-09-11T15:47:00+08:00",
+    "timeLabel": "9月11日15:47 HKT",
     "sources": [
-        {"name": "Reuters", "url": "https://www.reuters.com/world/asia-pacific/japan-maintain-close-communication-with-us-currency-markets-katayama-says-2026-09-11/"}
+        {"name": "Reuters", "url": "https://www.reuters.com/world/asia-pacific/us-listing-could-put-japans-kioxia-global-ai-spotlight-voyas-thomas-says-2026-09-11/"}
     ]
 }
 
