@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """One-event fail-closed recovery for the current Manga/Anime desk.
 
-The event is source-backed and carries its real publication timestamp. It is
-eligible only for 24 hours; after that this script becomes a no-op rather than
-retimestamping old news.
+The event is source-backed and carries its real publication timestamp. MANTANWEB
+publishes in Japan Standard Time, so its 18:10 JST timestamp is represented as
+17:10 HKT below. It is eligible only for 24 hours; after that this script becomes
+a no-op rather than retimestamping old news.
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "data" / "desk-latest.json"
 HKT = dt.timezone(dt.timedelta(hours=8))
-PUBLISHED = dt.datetime.fromisoformat("2026-09-11T18:10:00+08:00")
+PUBLISHED = dt.datetime.fromisoformat("2026-09-11T17:10:00+08:00")
 MAX_AGE = dt.timedelta(hours=24)
 
 STORY = {
@@ -33,8 +34,8 @@ STORY = {
     "watchNext": "留意日本上映後的票房與觀眾反應、海外上映與串流安排，以及官方會否公布系列後續活動或紀念企劃。",
     "sourceName": "MANTANWEB / Kyoto Animation",
     "sourceUrl": "https://mantan-web.jp/article/20260911dog00m200047000a.html",
-    "publishedAt": "2026-09-11T18:10:00+08:00",
-    "timeLabel": "9月11日18:10 HKT",
+    "publishedAt": "2026-09-11T17:10:00+08:00",
+    "timeLabel": "9月11日17:10 HKT",
     "sources": [
         {"name": "MANTANWEB", "url": "https://mantan-web.jp/article/20260911dog00m200047000a.html"},
         {"name": "Kyoto Animation", "url": "https://anime-eupho.com/"}
@@ -55,11 +56,17 @@ def main() -> int:
         raise SystemExit("manga-anime desk missing/invalid")
 
     stories = desks["manga-anime"]
-    if any(isinstance(s, dict) and s.get("id") == STORY["id"] for s in stories):
-        print("MANGA_CURRENT_RECOVERY_NOOP already-present")
-        return 0
+    for idx, story in enumerate(stories):
+        if isinstance(story, dict) and story.get("id") == STORY["id"]:
+            if story == STORY:
+                print("MANGA_CURRENT_RECOVERY_NOOP already-current")
+                return 0
+            stories[idx] = dict(STORY)
+            PATH.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+            print(f"MANGA_CURRENT_RECOVERY_CORRECTED id={STORY['id']} age_h={age.total_seconds()/3600:.2f}")
+            return 0
 
-    stories.insert(0, STORY)
+    stories.insert(0, dict(STORY))
     PATH.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"MANGA_CURRENT_RECOVERY_ADDED id={STORY['id']} age_h={age.total_seconds()/3600:.2f}")
     return 0
