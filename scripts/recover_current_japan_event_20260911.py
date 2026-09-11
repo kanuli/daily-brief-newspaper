@@ -14,29 +14,29 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "data" / "desk-latest.json"
 HKT = dt.timezone(dt.timedelta(hours=8))
-PUBLISHED = dt.datetime.fromisoformat("2026-09-11T15:47:00+08:00")
+PUBLISHED = dt.datetime.fromisoformat("2026-09-11T18:49:00+08:00")
 MAX_AGE = dt.timedelta(hours=12)
 
 STORY = {
-    "id": "japan-kioxia-us-listing-ai-investor-spotlight-20260911",
+    "id": "japan-yen-seven-month-high-boj-tightening-20260911",
     "desk": "japan",
     "deskSlugs": ["japan"],
-    "section": "日本｜產業",
+    "section": "日本｜經濟",
     "sectionLabel": "日本",
     "status": "LATEST",
-    "title": "鎧俠擬赴美掛牌　大型AI基金經理：可提升日本晶片股全球能見度",
-    "dek": "日本記憶體晶片商鎧俠準備以美國存託股份形式赴美上市；Voya旗下AI基金經理認為，美國市場較高流動性有助日本科技企業接觸全球投資者。",
-    "summary": "日本記憶體晶片商鎧俠正準備在美國發行存託股份。Voya Investments一名管理140億美元AI主題基金的投資經理表示，美國上市可改善流動性，令日本半導體企業更容易進入全球大型基金的投資視野。",
-    "body": "日本記憶體晶片商鎧俠正準備在美國發行存託股份，以擴大投資者基礎。Reuters報道，Voya Investments一名管理140億美元AI主題基金的投資經理表示，鎧俠若能在美國市場交易，可改善股份流動性，並提高日本科技企業在全球投資者之間的能見度。\n\n鎧俠今年股價升幅在日經225指數成分股中居前，公司早在5月已表示正為美國上市作準備。該基金經理指出，日本供應鏈內有不少具吸引力的企業，但大型海外基金能否建立足夠規模持倉，往往取決於流動性；美國掛牌可能降低這項門檻。",
-    "context": "日本半導體與記憶體企業近年受惠於AI基建需求，但海外大型機構投資者仍會衡量本地市場流動性及交易便利程度。",
-    "why": "鎧俠若成功建立美國交易渠道，不只是單一公司的融資安排，也可能影響海外資金配置日本半導體供應鏈的方式。",
-    "watchNext": "留意鎧俠正式提交美國上市文件、ADS規模與時間表，以及其他日本科技企業會否跟隨採取跨市場上市策略。",
+    "title": "日圓升至七個月高位　市場聚焦日本央行加快收緊政策",
+    "dek": "Reuters周五市場回顧指出，日圓本周顯著走強，投資者加大押注日本央行收緊政策，並重新評估日本資金回流海外資產的可能性。",
+    "summary": "Reuters在周五金融市場回顧中指出，日圓升至約七個月高位，市場對日本央行加快收緊政策的預期升溫。日本利率正常化及潛在資金回流，正成為全球債券與外匯市場的重要變數。",
+    "body": "日圓本周顯著走強，成為全球市場焦點之一。Reuters周五的金融市場回顧指出，投資者正提高對日本央行更快收緊貨幣政策的預期，日圓升至約七個月高位；市場同時關注日本投資者會否因本土收益率上升而把部分海外資金調回國內。\n\n日本貨幣政策正常化的影響不只限於匯市。日本長期是全球低成本資金的重要來源，若利率繼續上升並推動資金回流，可能改變國際債券與股票市場的資金配置。市場下一個焦點是日本央行下周政策會議，以及央行對加息步伐和通脹風險的最新判斷。",
+    "context": "日本央行正處於多年超寬鬆政策後的正常化階段，而日圓走勢、能源成本與國內通脹仍會影響加息節奏。",
+    "why": "日圓與日本利率不只影響本地家庭和企業成本，也牽動全球套息交易及日本資金的海外配置，因此政策預期變化具有跨市場影響。",
+    "watchNext": "留意日本央行下周議息結果、總裁植田和男對未來加息速度的說法，以及日圓和日本國債收益率是否延續升勢。",
     "sourceName": "Reuters",
-    "sourceUrl": "https://www.reuters.com/world/asia-pacific/us-listing-could-put-japans-kioxia-global-ai-spotlight-voyas-thomas-says-2026-09-11/",
-    "publishedAt": "2026-09-11T15:47:00+08:00",
-    "timeLabel": "9月11日15:47 HKT",
+    "sourceUrl": "https://www.reuters.com/commentary/reuters-open-interest/triple-digit-oil-yen-whiplash-2000-iphone-financial-week-five-charts-2026-09-11/",
+    "publishedAt": "2026-09-11T18:49:00+08:00",
+    "timeLabel": "9月11日18:49 HKT",
     "sources": [
-        {"name": "Reuters", "url": "https://www.reuters.com/world/asia-pacific/us-listing-could-put-japans-kioxia-global-ai-spotlight-voyas-thomas-says-2026-09-11/"}
+        {"name": "Reuters", "url": "https://www.reuters.com/commentary/reuters-open-interest/triple-digit-oil-yen-whiplash-2000-iphone-financial-week-five-charts-2026-09-11/"}
     ]
 }
 
