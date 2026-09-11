@@ -34,11 +34,11 @@ VALID_IMPACTS = {"↑", "↓", "↔"}
 VALID_COLLECTION_STATUS = {"COMPLETE", "INCOMPLETE", "COLLECTION_FAILURE"}
 MAX_SNAPSHOT_AGE_HOURS = 72
 MAX_COVERAGE_CHECK_AGE_HOURS = 3.0
-# A fresh source/editorial review is required every three hours. When that review
-# finds no stronger new fact, a still-current verified story may remain for at
-# most 45 days; the original event date remains authoritative and is never
-# refreshed merely by changing display/check timestamps.
-MAX_SUBSTANTIVE_STORY_AGE_HOURS = 1080.0
+# A fresh source/editorial review is required every three hours, but review
+# timestamps never refresh old public news. Every tracked symbol must still
+# carry at least one substantive event or market read-through from the last
+# 48 hours. This matches the heartbeat contract and fails closed on stale copy.
+MAX_SUBSTANTIVE_STORY_AGE_HOURS = 48.0
 SUBSTANTIVE_TIME_FIELDS = (
     "primaryPublishedAt", "sourcePublishedAt", "eventPublishedAt", "marketAsOfAt", "publishedAt"
 )
