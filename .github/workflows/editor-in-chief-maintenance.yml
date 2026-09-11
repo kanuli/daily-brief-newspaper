@@ -7,6 +7,7 @@ on:
       - ".github/workflows/editor-in-chief-maintenance.yml"
       - ".github/workflows/canto-nano-watchdog.yml"
       - "scripts/editor_in_chief.py"
+      - "scripts/semantic_copy_guard.py"
       - "scripts/test_editor_in_chief.py"
       - "scripts/desk_freshness_policy.py"
       - "scripts/validate_desk_freshness.py"
@@ -194,6 +195,7 @@ jobs:
           run_validator publication-current python scripts/validate_publication_current.py
           run_validator desk-freshness python scripts/validate_desk_freshness.py --report /tmp/desk-freshness.json
           run_validator desk-freshness-tests python scripts/test_desk_freshness.py
+          run_validator editor-in-chief-tests python scripts/test_editor_in_chief.py
           run_validator editorial-v2 python scripts/validate_editorial_v2.py
           run_validator tts-language python scripts/audit_tts_language.py
 
