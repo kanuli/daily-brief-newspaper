@@ -34,11 +34,11 @@ VALID_IMPACTS = {"↑", "↓", "↔"}
 VALID_COLLECTION_STATUS = {"COMPLETE", "INCOMPLETE", "COLLECTION_FAILURE"}
 MAX_SNAPSHOT_AGE_HOURS = 72
 MAX_COVERAGE_CHECK_AGE_HOURS = 3.0
-# A fresh source/editorial review remains mandatory every three hours. Public
-# stories may be retained for a bounded 45-day window when that fresh review
-# confirms they are still current/useful and no stronger verified development
-# exists. Review/display timestamps never change the underlying event date.
-MAX_SUBSTANTIVE_STORY_AGE_HOURS = 1080.0
+# A fresh source/editorial review is required every three hours, but review
+# timestamps never refresh old public news. Every tracked symbol must still
+# carry at least one substantive event or market read-through from the last
+# 48 hours. This matches the heartbeat contract and fails closed on stale copy.
+MAX_SUBSTANTIVE_STORY_AGE_HOURS = 48.0
 SUBSTANTIVE_TIME_FIELDS = (
     "primaryPublishedAt", "sourcePublishedAt", "eventPublishedAt", "marketAsOfAt", "publishedAt"
 )
@@ -82,10 +82,6 @@ def substantive_story_time(story):
         if dt is not None:
             return dt.astimezone(timezone.utc), field
 
-    # Legacy artifacts can encode only the real event calendar date in the
-    # stable story id. Map that date to 00:00 HKT, not 23:59:59: start-of-day
-    # deliberately overstates age and therefore cannot make an old story look
-    # fresher. Display/check timestamps remain ineligible for freshness.
     match = ID_DATE_RE.search(str(story.get("id") or ""))
     if match:
         try:
@@ -219,7 +215,7 @@ def main():
             f"{ticker}: newest substantive story/read-through is stale ({youngest_age:.1f}h old; maximum {MAX_SUBSTANTIVE_STORY_AGE_HOURS}h; story={youngest_id}; source={time_source}); a fresh review alone cannot refresh old content",
         )
 
-    print(f"Stock News validation OK: {len(EXPECTED)} tickers, {len(seen)} stories; bounded substantive per-symbol retention OK")
+    print(f"Stock News validation OK: {len(EXPECTED)} tickers, {len(seen)} stories; hard substantive per-symbol freshness OK")
 
 
 if __name__ == "__main__":
