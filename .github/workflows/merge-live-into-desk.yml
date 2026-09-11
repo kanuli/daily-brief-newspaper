@@ -18,6 +18,7 @@ on:
       - "scripts/recover_desk_depth.py"
       - "scripts/recover_desk_depth_watchdog.py"
       - "scripts/recover_desk_freshness_watchdog.py"
+      - "scripts/recover_current_manga_event_20260910.py"
       - "scripts/restore_complete_desk_reservoir.py"
       - "scripts/validate_publication_current.py"
       - ".github/workflows/merge-live-into-desk.yml"
@@ -123,6 +124,10 @@ jobs:
       - name: Recover hard desk depth
         shell: bash
         run: python scripts/recover_desk_depth_watchdog.py
+
+      - name: Recover current source-backed Manga event
+        shell: bash
+        run: python scripts/recover_current_manga_event_20260910.py
 
       - name: Recover stale specialist desks
         shell: bash
