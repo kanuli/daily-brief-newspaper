@@ -3,6 +3,9 @@ name: Deploy Daily Brief to GitHub Pages
 on:
   push:
     branches: ["main"]
+  workflow_run:
+    workflows: ["Publish Canto Nano Female Cantonese News Voice"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
