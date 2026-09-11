@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One-event fail-closed recovery for the current Hong Kong desk.
 
-Uses a genuinely current Reuters report and its real publication time.
+Uses a genuinely current source report and its real publication time.
 It never retimestamps stale content: after the 12-hour Hong Kong SLA the script
 becomes a no-op and lets freshness validation fail closed.
 """
@@ -14,29 +14,29 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "data" / "desk-latest.json"
 HKT = dt.timezone(dt.timedelta(hours=8))
-PUBLISHED = dt.datetime.fromisoformat("2026-09-11T18:47:00+08:00")
+PUBLISHED = dt.datetime.fromisoformat("2026-09-11T22:29:00+08:00")
 MAX_AGE = dt.timedelta(hours=12)
 
 STORY = {
-    "id": "hong-kong-zai-share-placement-convertible-bonds-20260911",
+    "id": "hong-kong-pillar-of-shame-denmark-return-talks-20260911",
     "desk": "hong-kong",
     "deskSlugs": ["hong-kong"],
-    "section": "香港｜資本市場",
+    "section": "香港｜司法與社會",
     "sectionLabel": "香港",
     "status": "LATEST",
-    "title": "智譜AI在港啟動約50億美元再融資　配股兼發可換股債",
-    "dek": "北京AI企業智譜AI在香港啟動約20億美元配股及約30億美元可換股債發售，資金擬投向研發、算力基建及擴張。",
-    "summary": "Reuters引述交易條款報道，智譜AI在香港啟動約20億美元新股配售，並同步出售約30億美元可換股債。配股價為每股714港元，較周五收市價折讓約一成；公司表示集資將用於研發、算力基建、擴張及潛在投資。",
-    "body": "北京人工智能企業智譜AI在香港啟動新一輪大型融資。Reuters引述交易條款報道，公司計劃配售2,197萬股香港新股，每股作價714港元，較周五收市價793港元折讓約10%，集資規模約20億美元。\n\n公司同時推出約30億美元可換股債，兩項交易彼此獨立。智譜AI今年1月在港上市，7月再透過後續股份發售集資約40億美元。今次所得資金擬用於研發、算力基建、業務擴張、策略投資及收購等用途，反映AI企業持續透過香港資本市場籌集高額算力及人才投入所需資金。",
-    "context": "香港今年新股及再融資活動活躍，多家中國AI企業亦正尋求在港上市或擴大融資。大型配股及可換股債交易同時考驗市場承接力與估值。",
-    "why": "智譜AI一次過啟動約50億美元股份與債券融資，顯示香港仍是中國AI企業重要的國際集資平台，亦會影響本地股票市場的資金供求與科技股估值。",
-    "watchNext": "留意最終定價、認購需求、可換股債條款，以及交易完成後智譜AI股價和香港AI概念股的資金流向。",
-    "sourceName": "Reuters",
-    "sourceUrl": "https://www.reuters.com/world/asia-pacific/china-ai-developer-zai-launches-5-billion-hong-kong-share-convertible-bond-sales-2026-09-11/",
-    "publishedAt": "2026-09-11T18:47:00+08:00",
-    "timeLabel": "9月11日18:47 HKT",
+    "title": "國殤之柱作者擬促丹麥政府與港府交涉　要求取回被扣雕塑",
+    "dek": "丹麥雕塑家高志活表示，將尋求丹麥當局把作品列作文化遺產並與香港方面交涉；港府則反駁其所有權說法。",
+    "summary": "《南華早報》報道，國殤之柱作者、丹麥雕塑家高志活表示，計劃要求丹麥政府正式把雕塑列為藝術品及丹麥文化遺產，並與香港方面交涉取回作品。香港官員則表示，相關雕塑過往曾交予已解散的香港市民支援愛國民主運動聯合會，對其所有權主張提出異議。",
+    "body": "八米高的「國殤之柱」處置問題再次受到關注。丹麥雕塑家高志活向《南華早報》表示，他準備要求丹麥政府正式確認作品屬藝術品及丹麥文化遺產，並由官方與香港方面交涉，希望把雕塑交還其所稱的合法持有人。\n\n高志活稱已向丹麥國會外交政策委員會提出事件，歐洲議會跨黨派議員及歐盟駐港辦事處亦有跟進。香港方面則反駁其所有權說法，指出作品過往與已解散的支聯會存在安排。事件在香港法院就支聯會前領導人國安案件判刑後再度升溫，作品未來如何處理仍有待司法及行政程序釐清。",
+    "context": "國殤之柱自1997年起曾長期在香港大學展示，2021年被校方移走，之後在相關國安案件中成為證物。作者多年來一直要求取回作品。",
+    "why": "事件牽涉藝術品所有權、司法證物處置及香港與丹麥之間可能出現的外交交涉，亦可能成為近期國安案件後續的一項具體爭議。",
+    "watchNext": "留意丹麥政府是否正式介入、香港法院或相關部門如何處理雕塑，以及作品所有權和證物處置是否出現新的法律程序。",
+    "sourceName": "South China Morning Post",
+    "sourceUrl": "https://www.scmp.com/news/hong-kong/law-and-crime/article/3367259/pillar-shame-sculptor-ask-denmark-negotiate-artworks-return",
+    "publishedAt": "2026-09-11T22:29:00+08:00",
+    "timeLabel": "9月11日22:29 HKT",
     "sources": [
-        {"name": "Reuters", "url": "https://www.reuters.com/world/asia-pacific/china-ai-developer-zai-launches-5-billion-hong-kong-share-convertible-bond-sales-2026-09-11/"}
+        {"name": "South China Morning Post", "url": "https://www.scmp.com/news/hong-kong/law-and-crime/article/3367259/pillar-shame-sculptor-ask-denmark-negotiate-artworks-return"}
     ]
 }
 
