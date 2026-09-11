@@ -3,6 +3,8 @@ import datetime
 import json
 import pathlib
 import re
+import subprocess
+import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -133,13 +135,46 @@ def validate_desks(desk):
     need(len(desks.get("japan", [])) >= 8, "Japan desk must contain at least 8 unique current stories")
 
 
+def report_voice_currentness_nonblocking():
+    """Surface voice health without delaying text publication.
+
+    Voice is asynchronous by policy, so missing/stale audio must never block a
+    Pages deployment. The watchdog still needs an explicit failure signal when
+    current eligible copy is not yet playable, rather than a misleading all-
+    green publication validation result.
+    """
+    validator = ROOT / "scripts" / "validate_voice_currentness.py"
+    if not validator.exists():
+        print("VOICE_CURRENTNESS_AUDIT_MISSING", file=sys.stderr)
+        return
+    proc = subprocess.run(
+        [sys.executable, str(validator)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.stdout.strip():
+        print(proc.stdout.strip())
+    if proc.returncode != 0:
+        if proc.stderr.strip():
+            print(proc.stderr.strip(), file=sys.stderr)
+        print(
+            "VOICE_CURRENTNESS_PENDING_NONBLOCKING publication may deploy; COMPLETE must wait for self-healing audio closure",
+            file=sys.stderr,
+        )
+    else:
+        print("VOICE_CURRENTNESS_OK")
+
+
 def main():
     latest = load("latest.json")
     live = load("live.json")
     desk = load("desk-latest.json")
     validate_desks(desk)
     validate_live(latest, live, desk)
-    print("CURRENT_PUBLICATION_VALIDATION_OK", live["windowLabel"], f"mode={live['mode']}", f"items={len(live['items'])}", f"japan={len(desk['desks']['japan'])}", f"next={live['nextUpdateLabel']}")
+    print("CURRENT_PUBLICATION_TEXT_VALIDATION_OK", live["windowLabel"], f"mode={live['mode']}", f"items={len(live['items'])}", f"japan={len(desk['desks']['japan'])}", f"next={live['nextUpdateLabel']}")
+    report_voice_currentness_nonblocking()
 
 
 if __name__ == "__main__":
