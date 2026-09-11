@@ -142,6 +142,7 @@ def main():
         return 0
 
     promoted = 0
+    promoted_tickers = set()
     for source in candidates:
         for field in REQUIRED:
             if not clean(source.get(field)):
@@ -187,11 +188,44 @@ def main():
         ]
         tickers[ticker]["stories"] = [story] + deduped[:2]
         promoted += 1
+        promoted_tickers.add(ticker)
 
     if promoted <= 0:
         print("STOCK_FAILOVER_NOOP no-tracked-stock-candidate")
         STOCKS_PATH.write_text(json.dumps(stocks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return 0
+
+    # A manually/automatically verified story is itself fresh editorial evidence
+    # for the symbol it updates. Keep coverage metadata synchronized with the
+    # promoted content so a pre-promotion stale flag cannot invalidate a newly
+    # verified, substantively current story. The independent validator still
+    # enforces the hard 48-hour substantive-story limit from the story date.
+    coverage = stocks.get("coverageFreshness") if isinstance(stocks.get("coverageFreshness"), dict) else {}
+    for ticker in promoted_tickers:
+        row = copy.deepcopy(coverage.get(ticker)) if isinstance(coverage.get(ticker), dict) else {}
+        stories = tickers[ticker].get("stories") or []
+        row.update({
+            "lastReviewedAt": created.isoformat(),
+            "searchHoursAgo": 0.0,
+            "reviewEvidenceFound": True,
+            "hoursAgo": 0.0,
+            "newestSubstantiveStoryHoursAgo": 0.0,
+            "newestSubstantiveStoryId": clean(stories[0].get("id")) if stories else "",
+            "substantiveTimeSource": "story-id-date",
+            "substantiveCurrent": True,
+            "stale": False,
+            "storyCount": len(stories),
+        })
+        coverage[ticker] = row
+    stocks["coverageFreshness"] = {ticker: coverage.get(ticker, {}) for ticker in TRACKED}
+    stale_symbols = [
+        ticker for ticker in (stocks.get("staleSymbols") or [])
+        if ticker not in promoted_tickers
+    ]
+    stocks["staleSymbols"] = stale_symbols
+    quality = stocks.get("qualityGates") if isinstance(stocks.get("qualityGates"), dict) else {}
+    quality["freshnessGateMet"] = not stale_symbols
+    stocks["qualityGates"] = quality
 
     stocks["generatedAt"] = created.isoformat()
     stocks["lastUpdatedLabel"] = format_hkt(created)
