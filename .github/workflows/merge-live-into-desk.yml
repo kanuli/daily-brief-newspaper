@@ -11,6 +11,8 @@ on:
       - "scripts/desk_retention.py"
       - "scripts/desk_freshness_policy.py"
       - "scripts/sync_daily_into_desk.py"
+      - "scripts/normalize_daily_sections.py"
+      - "scripts/validate_daily_v3.py"
       - "scripts/validate_desk_freshness.py"
       - "scripts/test_desk_freshness.py"
       - "scripts/recover_desk_depth.py"
@@ -50,6 +52,39 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
           git reset --hard origin/main
+
+      - name: Normalize and validate Daily v3 sections
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/normalize_daily_sections.py
+          python scripts/validate_daily_v3.py
+
+      - name: Persist Daily schema repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          DATE=$(python -c 'import json; print(json.load(open("data/latest.json",encoding="utf-8")).get("date", ""))')
+          git add -- data/latest.json
+          if [ -n "$DATE" ] && [ -f "data/${DATE}.json" ]; then
+            git add -- "data/${DATE}.json"
+          fi
+          if git diff --cached --quiet; then
+            echo "DAILY_SCHEMA_CHECKPOINT_NOOP"
+            exit 0
+          fi
+          git commit -m "Normalize Daily v3 sections index"
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "DAILY_SCHEMA_CHECKPOINT_PASS"
+              exit 0
+            fi
+            sleep $((attempt * 2))
+            git fetch origin main
+            git rebase origin/main
+          done
+          echo "Daily schema repair could not push after retries" >&2
+          exit 1
 
       - name: Restore complete reservoir after destructive overwrite
         shell: bash
