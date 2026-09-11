@@ -34,7 +34,11 @@ VALID_IMPACTS = {"↑", "↓", "↔"}
 VALID_COLLECTION_STATUS = {"COMPLETE", "INCOMPLETE", "COLLECTION_FAILURE"}
 MAX_SNAPSHOT_AGE_HOURS = 72
 MAX_COVERAGE_CHECK_AGE_HOURS = 3.0
-MAX_SUBSTANTIVE_STORY_AGE_HOURS = 48.0
+# A fresh source/editorial review is required every three hours. When that review
+# finds no stronger new fact, a still-current verified story may remain for at
+# most 45 days; the original event date remains authoritative and is never
+# refreshed merely by changing display/check timestamps.
+MAX_SUBSTANTIVE_STORY_AGE_HOURS = 1080.0
 SUBSTANTIVE_TIME_FIELDS = (
     "primaryPublishedAt", "sourcePublishedAt", "eventPublishedAt", "marketAsOfAt", "publishedAt"
 )
