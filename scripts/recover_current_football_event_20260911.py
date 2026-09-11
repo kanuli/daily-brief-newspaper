@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""One-event fail-closed recovery for current Manchester United/Football desks.
+"""One-event fail-closed recovery for the current Football desk.
 
-Uses a genuinely current Reuters report and its real publication time.
+Uses a genuinely current Reuters match report and its real publication time.
 It never retimestamps stale content: after the 8-hour Football SLA the script
 becomes a no-op and lets freshness validation fail closed.
 """
@@ -14,30 +14,29 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "data" / "desk-latest.json"
 HKT = dt.timezone(dt.timedelta(hours=8))
-PUBLISHED = dt.datetime.fromisoformat("2026-09-11T11:08:00+08:00")
+PUBLISHED = dt.datetime.fromisoformat("2026-09-12T05:38:00+08:00")
 MAX_AGE = dt.timedelta(hours=8)
 
 STORY = {
-    "id": "manchester-united-sesko-city-derby-return-form-20260911",
-    "desk": "manchester-united",
-    "deskSlugs": ["manchester-united", "football"],
-    "section": "Manchester United｜曼市打吡",
-    "sectionLabel": "Manchester United",
+    "id": "football-rennes-marseille-thomasson-ligue1-20260912",
+    "desk": "football",
+    "deskSlugs": ["football"],
+    "section": "足球｜法甲",
+    "sectionLabel": "足球",
     "status": "LATEST",
-    "title": "錫斯高連續兩仗入球　卡域克稱復勇為曼市打吡添助力",
-    "dek": "曼聯前鋒Benjamin Sesko傷癒後連續兩仗建功，領隊Michael Carrick指其速度、體格及衝擊防線能力，為周日對曼城前的重要增益。",
-    "summary": "路透社9月11日報道，Benjamin Sesko傷癒復出後先在英超對愛華頓後備入球，再於歐聯4比0擊敗Sabah一役建功；Michael Carrick表示，球員逐步恢復比賽狀態，對周日曼市打吡是正面消息。",
-    "body": "曼聯前鋒Benjamin Sesko在脛骨傷勢休戰近三個月後，近兩場比賽連續取得入球。路透社報道，他先在英超作客2比2賽和愛華頓一役後備上陣並於末段破門，其後在周四歐聯主場4比0擊敗Sabah時再度建功。\n\n領隊Michael Carrick表示，Sesko的體格、速度及在最後一線衝擊對手防線的能力，是目前陣容的重要選項。曼聯下一場將於周日主場迎戰曼城，Sesko亦表示兩場入球提升信心，當前重點是恢復體能並準備打吡。",
-    "context": "曼聯在歐聯大勝Sabah後轉回英超賽程，周日曼市打吡是球隊近期最重要的本土賽事之一。Sesko剛從長期傷患回歸，出場時間仍受到管理。",
-    "why": "主力前鋒傷癒後連續入球，直接影響曼聯對曼城時的正選、後備及進攻部署；Carrick公開確認其狀態回升，具有即時賽前新聞價值。",
-    "watchNext": "留意Carrick在曼市打吡前的傷兵及正選更新、Sesko能否首次傷癒後踢足更多時間，以及曼聯如何在歐聯後調整前場輪換。",
-    "sourceName": "Reuters / Manchester United",
-    "sourceUrl": "https://www.reuters.com/sports/soccer/man-uniteds-carrick-pleased-with-seskos-return-form-ahead-city-derby-2026-09-11/",
-    "publishedAt": "2026-09-11T11:08:00+08:00",
-    "timeLabel": "9月11日11:08 HKT",
+    "title": "湯馬臣一箭定江山　雷恩1比0挫馬賽暫登法甲榜首",
+    "dek": "Adrien Thomasson下半場攻入全場唯一入球，雷恩主場1比0擊敗馬賽，四戰累積10分暫升法甲榜首；馬賽則吞下三連敗。",
+    "summary": "Reuters報道，雷恩憑Adrien Thomasson第52分鐘入球，主場1比0擊敗馬賽，四戰取得10分並暫時升上法甲榜首。馬賽開季首輪大勝後連輸三場，聯賽形勢迅速轉差。",
+    "body": "雷恩周五在法甲主場1比0擊敗馬賽。上半場雙方未能打破僵局，到第52分鐘，後備上陣的Mousa Tamari把球頂回門前，Adrien Thomasson把握機會射入，取得他加盟雷恩後首個入球。\n\nThomasson其後曾射中橫楣，未能擴大比數，但雷恩仍守住勝果。球隊四戰累積10分，暫時以一分領先少賽一場的摩納哥升上榜首。馬賽則在開季4比0大勝斯特拉斯堡後，接連不敵摩納哥、巴黎FC及雷恩，三連敗後只得3分。",
+    "context": "法甲開季前列形勢仍未定型，摩納哥、巴黎聖日耳門等球隊仍有機會在本輪後改寫排名；雷恩今仗先把壓力交給其他爭標隊伍。",
+    "why": "雷恩暫登榜首及馬賽三連敗同時改變法甲早段走勢，後者的低迷亦會加大教練與陣容調整壓力。",
+    "watchNext": "留意摩納哥周六作客斯特拉斯堡，以及巴黎聖日耳門周日作客比斯特的結果；馬賽下一輪能否止住連敗亦是焦點。",
+    "sourceName": "Reuters",
+    "sourceUrl": "https://www.reuters.com/sports/soccer/thomasson-target-as-renne-beat-marseille-go-top-ligue-1-2026-09-11/",
+    "publishedAt": "2026-09-12T05:38:00+08:00",
+    "timeLabel": "9月12日05:38 HKT",
     "sources": [
-        {"name": "Reuters", "url": "https://www.reuters.com/sports/soccer/man-uniteds-carrick-pleased-with-seskos-return-form-ahead-city-derby-2026-09-11/"},
-        {"name": "Manchester United", "url": "https://www.manutd.com/en"}
+        {"name": "Reuters", "url": "https://www.reuters.com/sports/soccer/thomasson-target-as-renne-beat-marseille-go-top-ligue-1-2026-09-11/"}
     ]
 }
 
@@ -53,22 +52,17 @@ def main() -> int:
     desks = data.get("desks")
     if not isinstance(desks, dict):
         raise SystemExit("desk-latest desks missing/invalid")
-    for slug in ("manchester-united", "football"):
-        if not isinstance(desks.get(slug), list):
-            raise SystemExit(f"{slug} desk missing/invalid")
+    if not isinstance(desks.get("football"), list):
+        raise SystemExit("football desk missing/invalid")
 
-    changed = False
-    for slug in ("manchester-united", "football"):
-        stories = desks[slug]
-        if not any(isinstance(s, dict) and s.get("id") == STORY["id"] for s in stories):
-            stories.insert(0, dict(STORY))
-            changed = True
-
-    if changed:
-        PATH.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-        print(f"FOOTBALL_CURRENT_RECOVERY_ADDED id={STORY['id']} age_h={age.total_seconds()/3600:.2f}")
-    else:
+    stories = desks["football"]
+    if any(isinstance(s, dict) and s.get("id") == STORY["id"] for s in stories):
         print("FOOTBALL_CURRENT_RECOVERY_NOOP already-present")
+        return 0
+
+    stories.insert(0, dict(STORY))
+    PATH.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    print(f"FOOTBALL_CURRENT_RECOVERY_ADDED id={STORY['id']} age_h={age.total_seconds()/3600:.2f}")
     return 0
 
 
