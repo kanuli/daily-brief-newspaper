@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One-event fail-closed recovery for the current Football desk.
 
-Uses a genuinely current Reuters match report and its real publication time.
+Uses a genuinely current Reuters football report and its real publication time.
 It never retimestamps stale content: after the 8-hour Football SLA the script
 becomes a no-op and lets freshness validation fail closed.
 """
@@ -14,29 +14,29 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "data" / "desk-latest.json"
 HKT = dt.timezone(dt.timedelta(hours=8))
-PUBLISHED = dt.datetime.fromisoformat("2026-09-12T05:38:00+08:00")
+PUBLISHED = dt.datetime.fromisoformat("2026-09-12T19:38:00+08:00")
 MAX_AGE = dt.timedelta(hours=8)
 
 STORY = {
-    "id": "football-rennes-marseille-thomasson-ligue1-20260912",
+    "id": "football-dr-congo-world-cup-recruitment-20260912",
     "desk": "football",
     "deskSlugs": ["football"],
-    "section": "足球｜法甲",
+    "section": "足球｜國際賽",
     "sectionLabel": "足球",
     "status": "LATEST",
-    "title": "湯馬臣一箭定江山　雷恩1比0挫馬賽暫登法甲榜首",
-    "dek": "Adrien Thomasson下半場攻入全場唯一入球，雷恩主場1比0擊敗馬賽，四戰累積10分暫升法甲榜首；馬賽則吞下三連敗。",
-    "summary": "Reuters報道，雷恩憑Adrien Thomasson第52分鐘入球，主場1比0擊敗馬賽，四戰取得10分並暫時升上法甲榜首。馬賽開季首輪大勝後連輸三場，聯賽形勢迅速轉差。",
-    "body": "雷恩周五在法甲主場1比0擊敗馬賽。上半場雙方未能打破僵局，到第52分鐘，後備上陣的Mousa Tamari把球頂回門前，Adrien Thomasson把握機會射入，取得他加盟雷恩後首個入球。\n\nThomasson其後曾射中橫楣，未能擴大比數，但雷恩仍守住勝果。球隊四戰累積10分，暫時以一分領先少賽一場的摩納哥升上榜首。馬賽則在開季4比0大勝斯特拉斯堡後，接連不敵摩納哥、巴黎FC及雷恩，三連敗後只得3分。",
-    "context": "法甲開季前列形勢仍未定型，摩納哥、巴黎聖日耳門等球隊仍有機會在本輪後改寫排名；雷恩今仗先把壓力交給其他爭標隊伍。",
-    "why": "雷恩暫登榜首及馬賽三連敗同時改變法甲早段走勢，後者的低迷亦會加大教練與陣容調整壓力。",
-    "watchNext": "留意摩納哥周六作客斯特拉斯堡，以及巴黎聖日耳門周日作客比斯特的結果；馬賽下一輪能否止住連敗亦是焦點。",
+    "title": "剛果（金）世盃突破帶動招兵　六名歐洲球員加入非國盃外圍賽名單",
+    "dek": "剛果（金）今年世盃打入32強後擴大國家隊人才庫，教練Desabre新召六名效力歐洲球會的球員，包括前曼聯中堅Willy Kambwala。",
+    "summary": "Reuters報道，剛果（金）今年首次突破世盃分組賽後，吸引更多具剛果血統的歐洲出生球員加入。球隊本月非洲國家盃外圍賽名單新增六名歐洲球會球員，部分人仍需FIFA批准轉換代表資格。",
+    "body": "剛果（金）在今年世界盃打入32強後，正加快擴大國家隊人才庫。Reuters報道，教練Sebastien Desabre為9月24日主場對赤道幾內亞及四日後作客津巴布韋的2027非洲國家盃外圍賽，新召六名效力歐洲球會的球員。\n\n名單包括前曼聯中堅、現效力Como的Willy Kambwala，以及Ezechiel Banzuzi、Stanis Idumbo、Jordy Makengo、Noah Mbamba和Kevin Pedro。當中部分球員曾代表荷蘭、比利時或法國青年隊，需要取得FIFA批准才能正式轉換代表資格。Desabre亦計劃在10月對烏干達的友賽再考察更多具剛果血統的歐洲球員。",
+    "context": "剛果（金）今年在北美世界盃首次突破分組賽，32強對英格蘭一度接近爆冷。成績提升令國家隊對海外雙重國籍球員的吸引力增加。",
+    "why": "國家隊賽事的成功正直接改變球員代表資格選擇，剛果（金）若能吸納更多歐洲聯賽球員，將提高2027非洲國家盃及其後國際賽競爭力。",
+    "watchNext": "留意FIFA是否批准相關球員轉換代表資格、9月兩場非國盃外圍賽名單，以及10月友賽會否再有更多歐洲出生球員加入。",
     "sourceName": "Reuters",
-    "sourceUrl": "https://www.reuters.com/sports/soccer/thomasson-target-as-renne-beat-marseille-go-top-ligue-1-2026-09-11/",
-    "publishedAt": "2026-09-12T05:38:00+08:00",
-    "timeLabel": "9月12日05:38 HKT",
+    "sourceUrl": "https://www.reuters.com/sports/soccer/dr-congos-world-cup-exploits-encourage-more-players-join-their-cause-2026-09-12/",
+    "publishedAt": "2026-09-12T19:38:00+08:00",
+    "timeLabel": "9月12日19:38 HKT",
     "sources": [
-        {"name": "Reuters", "url": "https://www.reuters.com/sports/soccer/thomasson-target-as-renne-beat-marseille-go-top-ligue-1-2026-09-11/"}
+        {"name": "Reuters", "url": "https://www.reuters.com/sports/soccer/dr-congos-world-cup-exploits-encourage-more-players-join-their-cause-2026-09-12/"}
     ]
 }
 
