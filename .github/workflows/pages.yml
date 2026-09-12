@@ -153,21 +153,24 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
-          import json
+          import html, json
           from pathlib import Path
           latest=json.load(open('data/latest.json',encoding='utf-8')); live=json.load(open('data/live.json',encoding='utf-8')); desk=json.load(open('data/desk-latest.json',encoding='utf-8')); stocks=json.load(open('data/stocks-latest.json',encoding='utf-8'))
           pages=['index.html','live.html','world.html','asia.html','hong-kong.html','japan.html','finance.html','stocks.html','technology.html','manga-anime.html','manchester-united.html','football.html','archive.html']
+          def rendered_title_present(story, page):
+              title=str((story or {}).get('title') or '')
+              return bool(title) and html.escape(title, quote=True) in Path(page).read_text(encoding='utf-8')
           for page in pages:
               if 'name="daily-brief-prerender"' not in Path(page).read_text(encoding='utf-8'): raise SystemExit(f'{page}: missing prerender marker')
           lead=next((a for a in latest.get('articles',[]) if a.get('id')==latest.get('leadId')),None); home=Path('index.html').read_text(encoding='utf-8')
-          if not lead or lead.get('title') not in home or '各版最新' not in home: raise SystemExit('index prerender stale')
-          if live.get('items') and live['items'][0].get('title') not in Path('live.html').read_text(encoding='utf-8'): raise SystemExit('live prerender stale')
+          if not lead or not rendered_title_present(lead,'index.html') or '各版最新' not in home: raise SystemExit('index prerender stale')
+          if live.get('items') and not rendered_title_present(live['items'][0],'live.html'): raise SystemExit('live prerender stale')
           first=(stocks.get('tracked') or [None])[0]; stories=((stocks.get('tickers') or {}).get(first) or {}).get('stories') or []
-          if not stories or stories[0].get('title') not in Path('stocks.html').read_text(encoding='utf-8'): raise SystemExit('stocks prerender stale')
+          if not stories or not rendered_title_present(stories[0],'stocks.html'): raise SystemExit('stocks prerender stale')
           mapping={'world.html':'world','asia.html':'asia','hong-kong.html':'hong-kong','japan.html':'japan','finance.html':'market-economy','technology.html':'ai-tech','manga-anime.html':'manga-anime','manchester-united.html':'manchester-united','football.html':'football'}
           for page,slug in mapping.items():
               rows=(desk.get('desks') or {}).get(slug) or []
-              if not rows or rows[0].get('title') not in Path(page).read_text(encoding='utf-8'): raise SystemExit(f'{page}: prerender not newest-first/current')
+              if not rows or not rendered_title_present(rows[0],page): raise SystemExit(f'{page}: prerender not newest-first/current')
           print('NO_JS_PRERENDER_VERIFY_OK',len(pages))
           PY
 
