@@ -75,10 +75,21 @@ def _missing_desks(counts: dict[str, int]) -> list[str]:
 
 
 def _restore_recent_complete_reservoir() -> None:
-    current_raw = DESK_PATH.read_text(encoding="utf-8")
-    current = _load(current_raw)
-    current_counts = _counts(current)
-    missing = _missing_desks(current_counts)
+    current_raw = DESK_PATH.read_text(encoding="utf-8") if DESK_PATH.exists() else ""
+    try:
+        current = _load(current_raw)
+        current_counts = _counts(current)
+        missing = _missing_desks(current_counts)
+    except (json.JSONDecodeError, ValueError):
+        # Empty, truncated, malformed, or non-object canonical content is itself
+        # catastrophic. Treat every required desk as missing so recovery can
+        # search git history instead of crashing before the guard runs.
+        current_counts = {slug: 0 for slug in HARD_FLOORS}
+        missing = list(HARD_FLOORS)
+        print(
+            "ROLLING_DESK_RESERVOIR_INVALID_CANONICAL "
+            f"bytes={len(current_raw.encode('utf-8'))} counts={current_counts}"
+        )
 
     if len(missing) < CATASTROPHIC_MISSING_DESKS:
         print(
