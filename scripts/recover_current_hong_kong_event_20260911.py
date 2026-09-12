@@ -14,29 +14,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "data" / "desk-latest.json"
 HKT = dt.timezone(dt.timedelta(hours=8))
-PUBLISHED = dt.datetime.fromisoformat("2026-09-11T22:29:00+08:00")
+PUBLISHED = dt.datetime.fromisoformat("2026-09-12T12:46:00+08:00")
 MAX_AGE = dt.timedelta(hours=12)
 
 STORY = {
-    "id": "hong-kong-pillar-of-shame-denmark-return-talks-20260911",
+    "id": "hong-kong-police-public-event-risk-assessment-20260912",
     "desk": "hong-kong",
     "deskSlugs": ["hong-kong"],
-    "section": "香港｜司法與社會",
+    "section": "香港｜公共安全",
     "sectionLabel": "香港",
     "status": "LATEST",
-    "title": "國殤之柱作者擬促丹麥政府與港府交涉　要求取回被扣雕塑",
-    "dek": "丹麥雕塑家高志活表示，將尋求丹麥當局把作品列作文化遺產並與香港方面交涉；港府則反駁其所有權說法。",
-    "summary": "《南華早報》報道，國殤之柱作者、丹麥雕塑家高志活表示，計劃要求丹麥政府正式把雕塑列為藝術品及丹麥文化遺產，並與香港方面交涉取回作品。香港官員則表示，相關雕塑過往曾交予已解散的香港市民支援愛國民主運動聯合會，對其所有權主張提出異議。",
-    "body": "八米高的「國殤之柱」處置問題再次受到關注。丹麥雕塑家高志活向《南華早報》表示，他準備要求丹麥政府正式確認作品屬藝術品及丹麥文化遺產，並由官方與香港方面交涉，希望把雕塑交還其所稱的合法持有人。\n\n高志活稱已向丹麥國會外交政策委員會提出事件，歐洲議會跨黨派議員及歐盟駐港辦事處亦有跟進。香港方面則反駁其所有權說法，指出作品過往與已解散的支聯會存在安排。事件在香港法院就支聯會前領導人國安案件判刑後再度升溫，作品未來如何處理仍有待司法及行政程序釐清。",
-    "context": "國殤之柱自1997年起曾長期在香港大學展示，2021年被校方移走，之後在相關國安案件中成為證物。作者多年來一直要求取回作品。",
-    "why": "事件牽涉藝術品所有權、司法證物處置及香港與丹麥之間可能出現的外交交涉，亦可能成為近期國安案件後續的一項具體爭議。",
-    "watchNext": "留意丹麥政府是否正式介入、香港法院或相關部門如何處理雕塑，以及作品所有權和證物處置是否出現新的法律程序。",
-    "sourceName": "South China Morning Post",
-    "sourceUrl": "https://www.scmp.com/news/hong-kong/law-and-crime/article/3367259/pillar-shame-sculptor-ask-denmark-negotiate-artworks-return",
-    "publishedAt": "2026-09-11T22:29:00+08:00",
-    "timeLabel": "9月11日22:29 HKT",
+    "title": "警務處：公眾活動申請續按公共安全、秩序及國安因素評估",
+    "dek": "警務處處長周一鳴在警察學院結業會操後表示，警方處理公眾活動申請時會按整體情況評估公共安全、公共秩序及國家安全等因素。",
+    "summary": "無綫新聞9月12日報道，警務處處長周一鳴在香港警察學院結業會操後表示，警方一向按照《公安條例》處理公眾活動通知，並會綜合考慮公共安全、公共秩序及國家安全等因素。他又指現時社會整體氣氛平和，但警方仍會留意潛在風險。",
+    "body": "香港警察學院9月12日舉行結業會操。警務處處長周一鳴在會操後會見傳媒時表示，警方處理公眾集會及相關活動通知時，一向會按《公安條例》及整體情況作風險評估，考慮因素包括公共安全、公共秩序以及國家安全。\n\n周一鳴表示，現時香港整體社會氣氛平和，但警方認為仍需對潛在國安及公共秩序風險保持警覺。當日多間本地傳媒亦報道同一場結業會操及警方高層的公開發言。",
+    "context": "警方依法處理公眾活動通知及風險評估，相關判斷會因活動性質、公共安全及秩序等實際情況而異。",
+    "why": "警務處處長就公眾活動審批及風險評估準則作出當日公開說明，直接關乎本地公共安全及市民舉辦公共活動時的執法安排。",
+    "watchNext": "留意警方日後處理具體公眾活動通知時公布的條件或安排，以及是否有新的公共秩序或國安執法指引。",
+    "sourceName": "無綫新聞 / Now新聞台",
+    "sourceUrl": "https://news.tvb.com/tc/1194806-Policecommissionerwarnsagainstthosewhostirchaos",
+    "publishedAt": "2026-09-12T12:46:00+08:00",
+    "timeLabel": "9月12日12:46 HKT",
     "sources": [
-        {"name": "South China Morning Post", "url": "https://www.scmp.com/news/hong-kong/law-and-crime/article/3367259/pillar-shame-sculptor-ask-denmark-negotiate-artworks-return"}
+        {"name": "無綫新聞", "url": "https://news.tvb.com/tc/1194806-Policecommissionerwarnsagainstthosewhostirchaos"},
+        {"name": "Now新聞台", "url": "https://hk.news.yahoo.com/%E5%91%A8-%E9%B3%B4-%E6%9C%AC%E6%B8%AF%E6%95%B4%E9%AB%94%E7%A4%BE%E6%9C%83%E6%B0%A3%E6%B0%9B%E5%B9%B3%E5%92%8C-%E4%BD%86%E4%BB%8D%E6%9A%97%E6%B9%A7%E8%99%95%E8%99%95-%E6%B1%9F%E7%93%94%E5%BA%AD%E5%A0%B1%E9%81%93-051735738.html"}
     ]
 }
 
