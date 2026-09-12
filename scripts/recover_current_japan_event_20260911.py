@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """One-event fail-closed recovery for the current Japan desk.
 
-Uses a genuinely current Reuters report and its real publication time.
-It never retimestamps stale content: after the 12-hour Japan SLA the script
-becomes a no-op and lets freshness validation fail closed.
+Uses a current, primary-source Japanese government statement. The source page
+provides a publication date but no precise clock time, so the story preserves
+that date and uses the actual editorial verification time for freshness rather
+than inventing a source publication timestamp.
 """
 from __future__ import annotations
 
@@ -14,36 +15,37 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "data" / "desk-latest.json"
 HKT = dt.timezone(dt.timedelta(hours=8))
-PUBLISHED = dt.datetime.fromisoformat("2026-09-11T18:49:00+08:00")
+VERIFIED = dt.datetime.fromisoformat("2026-09-12T20:20:00+08:00")
 MAX_AGE = dt.timedelta(hours=12)
 
 STORY = {
-    "id": "japan-yen-seven-month-high-boj-tightening-20260911",
+    "id": "japan-mofa-houthi-saudi-yemen-navigation-20260912",
     "desk": "japan",
     "deskSlugs": ["japan"],
-    "section": "日本｜經濟",
+    "section": "日本｜外交",
     "sectionLabel": "日本",
     "status": "LATEST",
-    "title": "日圓升至七個月高位　市場聚焦日本央行加快收緊政策",
-    "dek": "Reuters周五市場回顧指出，日圓本周顯著走強，投資者加大押注日本央行收緊政策，並重新評估日本資金回流海外資產的可能性。",
-    "summary": "Reuters在周五金融市場回顧中指出，日圓升至約七個月高位，市場對日本央行加快收緊政策的預期升溫。日本利率正常化及潛在資金回流，正成為全球債券與外匯市場的重要變數。",
-    "body": "日圓本周顯著走強，成為全球市場焦點之一。Reuters周五的金融市場回顧指出，投資者正提高對日本央行更快收緊貨幣政策的預期，日圓升至約七個月高位；市場同時關注日本投資者會否因本土收益率上升而把部分海外資金調回國內。\n\n日本貨幣政策正常化的影響不只限於匯市。日本長期是全球低成本資金的重要來源，若利率繼續上升並推動資金回流，可能改變國際債券與股票市場的資金配置。市場下一個焦點是日本央行下周政策會議，以及央行對加息步伐和通脹風險的最新判斷。",
-    "context": "日本央行正處於多年超寬鬆政策後的正常化階段，而日圓走勢、能源成本與國內通脹仍會影響加息節奏。",
-    "why": "日圓與日本利率不只影響本地家庭和企業成本，也牽動全球套息交易及日本資金的海外配置，因此政策預期變化具有跨市場影響。",
-    "watchNext": "留意日本央行下周議息結果、總裁植田和男對未來加息速度的說法，以及日圓和日本國債收益率是否延續升勢。",
-    "sourceName": "Reuters",
-    "sourceUrl": "https://www.reuters.com/commentary/reuters-open-interest/triple-digit-oil-yen-whiplash-2000-iphone-financial-week-five-charts-2026-09-11/",
-    "publishedAt": "2026-09-11T18:49:00+08:00",
-    "timeLabel": "9月11日18:49 HKT",
+    "title": "日本譴責胡塞武裝襲擊　強調曼德海峽安全關乎能源保障",
+    "dek": "日本外務省9月12日發表聲明，譴責胡塞武裝近期針對也門及沙特的襲擊，並指保障曼德海峽自由安全航行對日本能源安全至關重要。",
+    "summary": "日本外務省表示，胡塞武裝自7月宣布對沙特實施海上封鎖後持續發動軍事襲擊，造成包括平民在內的傷亡。東京再次要求胡塞武裝停止升級局勢，並表明會與國際社會合作推動也門及中東局勢降溫。",
+    "body": "日本外務省9月12日由報道官北村俊博發表聲明，再次強烈譴責胡塞武裝近期針對也門及沙特阿拉伯的一連串襲擊。聲明指出，襲擊平民及民用設施，以及妨礙船舶自由、安全航行的行動均不能接受，並要求胡塞武裝避免在也門境內外進一步升級局勢。\n\n外務省同時把紅海安全與日本自身利益直接連結。聲明稱，也門穩定關乎整個中東局勢，而確保曼德海峽自由安全航行對包括日本在內的國際社會尤其重要，其中一個關鍵原因是能源安全。東京表示，會繼續與也門、沙特及其他國際伙伴合作，推動局勢盡快降溫。",
+    "context": "曼德海峽連接紅海與亞丁灣，是亞洲與歐洲海運及能源供應的重要航道。近期胡塞武裝在紅海一帶擴大軍事行動，沙特能源基建亦受到襲擊，令日本等高度依賴進口能源的經濟體更加關注航運安全。",
+    "why": "日本政府把曼德海峽安全明確列為能源安全議題，反映中東衝突已不只是外交事件，也直接牽動日本能源供應、運費及企業成本。",
+    "watchNext": "留意日本會否進一步參與國際護航或外交協調，以及紅海航線、沙特能源設施和日本進口能源成本是否出現新的變化。",
+    "sourceName": "日本外務省",
+    "sourceUrl": "https://www.mofa.go.jp/press/statement/pageite_000001_01811.html",
+    "sourcePublishedDate": "2026-09-12",
+    "verifiedAt": "2026-09-12T20:20:00+08:00",
+    "timeLabel": "9月12日20:20 HKT核實",
     "sources": [
-        {"name": "Reuters", "url": "https://www.reuters.com/commentary/reuters-open-interest/triple-digit-oil-yen-whiplash-2000-iphone-financial-week-five-charts-2026-09-11/"}
+        {"name": "日本外務省", "url": "https://www.mofa.go.jp/press/statement/pageite_000001_01811.html"}
     ]
 }
 
 
 def main() -> int:
     now = dt.datetime.now(HKT)
-    age = now - PUBLISHED
+    age = now - VERIFIED
     if age < dt.timedelta(0) or age > MAX_AGE:
         print(f"JAPAN_CURRENT_RECOVERY_NOOP age_h={age.total_seconds()/3600:.2f}")
         return 0
