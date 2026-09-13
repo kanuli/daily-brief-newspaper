@@ -16,7 +16,18 @@ jobs:
       - name: Build Daily Edition 024
         run: python scripts/publish_20260913.py
       - name: Validate Daily v3
-        run: python scripts/validate_daily_v3.py
+        run: |
+          if ! python scripts/validate_daily_v3.py > /tmp/daily-v3.log 2>&1; then
+            cp /tmp/daily-v3.log daily-v3-validation-debug.txt
+            git config user.name 'daily-brief-publisher'
+            git config user.email 'actions@users.noreply.github.com'
+            git add daily-v3-validation-debug.txt
+            git commit -m 'chore: capture 2026-09-13 Daily validation failure'
+            git push origin main
+            cat /tmp/daily-v3.log
+            exit 1
+          fi
+          cat /tmp/daily-v3.log
       - name: Validate editorial routing and site data
         run: |
           python scripts/validate_editorial_v2.py
