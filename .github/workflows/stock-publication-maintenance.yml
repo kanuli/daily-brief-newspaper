@@ -104,10 +104,20 @@ jobs:
           print('STOCK_COLLECTOR_15_SYMBOL_CONTRACT_PASS', ','.join(required))
           PY
 
-          python scripts/rolling_news_collector.py \
+          # Discovery refresh is useful but must never block verified text publication.
+          # The already-fetched staging snapshot remains available to heartbeat/producer
+          # if network collection hangs or fails; downstream 48h/3h Stock QA still fails
+          # closed on stale or invalid substantive content.
+          if timeout 120s python scripts/rolling_news_collector.py \
             --existing /tmp/search-staging.json \
-            --output /tmp/search-staging-current.json
-          mv /tmp/search-staging-current.json /tmp/search-staging.json
+            --output /tmp/search-staging-current.json; then
+            mv /tmp/search-staging-current.json /tmp/search-staging.json
+            echo "STOCK_COLLECTOR_REFRESH_PASS"
+          else
+            rc=$?
+            rm -f /tmp/search-staging-current.json
+            echo "STOCK_COLLECTOR_REFRESH_NONBLOCKING rc=${rc} retaining fetched staging snapshot"
+          fi
 
       - name: Record truthful hourly Stock News check
         if: steps.inputs.outputs.staging_available == 'true'
