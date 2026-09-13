@@ -36,18 +36,7 @@ jobs:
           python scripts/validate_editorial_v2.py
           python scripts/validate_site_data.py
       - name: Validate Stock News oversight
-        run: |
-          if ! python scripts/validate_stock_news.py > /tmp/stock.log 2>&1; then
-            cp /tmp/stock.log stock-validation-debug.txt
-            git config user.name 'daily-brief-publisher'
-            git config user.email 'actions@users.noreply.github.com'
-            git add stock-validation-debug.txt
-            git commit -m 'chore: capture 2026-09-13 Stock News validation failure'
-            git push origin main
-            cat /tmp/stock.log
-            exit 1
-          fi
-          cat /tmp/stock.log
+        run: python scripts/validate_stock_news.py
       - name: Build static fallback
         run: python scripts/build_static_news_fallback.py
       - name: Commit publication artifacts
@@ -61,3 +50,4 @@ jobs:
             git commit -m 'Publish 2026-09-13 Daily Edition 024'
             git push origin main
           fi
+# one-time rerun after Stock News recovery
