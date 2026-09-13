@@ -5,7 +5,8 @@ from __future__ import annotations
 import argparse
 import copy
 import json
-from datetime import datetime, timedelta, timezone
+import re
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +41,12 @@ BANNED_PUBLIC_FRAGMENTS = (
     "Stock News 核實",
 )
 PUBLIC_COPY_FIELDS = ("title", "dek", "summary", "body", "context", "why", "watchNext")
+SUBSTANTIVE_TIME_FIELDS = (
+    "primaryPublishedAt", "sourcePublishedAt", "eventPublishedAt", "marketAsOfAt", "publishedAt"
+)
+ID_DATE_RE = re.compile(r"(?:^|[-_])(20\d{6})(?:$|[-_])")
+MAX_SUBSTANTIVE_STORY_AGE_HOURS = 48.0
+HKT = timezone(timedelta(hours=8))
 
 
 def load(path: Path):
@@ -54,7 +61,7 @@ def parse_iso(value: str) -> datetime:
     dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     if dt.tzinfo is None:
         raise ValueError("timezone required")
-    return dt
+    return dt.astimezone(timezone.utc)
 
 
 def impact_symbol(value: str) -> str:
@@ -69,8 +76,40 @@ def impact_symbol(value: str) -> str:
 
 
 def format_hkt(dt: datetime) -> str:
-    hkt = dt.astimezone(timezone(timedelta(hours=8)))
+    hkt = dt.astimezone(HKT)
     return f"{hkt.year}年{hkt.month}月{hkt.day}日 {hkt.hour:02d}:{hkt.minute:02d} HKT"
+
+
+def substantive_story_time(story: dict) -> tuple[datetime | None, str | None]:
+    for field in SUBSTANTIVE_TIME_FIELDS:
+        try:
+            return parse_iso(story.get(field) or ""), field
+        except Exception:
+            pass
+
+    match = ID_DATE_RE.search(str(story.get("id") or ""))
+    if match:
+        try:
+            day = datetime.strptime(match.group(1), "%Y%m%d").date()
+            start_hkt = datetime.combine(day, time(0, 0, 0), tzinfo=HKT)
+            return start_hkt.astimezone(timezone.utc), "story-id-date"
+        except Exception:
+            pass
+    return None, None
+
+
+def newest_substantive_story(stories: list[dict], published: datetime) -> tuple[float | None, str | None, str | None]:
+    candidates: list[tuple[float, str | None, str | None]] = []
+    for story in stories:
+        if not isinstance(story, dict):
+            continue
+        dt, source = substantive_story_time(story)
+        if dt is None:
+            continue
+        age = (published - dt).total_seconds() / 3600.0
+        if age >= -1.0:
+            candidates.append((max(0.0, age), clean(story.get("id")), source))
+    return min(candidates, key=lambda row: row[0]) if candidates else (None, None, None)
 
 
 def canonicalize_contract(stocks: dict) -> None:
@@ -195,25 +234,30 @@ def main():
         STOCKS_PATH.write_text(json.dumps(stocks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return 0
 
-    # A manually/automatically verified story is itself fresh editorial evidence
-    # for the symbol it updates. Keep coverage metadata synchronized with the
-    # promoted content so a pre-promotion stale flag cannot invalidate a newly
-    # verified, substantively current story. The independent validator still
-    # enforces the hard 48-hour substantive-story limit from the story date.
+    # A verified story is fresh editorial review evidence, but it must never
+    # overwrite substantive age with the draft/check clock. Derive substantive
+    # freshness from the public story's real event timestamp fields first and
+    # use the unchanged legacy ID-date fallback only when no real timestamp is
+    # present. The independent validator still enforces the same hard 48h gate.
     coverage = stocks.get("coverageFreshness") if isinstance(stocks.get("coverageFreshness"), dict) else {}
+    promoted_stale = set()
     for ticker in promoted_tickers:
         row = copy.deepcopy(coverage.get(ticker)) if isinstance(coverage.get(ticker), dict) else {}
         stories = tickers[ticker].get("stories") or []
+        substantive_age, substantive_story_id, substantive_time_source = newest_substantive_story(stories, now)
+        substantive_current = substantive_age is not None and substantive_age <= MAX_SUBSTANTIVE_STORY_AGE_HOURS
+        if not substantive_current:
+            promoted_stale.add(ticker)
         row.update({
             "lastReviewedAt": created.isoformat(),
             "searchHoursAgo": 0.0,
             "reviewEvidenceFound": True,
             "hoursAgo": 0.0,
-            "newestSubstantiveStoryHoursAgo": 0.0,
-            "newestSubstantiveStoryId": clean(stories[0].get("id")) if stories else "",
-            "substantiveTimeSource": "story-id-date",
-            "substantiveCurrent": True,
-            "stale": False,
+            "newestSubstantiveStoryHoursAgo": round(substantive_age, 3) if substantive_age is not None else None,
+            "newestSubstantiveStoryId": substantive_story_id,
+            "substantiveTimeSource": substantive_time_source,
+            "substantiveCurrent": substantive_current,
+            "stale": not substantive_current,
             "storyCount": len(stories),
         })
         coverage[ticker] = row
@@ -222,6 +266,7 @@ def main():
         ticker for ticker in (stocks.get("staleSymbols") or [])
         if ticker not in promoted_tickers
     ]
+    stale_symbols.extend(ticker for ticker in TRACKED if ticker in promoted_stale and ticker not in stale_symbols)
     stocks["staleSymbols"] = stale_symbols
     quality = stocks.get("qualityGates") if isinstance(stocks.get("qualityGates"), dict) else {}
     quality["freshnessGateMet"] = not stale_symbols
