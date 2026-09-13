@@ -18,33 +18,23 @@ jobs:
         run: |
           python scripts/publish_20260913.py
           python - <<'PY'
+          import json
           from pathlib import Path
           for p in [Path('data/2026-09-13.json'), Path('data/latest.json'), Path('data/desk-latest.json')]:
               text = p.read_text(encoding='utf-8')
               text = text.replace('本輪賽事', '今場賽事').replace('本輪結果', '今場結果')
               p.write_text(text, encoding='utf-8')
+          live_path = Path('data/live.json')
+          live = json.loads(live_path.read_text(encoding='utf-8'))
+          live.setdefault('coverage', {})['status'] = 'DAILY_BASELINE'
+          live_path.write_text(json.dumps(live, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
           PY
       - name: Validate Daily v3
         run: python scripts/validate_daily_v3.py
       - name: Validate editorial routing and site data
         run: |
-          set +e
-          python scripts/validate_editorial_v2.py > /tmp/editorial.log 2>&1
-          rc1=$?
-          python scripts/validate_site_data.py > /tmp/site.log 2>&1
-          rc2=$?
-          set -e
-          cat /tmp/editorial.log
-          cat /tmp/site.log
-          if [ $rc1 -ne 0 ] || [ $rc2 -ne 0 ]; then
-            { echo '=== EDITORIAL ==='; cat /tmp/editorial.log; echo '=== SITE ==='; cat /tmp/site.log; } > editorial-site-validation-debug.txt
-            git config user.name 'daily-brief-publisher'
-            git config user.email 'actions@users.noreply.github.com'
-            git add editorial-site-validation-debug.txt
-            git commit -m 'chore: capture 2026-09-13 editorial validation failure'
-            git push origin main
-            exit 1
-          fi
+          python scripts/validate_editorial_v2.py
+          python scripts/validate_site_data.py
       - name: Validate Stock News oversight
         run: python scripts/validate_stock_news.py
       - name: Build static fallback
