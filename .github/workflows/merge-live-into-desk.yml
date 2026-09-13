@@ -127,6 +127,10 @@ jobs:
         shell: bash
         run: python scripts/sync_daily_into_desk.py
 
+      - name: Merge current Live snapshot
+        shell: bash
+        run: python scripts/merge_live_into_desk.py
+
       - name: Recover hard desk depth
         shell: bash
         run: python scripts/recover_desk_depth_watchdog.py
@@ -162,10 +166,6 @@ jobs:
       - name: Recover stale specialist desks
         shell: bash
         run: python scripts/recover_desk_freshness_watchdog.py
-
-      - name: Merge current Live snapshot
-        shell: bash
-        run: python scripts/merge_live_into_desk.py
 
       - name: Validate desk freshness
         shell: bash
