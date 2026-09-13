@@ -28,8 +28,23 @@ jobs:
         run: python scripts/validate_daily_v3.py
       - name: Validate editorial routing and site data
         run: |
-          python scripts/validate_editorial_v2.py
-          python scripts/validate_site_data.py
+          set +e
+          python scripts/validate_editorial_v2.py > /tmp/editorial.log 2>&1
+          rc1=$?
+          python scripts/validate_site_data.py > /tmp/site.log 2>&1
+          rc2=$?
+          set -e
+          cat /tmp/editorial.log
+          cat /tmp/site.log
+          if [ $rc1 -ne 0 ] || [ $rc2 -ne 0 ]; then
+            { echo '=== EDITORIAL ==='; cat /tmp/editorial.log; echo '=== SITE ==='; cat /tmp/site.log; } > editorial-site-validation-debug.txt
+            git config user.name 'daily-brief-publisher'
+            git config user.email 'actions@users.noreply.github.com'
+            git add editorial-site-validation-debug.txt
+            git commit -m 'chore: capture 2026-09-13 editorial validation failure'
+            git push origin main
+            exit 1
+          fi
       - name: Validate Stock News oversight
         run: python scripts/validate_stock_news.py
       - name: Build static fallback
