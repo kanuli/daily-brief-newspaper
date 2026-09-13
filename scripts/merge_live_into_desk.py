@@ -132,6 +132,21 @@ def unique_count(stories):
     return len(dedupe(stories))
 
 
+def item_has_public_source(item):
+    """Return True when a Live item has at least one usable public source."""
+    if not isinstance(item, dict):
+        return False
+    if str(item.get("sourceName") or "").strip() and str(item.get("sourceUrl") or "").strip():
+        return True
+    sources = item.get("sources")
+    return isinstance(sources, list) and any(
+        isinstance(source, dict)
+        and str(source.get("name") or "").strip()
+        and str(source.get("url") or "").strip()
+        for source in sources
+    )
+
+
 def repair_required_cross_posts(desks):
     """Restore only cross-posts explicitly required by canonical routing.
 
@@ -214,7 +229,8 @@ def main():
             retained.append(normalized)
         desks[slug] = newest_first(retained)
 
-    for item in live.get("items", []):
+    live_items = [item for item in live.get("items", []) if isinstance(item, dict)]
+    for item in live_items:
         slugs = normalize_live_route(item)
         for field in REQUIRED:
             if not isinstance(item.get(field), str) or not item[field].strip():
@@ -265,7 +281,9 @@ def main():
     coverage = live.setdefault("coverage", {})
     coverage.pop("qaNote", None)
     depth_met = all(counts[slug] >= minimum for slug, minimum in FLOORS.items())
-    source_gate = bool(coverage.get("sourceGateMet", coverage.get("sourceGate", False)))
+    raw_source_gate = bool(coverage.get("sourceGateMet", coverage.get("sourceGate", False)))
+    derived_source_gate = bool(live_items) and all(item_has_public_source(item) for item in live_items)
+    source_gate = raw_source_gate or derived_source_gate
     # Geographic/routing readiness must describe the repaired publication
     # state, not the raw producer snapshot. The merge has recalculated every
     # route, removed unrelated cross-posts, and routing_integrity() requires
