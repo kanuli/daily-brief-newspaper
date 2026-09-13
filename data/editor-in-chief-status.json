@@ -1,0 +1,317 @@
+{
+  "schemaVersion": 2,
+  "role": "Editor-in-Chief",
+  "checkedAt": "2026-09-13T09:09:03.471799+00:00",
+  "checkedAtHKT": "2026-09-13T17:09:03.471799+08:00",
+  "status": "EDITORIAL_ATTENTION_REQUIRED",
+  "policy": {
+    "fabricateNews": false,
+    "fakeFreshness": false,
+    "weakenVerificationGates": false,
+    "autoRepairDeterministicInfrastructure": true,
+    "escalateUnverifiableEditorialGaps": true,
+    "semanticCopyeditingGate": true
+  },
+  "summary": {
+    "criticalCount": 2,
+    "warningCount": 0,
+    "findingCount": 3,
+    "repairWorkflowCount": 1,
+    "unresolvedCriticalCount": 1,
+    "liveSemanticCopyErrorCount": 0
+  },
+  "deskAudit": {
+    "world": {
+      "storyCount": 157,
+      "newestAgeMinutes": 369.05786331666667,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "asia": {
+      "storyCount": 181,
+      "newestAgeMinutes": 69.05786331666667,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "hong-kong": {
+      "storyCount": 63,
+      "newestAgeMinutes": 549.0578633166666,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "japan": {
+      "storyCount": 148,
+      "newestAgeMinutes": 549.0578633166666,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "market-economy": {
+      "storyCount": 85,
+      "newestAgeMinutes": 8.357863316666666,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "ai-tech": {
+      "storyCount": 90,
+      "newestAgeMinutes": 429.05786331666667,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "manga-anime": {
+      "storyCount": 29,
+      "newestAgeMinutes": 549.0578633166666,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "manchester-united": {
+      "storyCount": 33,
+      "newestAgeMinutes": 55.291196649999996,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "football": {
+      "storyCount": 121,
+      "newestAgeMinutes": 55.291196649999996,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    }
+  },
+  "freshness": {
+    "liveAgeMinutes": 8.357863316666666,
+    "stockCheckAgeMinutes": 66.11397028333333,
+    "stockContentAgeMinutes": 5.6638913833333335,
+    "pagesProbeAgeMinutes": 2.5591796833333333,
+    "voiceAgeMinutes": 32.8903068
+  },
+  "repairPlan": [
+    {
+      "area": "stock",
+      "workflow": "stock-publication-maintenance.yml"
+    }
+  ],
+  "findings": [
+    {
+      "code": "STOCK_CHECK_STALE",
+      "severity": "critical",
+      "area": "stock",
+      "message": "Stock check age/status is 66.11397028333333/COLLECTION_FAILURE",
+      "repair": "stock"
+    },
+    {
+      "code": "DISCORD_DELIVERY_OBSERVABILITY",
+      "severity": "info",
+      "area": "discord",
+      "message": "Discord workflow delivery cannot be proven from newsroom JSON alone; workflow-run health remains the delivery evidence",
+      "repair": null
+    },
+    {
+      "code": "PERSISTENT_STOCK_CHECK_STALE",
+      "severity": "critical",
+      "area": "stock",
+      "message": "STOCK_CHECK_STALE remains unresolved after the previous Editor-in-Chief cycle; automatic repair alone is no longer sufficient",
+      "repair": null
+    }
+  ],
+  "voiceWorkflowAudit": {
+    "coverageComplete": true,
+    "availableArticleCount": 890,
+    "collectedStoryCount": 890,
+    "pendingArticleCount": 0,
+    "activeRunIds": [
+      34749010015,
+      34748874414
+    ],
+    "staleRunIds": [],
+    "latestRunId": 34749010015,
+    "latestRunStatus": "pending",
+    "latestRunConclusion": "",
+    "voiceAgeMinutes": 32.9
+  },
+  "validatorAudit": [
+    {
+      "name": "daily-v3",
+      "ok": true
+    },
+    {
+      "name": "stock-news",
+      "ok": true
+    },
+    {
+      "name": "publication-current",
+      "ok": true
+    },
+    {
+      "name": "desk-freshness",
+      "ok": true
+    },
+    {
+      "name": "desk-freshness-tests",
+      "ok": true
+    },
+    {
+      "name": "editor-in-chief-tests",
+      "ok": true
+    },
+    {
+      "name": "editorial-v2",
+      "ok": true
+    },
+    {
+      "name": "tts-language",
+      "ok": true
+    }
+  ],
+  "deskFreshnessAudit": {
+    "checkedAt": "2026-09-13T09:09:11.404812+00:00",
+    "latestDate": "2026-09-13",
+    "currentDaily": true,
+    "status": "PASS",
+    "desks": {
+      "world": {
+        "storyCount": 157,
+        "newestAgeHours": 6.153168003333334,
+        "freshnessSlaHours": 8,
+        "fresh": true,
+        "currentDailyArticleIds": [
+          "world-ukraine-mass-drone-strikes-20260913-daily",
+          "world-congo-ebola-seventh-province-20260913-daily"
+        ],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "asia": {
+        "storyCount": 181,
+        "newestAgeHours": 1.1531680033333334,
+        "freshnessSlaHours": 12,
+        "fresh": true,
+        "currentDailyArticleIds": [
+          "asia-india-china-xi-modi-brics-20260913-daily",
+          "asia-brics-new-delhi-declaration-20260913-daily",
+          "asia-yemen-houthi-red-sea-pressure-20260913-daily"
+        ],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "hong-kong": {
+        "storyCount": 63,
+        "newestAgeHours": 9.153168003333333,
+        "freshnessSlaHours": 12,
+        "fresh": true,
+        "currentDailyArticleIds": [
+          "hong-kong-summer-flu-high-20260913-daily",
+          "hong-kong-school-food-poisoning-39-20260913-daily"
+        ],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "japan": {
+        "storyCount": 148,
+        "newestAgeHours": 9.153168003333333,
+        "freshnessSlaHours": 12,
+        "fresh": true,
+        "currentDailyArticleIds": [
+          "japan-shutoko-five-car-crash-20260913-daily",
+          "japan-chiba-rain-research-20260913-daily"
+        ],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "market-economy": {
+        "storyCount": 85,
+        "newestAgeHours": 0.14150133666666667,
+        "freshnessSlaHours": 8,
+        "fresh": true,
+        "currentDailyArticleIds": [
+          "market-economy-oil-week-above-100-20260913-daily",
+          "market-economy-oracle-ellison-sale-cancelled-20260913-daily"
+        ],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "ai-tech": {
+        "storyCount": 90,
+        "newestAgeHours": 7.153168003333334,
+        "freshnessSlaHours": 12,
+        "fresh": true,
+        "currentDailyArticleIds": [
+          "ai-tech-openai-no-2026-ipo-20260913-daily",
+          "ai-tech-anthropic-slow-model-development-20260913-daily"
+        ],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "manga-anime": {
+        "storyCount": 29,
+        "newestAgeHours": 9.153168003333333,
+        "freshnessSlaHours": 24,
+        "fresh": true,
+        "currentDailyArticleIds": [
+          "manga-anime-bleach-finale-delay-20260913-daily"
+        ],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "manchester-united": {
+        "storyCount": 33,
+        "newestAgeHours": 0.9237235588888889,
+        "freshnessSlaHours": 24,
+        "fresh": true,
+        "currentDailyArticleIds": [
+          "manchester-united-city-derby-carrick-test-20260913-daily"
+        ],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "football": {
+        "storyCount": 121,
+        "newestAgeHours": 0.9237235588888889,
+        "freshnessSlaHours": 8,
+        "fresh": true,
+        "currentDailyArticleIds": [
+          "manchester-united-city-derby-carrick-test-20260913-daily",
+          "football-premier-league-arsenal-perfect-20260913-daily",
+          "football-real-madrid-rayo-4-1-20260913-daily"
+        ],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      }
+    },
+    "failures": []
+  },
+  "repairExecution": [
+    {
+      "workflow": "stock-publication-maintenance.yml",
+      "dispatched": false,
+      "reason": "already-active"
+    }
+  ],
+  "repairsDispatched": 0,
+  "repairsSkipped": 1
+}
