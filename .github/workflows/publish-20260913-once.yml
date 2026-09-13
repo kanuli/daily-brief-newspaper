@@ -15,20 +15,17 @@ jobs:
         with:
           fetch-depth: 0
       - name: Build Daily Edition 024
-        run: python scripts/publish_20260913.py
-      - name: Validate Daily v3
         run: |
-          if ! python scripts/validate_daily_v3.py > /tmp/daily-v3.log 2>&1; then
-            cp /tmp/daily-v3.log daily-v3-validation-debug.txt
-            git config user.name 'daily-brief-publisher'
-            git config user.email 'actions@users.noreply.github.com'
-            git add daily-v3-validation-debug.txt
-            git commit -m 'chore: capture 2026-09-13 Daily validation failure'
-            git push origin main
-            cat /tmp/daily-v3.log
-            exit 1
-          fi
-          cat /tmp/daily-v3.log
+          python scripts/publish_20260913.py
+          python - <<'PY'
+          from pathlib import Path
+          for p in [Path('data/2026-09-13.json'), Path('data/latest.json'), Path('data/desk-latest.json')]:
+              text = p.read_text(encoding='utf-8')
+              text = text.replace('本輪賽事', '今場賽事').replace('本輪結果', '今場結果')
+              p.write_text(text, encoding='utf-8')
+          PY
+      - name: Validate Daily v3
+        run: python scripts/validate_daily_v3.py
       - name: Validate editorial routing and site data
         run: |
           python scripts/validate_editorial_v2.py
