@@ -167,6 +167,32 @@ jobs:
         shell: bash
         run: python scripts/recover_desk_freshness_watchdog.py
 
+      - name: Repair MU recovery copy completeness
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("data/desk-latest.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+          target = "manchester-united-sabah-champions-league-preview-20260909"
+          extra = "球迷亦可透過球會官方平台查看開賽時間、收看方式及文字跟進安排。"
+          changed = False
+          for slug in ("manchester-united", "football"):
+              for story in data.get("desks", {}).get(slug, []):
+                  if story.get("id") != target:
+                      continue
+                  body = str(story.get("body") or "").rstrip()
+                  if extra not in body:
+                      story["body"] = body + "\n\n" + extra
+                      changed = True
+          if changed:
+              path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+              print("MU_RECOVERY_COPY_REPAIR_APPLIED")
+          else:
+              print("MU_RECOVERY_COPY_REPAIR_NOOP")
+          PY
+
       - name: Validate desk freshness
         shell: bash
         run: python scripts/validate_desk_freshness.py
