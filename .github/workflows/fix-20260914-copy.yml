@@ -1,0 +1,36 @@
+name: One-shot 2026-09-14 copy correction
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-20260914-copy.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix-copy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Correct name typo and self-clean
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          paths = [Path('data/latest.json'), Path('data/2026-09-14.json')]
+          old = '沖繩知事選舉高田早苗政府支持候選人大勝'
+          new = '沖繩知事選舉高市早苗政府支持候選人大勝'
+          for p in paths:
+              s = p.read_text(encoding='utf-8')
+              if old not in s:
+                  raise SystemExit(f'expected typo not found in {p}')
+              p.write_text(s.replace(old, new), encoding='utf-8')
+          PY
+          git rm .github/workflows/fix-20260914-copy.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add data/latest.json data/2026-09-14.json
+          git commit -m "Fix 2026-09-14 Okinawa headline typo"
+          git push
