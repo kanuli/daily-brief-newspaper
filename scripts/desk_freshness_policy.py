@@ -24,15 +24,15 @@ EXPECTED_DESKS = (
 )
 
 PUBLIC_DESK_FRESHNESS_HOURS = {
-    "world": 8,
-    "asia": 12,
-    "hong-kong": 12,
-    "japan": 12,
-    "market-economy": 8,
-    "ai-tech": 12,
-    "manga-anime": 24,
-    "manchester-united": 24,
-    "football": 8,
+    "world": 24,
+    "asia": 24,
+    "hong-kong": 24,
+    "japan": 24,
+    "market-economy": 24,
+    "ai-tech": 24,
+    "manga-anime": 48,
+    "manchester-united": 48,
+    "football": 48,
 }
 
 CAPS = {
