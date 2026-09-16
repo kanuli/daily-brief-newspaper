@@ -1,0 +1,466 @@
+{
+  "schemaVersion": 2,
+  "role": "Editor-in-Chief",
+  "checkedAt": "2026-09-16T03:01:29.913967+00:00",
+  "checkedAtHKT": "2026-09-16T11:01:29.913967+08:00",
+  "status": "EDITORIAL_ATTENTION_REQUIRED",
+  "policy": {
+    "fabricateNews": false,
+    "fakeFreshness": false,
+    "weakenVerificationGates": false,
+    "autoRepairDeterministicInfrastructure": true,
+    "escalateUnverifiableEditorialGaps": true,
+    "semanticCopyeditingGate": true
+  },
+  "summary": {
+    "criticalCount": 21,
+    "warningCount": 0,
+    "findingCount": 22,
+    "repairWorkflowCount": 4,
+    "unresolvedCriticalCount": 8,
+    "liveSemanticCopyErrorCount": 0
+  },
+  "deskAudit": {
+    "world": {
+      "storyCount": 165,
+      "newestAgeMinutes": 2341.4985661166666,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "asia": {
+      "storyCount": 198,
+      "newestAgeMinutes": 1681.4985661166668,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "hong-kong": {
+      "storyCount": 65,
+      "newestAgeMinutes": 2761.4985661166666,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "japan": {
+      "storyCount": 152,
+      "newestAgeMinutes": 2521.4985661166666,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "market-economy": {
+      "storyCount": 94,
+      "newestAgeMinutes": 2161.4985661166666,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "ai-tech": {
+      "storyCount": 94,
+      "newestAgeMinutes": 2941.4985661166666,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "manga-anime": {
+      "storyCount": 29,
+      "newestAgeMinutes": 4501.498566116667,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "manchester-united": {
+      "storyCount": 36,
+      "newestAgeMinutes": 2701.4985661166666,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "football": {
+      "storyCount": 126,
+      "newestAgeMinutes": 2701.4985661166666,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    }
+  },
+  "freshness": {
+    "liveAgeMinutes": 1.4985661166666666,
+    "stockCheckAgeMinutes": 789.6838503833334,
+    "stockContentAgeMinutes": 775.9207478166667,
+    "pagesProbeAgeMinutes": 55.183322966666665,
+    "voiceAgeMinutes": 1668.0883772333334
+  },
+  "repairPlan": [
+    {
+      "area": "collection",
+      "workflow": "rolling-news-search.yml"
+    },
+    {
+      "area": "stock",
+      "workflow": "stock-publication-maintenance.yml"
+    },
+    {
+      "area": "pages",
+      "workflow": "pages.yml"
+    },
+    {
+      "area": "voice",
+      "workflow": "canto-nano-production.yml"
+    }
+  ],
+  "findings": [
+    {
+      "code": "COLLECTION_STALE",
+      "severity": "critical",
+      "area": "collection",
+      "message": "rolling discovery is stale (56.772231616666666 min)",
+      "repair": "collection"
+    },
+    {
+      "code": "DAILY_STALE",
+      "severity": "critical",
+      "area": "daily",
+      "message": "daily edition date is 2026-09-14, expected 2026-09-16",
+      "repair": null
+    },
+    {
+      "code": "DESK_EDITORIAL_GAP",
+      "severity": "critical",
+      "area": "ai-tech",
+      "message": "newest parseable story is 49.0 hours old",
+      "repair": "collection"
+    },
+    {
+      "code": "DESK_EDITORIAL_GAP",
+      "severity": "critical",
+      "area": "manga-anime",
+      "message": "newest parseable story is 75.0 hours old",
+      "repair": "collection"
+    },
+    {
+      "code": "STOCK_CHECK_STALE",
+      "severity": "critical",
+      "area": "stock",
+      "message": "Stock check age/status is 789.6838503833334/COLLECTION_FAILURE",
+      "repair": "stock"
+    },
+    {
+      "code": "PUBLIC_PROBE_STALE",
+      "severity": "critical",
+      "area": "pages",
+      "message": "public Pages probe is missing or older than 30 minutes",
+      "repair": "pages"
+    },
+    {
+      "code": "VOICE_BEHIND_CONTENT",
+      "severity": "critical",
+      "area": "voice",
+      "message": "voice manifest is more than two hours behind current Live content",
+      "repair": "voice"
+    },
+    {
+      "code": "DISCORD_DELIVERY_OBSERVABILITY",
+      "severity": "info",
+      "area": "discord",
+      "message": "Discord workflow delivery cannot be proven from newsroom JSON alone; workflow-run health remains the delivery evidence",
+      "repair": null
+    },
+    {
+      "code": "PERSISTENT_COLLECTION_STALE",
+      "severity": "critical",
+      "area": "collection",
+      "message": "COLLECTION_STALE remains unresolved after the previous Editor-in-Chief cycle; automatic repair alone is no longer sufficient",
+      "repair": null
+    },
+    {
+      "code": "PERSISTENT_DESK_EDITORIAL_GAP",
+      "severity": "critical",
+      "area": "ai-tech",
+      "message": "DESK_EDITORIAL_GAP remains unresolved after the previous Editor-in-Chief cycle; automatic repair alone is no longer sufficient",
+      "repair": null
+    },
+    {
+      "code": "PERSISTENT_DESK_EDITORIAL_GAP",
+      "severity": "critical",
+      "area": "manga-anime",
+      "message": "DESK_EDITORIAL_GAP remains unresolved after the previous Editor-in-Chief cycle; automatic repair alone is no longer sufficient",
+      "repair": null
+    },
+    {
+      "code": "PERSISTENT_STOCK_CHECK_STALE",
+      "severity": "critical",
+      "area": "stock",
+      "message": "STOCK_CHECK_STALE remains unresolved after the previous Editor-in-Chief cycle; automatic repair alone is no longer sufficient",
+      "repair": null
+    },
+    {
+      "code": "PERSISTENT_PUBLIC_PROBE_STALE",
+      "severity": "critical",
+      "area": "pages",
+      "message": "PUBLIC_PROBE_STALE remains unresolved after the previous Editor-in-Chief cycle; automatic repair alone is no longer sufficient",
+      "repair": null
+    },
+    {
+      "code": "PERSISTENT_VOICE_BEHIND_CONTENT",
+      "severity": "critical",
+      "area": "voice",
+      "message": "VOICE_BEHIND_CONTENT remains unresolved after the previous Editor-in-Chief cycle; automatic repair alone is no longer sufficient",
+      "repair": null
+    },
+    {
+      "code": "DESK_FRESHNESS_SLA_FAILED",
+      "severity": "critical",
+      "area": "world",
+      "message": "world freshness/daily-sync failed: age=39.025463093055556h sla=24h missingDaily=[]",
+      "repair": "desk"
+    },
+    {
+      "code": "DESK_FRESHNESS_SLA_FAILED",
+      "severity": "critical",
+      "area": "asia",
+      "message": "asia freshness/daily-sync failed: age=28.025463093055553h sla=24h missingDaily=[]",
+      "repair": "desk"
+    },
+    {
+      "code": "DESK_FRESHNESS_SLA_FAILED",
+      "severity": "critical",
+      "area": "hong-kong",
+      "message": "hong-kong freshness/daily-sync failed: age=46.025463093055556h sla=24h missingDaily=[]",
+      "repair": "desk"
+    },
+    {
+      "code": "DESK_FRESHNESS_SLA_FAILED",
+      "severity": "critical",
+      "area": "japan",
+      "message": "japan freshness/daily-sync failed: age=42.025463093055556h sla=24h missingDaily=[]",
+      "repair": "desk"
+    },
+    {
+      "code": "DESK_FRESHNESS_SLA_FAILED",
+      "severity": "critical",
+      "area": "market-economy",
+      "message": "market-economy freshness/daily-sync failed: age=36.025463093055556h sla=24h missingDaily=[]",
+      "repair": "desk"
+    },
+    {
+      "code": "DESK_FRESHNESS_SLA_FAILED",
+      "severity": "critical",
+      "area": "ai-tech",
+      "message": "ai-tech freshness/daily-sync failed: age=49.025463093055556h sla=24h missingDaily=[]",
+      "repair": "desk"
+    },
+    {
+      "code": "DESK_FRESHNESS_SLA_FAILED",
+      "severity": "critical",
+      "area": "manga-anime",
+      "message": "manga-anime freshness/daily-sync failed: age=75.02546309305555h sla=48h missingDaily=[]",
+      "repair": "desk"
+    },
+    {
+      "code": "NEWSROOM_VALIDATOR_FAILED",
+      "severity": "critical",
+      "area": "editorial",
+      "message": "One or more existing newsroom validators failed: stock-news, publication-current, desk-freshness, editorial-v2",
+      "repair": null
+    }
+  ],
+  "voiceWorkflowAudit": {
+    "coverageComplete": true,
+    "availableArticleCount": 938,
+    "collectedStoryCount": 938,
+    "pendingArticleCount": 0,
+    "activeRunIds": [
+      35050191182
+    ],
+    "staleRunIds": [],
+    "latestRunId": 35050191182,
+    "latestRunStatus": "in_progress",
+    "latestRunConclusion": "",
+    "voiceAgeMinutes": 1668.1
+  },
+  "validatorAudit": [
+    {
+      "name": "daily-v3",
+      "ok": true
+    },
+    {
+      "name": "stock-news",
+      "ok": false,
+      "exitCode": 1
+    },
+    {
+      "name": "publication-current",
+      "ok": false,
+      "exitCode": 1
+    },
+    {
+      "name": "desk-freshness",
+      "ok": false,
+      "exitCode": 2
+    },
+    {
+      "name": "desk-freshness-tests",
+      "ok": true
+    },
+    {
+      "name": "editor-in-chief-tests",
+      "ok": true
+    },
+    {
+      "name": "editorial-v2",
+      "ok": false,
+      "exitCode": 1
+    },
+    {
+      "name": "tts-language",
+      "ok": true
+    }
+  ],
+  "deskFreshnessAudit": {
+    "checkedAt": "2026-09-16T03:01:31.667135+00:00",
+    "latestDate": "2026-09-14",
+    "currentDaily": false,
+    "status": "FAIL",
+    "desks": {
+      "world": {
+        "storyCount": 165,
+        "newestAgeHours": 39.025463093055556,
+        "freshnessSlaHours": 24,
+        "fresh": false,
+        "currentDailyArticleIds": [],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "asia": {
+        "storyCount": 198,
+        "newestAgeHours": 28.025463093055553,
+        "freshnessSlaHours": 24,
+        "fresh": false,
+        "currentDailyArticleIds": [],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "hong-kong": {
+        "storyCount": 65,
+        "newestAgeHours": 46.025463093055556,
+        "freshnessSlaHours": 24,
+        "fresh": false,
+        "currentDailyArticleIds": [],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "japan": {
+        "storyCount": 152,
+        "newestAgeHours": 42.025463093055556,
+        "freshnessSlaHours": 24,
+        "fresh": false,
+        "currentDailyArticleIds": [],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "market-economy": {
+        "storyCount": 94,
+        "newestAgeHours": 36.025463093055556,
+        "freshnessSlaHours": 24,
+        "fresh": false,
+        "currentDailyArticleIds": [],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "ai-tech": {
+        "storyCount": 94,
+        "newestAgeHours": 49.025463093055556,
+        "freshnessSlaHours": 24,
+        "fresh": false,
+        "currentDailyArticleIds": [],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "manga-anime": {
+        "storyCount": 29,
+        "newestAgeHours": 75.02546309305555,
+        "freshnessSlaHours": 48,
+        "fresh": false,
+        "currentDailyArticleIds": [],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "manchester-united": {
+        "storyCount": 36,
+        "newestAgeHours": 45.025463093055556,
+        "freshnessSlaHours": 48,
+        "fresh": true,
+        "currentDailyArticleIds": [],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "football": {
+        "storyCount": 126,
+        "newestAgeHours": 45.025463093055556,
+        "freshnessSlaHours": 48,
+        "fresh": true,
+        "currentDailyArticleIds": [],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      }
+    },
+    "failures": [
+      "world: newest story age 39.025463093055556h exceeds 24h SLA",
+      "asia: newest story age 28.025463093055553h exceeds 24h SLA",
+      "hong-kong: newest story age 46.025463093055556h exceeds 24h SLA",
+      "japan: newest story age 42.025463093055556h exceeds 24h SLA",
+      "market-economy: newest story age 36.025463093055556h exceeds 24h SLA",
+      "ai-tech: newest story age 49.025463093055556h exceeds 24h SLA",
+      "manga-anime: newest story age 75.02546309305555h exceeds 48h SLA"
+    ]
+  },
+  "repairExecution": [
+    {
+      "workflow": "rolling-news-search.yml",
+      "dispatched": false,
+      "reason": "already-active"
+    },
+    {
+      "workflow": "stock-publication-maintenance.yml",
+      "dispatched": false,
+      "reason": "already-active"
+    },
+    {
+      "workflow": "pages.yml",
+      "dispatched": true,
+      "reason": "editor-in-chief-safe-repair"
+    },
+    {
+      "workflow": "canto-nano-production.yml",
+      "dispatched": false,
+      "reason": "already-active"
+    },
+    {
+      "workflow": "merge-live-into-desk.yml",
+      "dispatched": false,
+      "reason": "already-active"
+    }
+  ],
+  "repairsDispatched": 1,
+  "repairsSkipped": 4
+}
