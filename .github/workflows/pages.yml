@@ -137,8 +137,19 @@ jobs:
 
       - name: Editorial QA — Daily v3
         run: python scripts/validate_daily_v3.py
+
+      # Stock News has its own strict fail-closed publication owner. A stale Stock
+      # snapshot must remain visibly unhealthy, but it must not prevent already-
+      # valid Daily/Live/Rolling Desk changes from reaching the public site.
       - name: Editorial QA — Stock News
+        id: stock_qa
+        continue-on-error: true
         run: python scripts/validate_stock_news.py
+
+      - name: Report isolated Stock News QA failure
+        if: steps.stock_qa.outcome == 'failure'
+        run: echo "::warning::Stock News QA failed; deploying other validated sections while Stock remains fail-closed in monitoring."
+
       - name: Editorial QA — current Live / Rolling Desk
         run: python scripts/validate_publication_current.py
       - name: Editorial QA — hard desk depth and geography
