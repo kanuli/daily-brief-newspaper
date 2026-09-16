@@ -84,6 +84,19 @@ _PATTERNS = {
     ),
 }
 
+# ETF discovery deliberately searches the underlying market drivers when there is
+# no fund-specific headline. Those candidates must still be attributable to the
+# ETF when (and only when) the controlled Stock query explicitly targets that
+# ticker and the headline itself contains the corresponding read-through domain.
+_ETF_READTHROUGH_PATTERNS = {
+    "GLDM": re.compile(r"\bgold\b|\bbullion\b|precious metals?|黃金|金價", re.I),
+    "EMXC": re.compile(r"emerging markets?|\bTaiwan\b|\bKorea\b|\bIndia\b|MSCI|新興市場|台灣|韓國|印度", re.I),
+    "GBTC": re.compile(r"\bbitcoin\b|\bBTC\b|crypto|spot bitcoin ETF|比特幣|加密貨幣", re.I),
+    "DBA": re.compile(r"agricultur|\bcorn\b|\bwheat\b|soybeans?|\bcocoa\b|\bcoffee\b|\bsugar\b|\bgrain\b|\bUSDA\b|crop|農業|小麥|玉米|大豆|咖啡|可可|糖", re.I),
+    "EWY": re.compile(r"South Korea|\bKorea\b|\bKOSPI\b|Samsung|SK Hynix|Korean won|韓國|韓股|韓圜|三星", re.I),
+    "VT": re.compile(r"global (?:equities|stocks?|markets?)|world (?:equities|stocks?|markets?)|MSCI World|global equity|全球股市|環球股市", re.I),
+}
+
 _FALSE_POSITIVE = {
     "NVDA": (re.compile(r"\bNavitas Semiconductor\b", re.I),),
     "VT": (
@@ -125,6 +138,11 @@ def _finance_context(text: str) -> bool:
     ))
 
 
+def _query_targets_ticker(query: str, ticker: str) -> bool:
+    q = normalize(query)
+    return bool(re.search(rf"(?<![A-Z0-9]){re.escape(ticker)}(?![A-Z0-9])", q, re.I))
+
+
 def match_tickers(title: str, source: str = "", query: str = "") -> list[str]:
     text = normalize(f"{title} {source}")
     found: list[str] = []
@@ -136,12 +154,20 @@ def match_tickers(title: str, source: str = "", query: str = "") -> list[str]:
             }.get(ticker)
             if not canonical_override:
                 continue
+
         patterns = _PATTERNS[ticker]
         if any(pattern.search(text) for pattern in patterns):
             has_name = bool(patterns[0].search(text))
             if not has_name and not _finance_context(text + " " + normalize(query)):
                 continue
             found.append(ticker)
+            continue
+
+        if ticker in ETF_TICKERS and _query_targets_ticker(query, ticker):
+            readthrough = _ETF_READTHROUGH_PATTERNS.get(ticker)
+            if readthrough and readthrough.search(text):
+                found.append(ticker)
+
     return found
 
 
