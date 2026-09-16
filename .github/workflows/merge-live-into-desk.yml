@@ -17,14 +17,6 @@ on:
       - "scripts/test_desk_freshness.py"
       - "scripts/recover_desk_depth.py"
       - "scripts/recover_desk_depth_watchdog.py"
-      - "scripts/recover_desk_freshness_watchdog.py"
-      - "scripts/recover_current_world_event_20260911.py"
-      - "scripts/recover_current_hong_kong_event_20260911.py"
-      - "scripts/recover_current_japan_event_20260911.py"
-      - "scripts/recover_current_ai_tech_event_20260912.py"
-      - "scripts/recover_current_market_economy_event_20260912.py"
-      - "scripts/recover_current_manga_event_20260910.py"
-      - "scripts/recover_current_football_event_20260911.py"
       - "scripts/restore_complete_desk_reservoir.py"
       - "scripts/validate_publication_current.py"
       - ".github/workflows/merge-live-into-desk.yml"
@@ -135,64 +127,40 @@ jobs:
         shell: bash
         run: python scripts/recover_desk_depth_watchdog.py
 
-      - name: Recover current source-backed World event
-        shell: bash
-        run: python scripts/recover_current_world_event_20260911.py
-
-      - name: Recover current source-backed Hong Kong event
-        shell: bash
-        run: python scripts/recover_current_hong_kong_event_20260911.py
-
-      - name: Recover current source-backed Japan event
-        shell: bash
-        run: python scripts/recover_current_japan_event_20260911.py
-
-      - name: Recover current source-backed AI-Tech event
-        shell: bash
-        run: python scripts/recover_current_ai_tech_event_20260912.py
-
-      - name: Recover current source-backed Market-Economy event
-        shell: bash
-        run: python scripts/recover_current_market_economy_event_20260912.py
-
-      - name: Recover current source-backed Manga event
-        shell: bash
-        run: python scripts/recover_current_manga_event_20260910.py
-
-      - name: Recover current source-backed Football event
-        shell: bash
-        run: python scripts/recover_current_football_event_20260911.py
-
-      - name: Recover stale specialist desks
-        shell: bash
-        run: python scripts/recover_desk_freshness_watchdog.py
-
-      - name: Repair MU recovery copy completeness
+      # Persistence must happen before freshness validation. Otherwise one stale
+      # desk prevents legitimate new Live stories for every other desk from ever
+      # reaching main, creating a permanent freshness deadlock. This checkpoint
+      # stores only real Daily/Live/depth output; it does not manufacture or
+      # retimestamp stale stories.
+      - name: Persist legitimate Rolling Desk progress before freshness gate
+        id: checkpoint
         shell: bash
         run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          path = Path("data/desk-latest.json")
-          data = json.loads(path.read_text(encoding="utf-8"))
-          target = "manchester-united-sabah-champions-league-preview-20260909"
-          extra = "球迷亦可透過球會官方平台查看開賽時間、收看方式及文字跟進安排。"
-          changed = False
-          for slug in ("manchester-united", "football"):
-              for story in data.get("desks", {}).get(slug, []):
-                  if story.get("id") != target:
-                      continue
-                  body = str(story.get("body") or "").rstrip()
-                  if extra not in body:
-                      story["body"] = body + "\n\n" + extra
-                      changed = True
-          if changed:
-              path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-              print("MU_RECOVERY_COPY_REPAIR_APPLIED")
-          else:
-              print("MU_RECOVERY_COPY_REPAIR_NOOP")
-          PY
+          set -euo pipefail
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+          git add -- data/desk-latest.json data/live.json
+          if git diff --cached --quiet; then
+            echo "ROLLING_DESK_PROGRESS_CHECKPOINT_NOOP"
+            exit 0
+          fi
+          LIVE_LABEL=$(python -c 'import json; print(json.load(open("data/live.json",encoding="utf-8")).get("windowLabel", "Live"))')
+          git commit -m "Persist verified Rolling Desk progress for ${LIVE_LABEL}"
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+              echo "ROLLING_DESK_PROGRESS_CHECKPOINT_PASS ${LIVE_LABEL}"
+              exit 0
+            fi
+            sleep $((attempt * 2))
+            git fetch origin main
+            git rebase origin/main
+          done
+          echo "Rolling Desk progress checkpoint could not push after retries" >&2
+          exit 1
 
+      # Freshness remains fail-closed. Old dated recovery templates were removed
+      # from this workflow because once their real timestamps expire they cannot
+      # legally repair freshness and must never be retimestamped as new news.
       - name: Validate desk freshness
         shell: bash
         run: python scripts/validate_desk_freshness.py
@@ -209,34 +177,8 @@ jobs:
         shell: bash
         run: python scripts/test_desk_freshness.py
 
-      - name: Commit Rolling Desk
-        id: publish
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "changed=false" >> "$GITHUB_OUTPUT"
-          git add -- data/desk-latest.json data/live.json
-          if git diff --cached --quiet; then
-            echo "ROLLING_DESK_CURRENT no merge change required"
-            exit 0
-          fi
-          LIVE_LABEL=$(python -c 'import json; print(json.load(open("data/live.json",encoding="utf-8")).get("windowLabel", "Live"))')
-          git commit -m "Sync Rolling Desk to verified Daily + ${LIVE_LABEL}"
-          for attempt in 1 2 3 4 5; do
-            if git push origin HEAD:main; then
-              echo "changed=true" >> "$GITHUB_OUTPUT"
-              echo "ROLLING_DESK_AUTO_SYNC_PASS ${LIVE_LABEL}"
-              exit 0
-            fi
-            sleep $((attempt * 2))
-            git fetch origin main
-            git rebase origin/main
-          done
-          echo "Rolling Desk auto-sync could not push after retries" >&2
-          exit 1
-
-      - name: Dispatch Pages after Rolling Desk change
-        if: steps.publish.outputs.changed == 'true'
+      - name: Dispatch Pages after fully healthy Rolling Desk change
+        if: steps.checkpoint.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
