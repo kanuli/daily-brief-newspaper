@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Editor-in-Chief supervisory audit for Daily Brief.
 
-The supervisor never fabricates or promotes news.  It classifies newsroom
-health, enforces structural/routing/freshness rules, and performs deterministic
-semantic copyediting checks before declaring copy healthy.
+The supervisor never fabricates or promotes news. It classifies newsroom
+health, enforces structural/routing/freshness rules, performs deterministic
+semantic copyediting checks, and models recovery ownership before declaring
+production healthy.
 """
 from __future__ import annotations
 
@@ -24,6 +25,17 @@ EXPECTED_DESKS = (
     "world", "asia", "hong-kong", "japan", "market-economy",
     "ai-tech", "manga-anime", "manchester-united", "football",
 )
+DESK_FRESHNESS_SLA_HOURS = {
+    "world": 24,
+    "asia": 24,
+    "hong-kong": 24,
+    "japan": 24,
+    "market-economy": 24,
+    "ai-tech": 24,
+    "manga-anime": 48,
+    "manchester-united": 48,
+    "football": 48,
+}
 REPAIR_WORKFLOWS = {
     "collection": "rolling-news-search.yml",
     "live": "live-publication-maintenance.yml",
@@ -31,6 +43,12 @@ REPAIR_WORKFLOWS = {
     "stock": "stock-publication-maintenance.yml",
     "pages": "pages.yml",
     "voice": "canto-nano-production.yml",
+}
+# Some recovery owners are not GitHub workflows. The Daily publisher is an
+# external scheduled production owner supervised by the ChatGPT watchdog.
+RECOVERY_OWNERS = {
+    "daily": "automation:Daily Priority Briefing",
+    **{key: f"workflow:{value}" for key, value in REPAIR_WORKFLOWS.items()},
 }
 
 
@@ -89,6 +107,7 @@ def audit(
     findings: list[Finding] = []
     now_hkt = now.astimezone(HKT)
     hour, minute = now_hkt.hour, now_hkt.minute
+    today = now_hkt.date().isoformat()
 
     # Collector progress: 15-minute collection gets a 25-minute supervisor tolerance.
     if staging is None:
@@ -100,11 +119,15 @@ def audit(
             add(findings, "COLLECTION_STALE", "critical", "collection",
                 f"rolling discovery is stale ({search_age if search_age is not None else 'unknown'} min)", "collection")
 
-    # Daily and Live freshness. Preserve overnight windows; never fake timestamps.
+    # TODAY-FIRST: a missed historical edition is never rebuilt before today's edition.
+    # Daily recovery is owned by the existing Daily Priority Briefing publisher, not by
+    # a deterministic GitHub workflow that cannot author verified current journalism.
     daily_required = hour > 8 or (hour == 8 and minute >= 15)
-    if daily_required and latest.get("date") != now_hkt.date().isoformat():
+    current_daily = latest.get("date") == today
+    if daily_required and not current_daily:
         add(findings, "DAILY_STALE", "critical", "daily",
-            f"daily edition date is {latest.get('date')}, expected {now_hkt.date().isoformat()}")
+            f"daily edition date is {latest.get('date')}, expected {today}; publish TODAY directly without historical backfill",
+            "daily")
 
     live_age = age_minutes(live.get("lastUpdated"), now)
     live_active = hour == 0 or 6 <= hour <= 7 or 9 <= hour <= 23
@@ -115,10 +138,6 @@ def audit(
         add(findings, "LIVE_STALE", "critical", "live",
             f"Live publication age is {live_age if live_age is not None else 'unknown'} min", "live")
 
-    # Desk coverage, retention, hard routing, newest-first order and article quality.
-    # qualityErrorCount now includes BOTH article-shape and deterministic semantic
-    # copyediting defects.  Semantic defects are hard failures: they must not be
-    # reported as healthy merely because title/body/source fields exist.
     desks = desk.get("desks") if isinstance(desk.get("desks"), dict) else {}
     all_ids: dict[str, str] = {}
     all_titles: dict[str, str] = {}
@@ -150,25 +169,14 @@ def audit(
                 quality_errors += 1
                 semantic_errors += 1
                 for reason in semantic:
-                    add(
-                        findings,
-                        "SEMANTIC_COPY_CORRUPTION",
-                        "critical",
-                        slug,
-                        f"story {sid or title}: {reason}",
-                        None,
-                    )
+                    add(findings, "SEMANTIC_COPY_CORRUPTION", "critical", slug,
+                        f"story {sid or title}: {reason}", None)
 
-            # Hard routing ownership. A story is not allowed to remain on an old or
-            # unrelated page merely because stale deskSlugs still say so.
             if routes and slug not in routes:
                 routing_errors += 1
                 add(findings, "HARD_ROUTING_VIOLATION", "critical", slug,
-                    f"story {sid or title} belongs to {sorted(routes)} but is still present on {slug}",
-                    "desk")
+                    f"story {sid or title} belongs to {sorted(routes)} but is still present on {slug}", "desk")
 
-            # Latest means latest: every topic reservoir must be descending by a real
-            # editorial timestamp, not insertion order.
             stamp = editorial_story_time(story, now=now)
             if stamp is not None:
                 if previous_stamp is not None and stamp > previous_stamp:
@@ -180,8 +188,7 @@ def audit(
             if expired_cross_desk_football(story, slug, now=now):
                 stale_cross_desk_football += 1
                 add(findings, "STALE_CROSS_DESK_FOOTBALL", "critical", slug,
-                    f"football cross-post {sid or title} exceeded the 36-hour regional-desk retention window",
-                    "desk")
+                    f"football cross-post {sid or title} exceeded the 36-hour regional-desk retention window", "desk")
 
             if sid:
                 prior = all_ids.get(sid)
@@ -201,13 +208,15 @@ def audit(
 
         if newest_first_errors:
             add(findings, "DESK_NOT_NEWEST_FIRST", "critical", slug,
-                f"{slug} has {newest_first_errors} timestamp inversion(s); newest verified story is not at the top",
-                "desk")
+                f"{slug} has {newest_first_errors} timestamp inversion(s); newest verified story is not at the top", "desk")
 
         newest_age = max(0.0, (now - newest).total_seconds() / 60.0) if newest else None
+        sla_hours = DESK_FRESHNESS_SLA_HOURS[slug]
         desk_summary[slug] = {
             "storyCount": len(stories),
             "newestAgeMinutes": newest_age,
+            "freshnessSlaHours": sla_hours,
+            "fresh": newest_age is not None and newest_age <= sla_hours * 60,
             "qualityErrorCount": quality_errors,
             "semanticCopyErrorCount": semantic_errors,
             "staleCrossDeskFootballCount": stale_cross_desk_football,
@@ -215,17 +224,15 @@ def audit(
             "newestFirstErrorCount": newest_first_errors,
         }
         if not stories:
-            add(findings, "DESK_EMPTY", "critical", slug,
-                f"{slug} has no Rolling Desk stories", "collection")
+            add(findings, "DESK_EMPTY", "critical", slug, f"{slug} has no Rolling Desk stories", "collection")
         elif quality_errors and not semantic_errors:
             add(findings, "ARTICLE_SHAPE_INVALID", "warning", slug,
                 f"{quality_errors} story/stories fail basic article-shape checks")
-        if newest_age is not None and newest_age > 48 * 60:
+        if newest_age is not None and newest_age > sla_hours * 60:
             add(findings, "DESK_EDITORIAL_GAP", "critical", slug,
-                f"newest parseable story is {newest_age/60:.1f} hours old", "collection")
+                f"newest parseable story is {newest_age/60:.1f} hours old (SLA {sla_hours}h); repair with a genuine current story, not timestamp refresh",
+                "collection")
 
-    # Live is a public surface too.  It may contain a story before Rolling Desk
-    # catches up, so semantic copyediting must inspect it independently.
     live_semantic_errors = 0
     for story in live.get("items") or []:
         if not isinstance(story, dict):
@@ -238,8 +245,6 @@ def audit(
                 add(findings, "SEMANTIC_COPY_CORRUPTION", "critical", "live",
                     f"story {sid}: {reason}", None)
 
-    # Stock: hourly checks should be fresh; verified content staleness triggers the
-    # gated primary-source producer, never timestamp rewriting.
     stock_check_age = age_minutes(stocks.get("lastCheckedAt") or stocks.get("generatedAt"), now)
     stock_content_age = age_minutes(stocks.get("generatedAt"), now)
     stock_active = hour == 0 or 6 <= hour <= 23
@@ -253,24 +258,31 @@ def audit(
             f"verified Stock content age is {stock_content_age/60:.1f} hours" if stock_content_age is not None else "verified Stock content timestamp is invalid",
             "stock")
 
-    # Public propagation is authoritative evidence. Equal-but-stale is already red in pages probe.
+    # Public rendered outcome is authoritative. Repository updates, Discord alerts,
+    # or started workflows do not equal publication success.
     pages_age = age_minutes((pages or {}).get("checkedAt"), now) if pages else None
     if pages is None or pages_age is None or pages_age > 30:
         add(findings, "PUBLIC_PROBE_STALE", "critical", "pages",
             "public Pages probe is missing or older than 30 minutes", "pages")
     else:
-        if not bool(pages.get("infrastructureMatch", pages.get("match"))):
+        if not bool(pages.get("infrastructureMatch", pages.get("runtimeMatch", pages.get("match")))):
             add(findings, "PUBLIC_INFRASTRUCTURE_MISMATCH", "critical", "pages",
                 "public site differs from repository or a core page/runtime check failed", "pages")
+        for field, code, label in (
+            ("liveMatch", "PUBLIC_LIVE_NOT_PROPAGATED", "Live"),
+            ("deskMatch", "PUBLIC_DESK_NOT_PROPAGATED", "Rolling Desk"),
+            ("stockMatch", "PUBLIC_STOCK_NOT_PROPAGATED", "Stock"),
+            ("voiceManifestMatch", "PUBLIC_VOICE_NOT_PROPAGATED", "Voice manifest"),
+        ):
+            if pages.get(field) is False:
+                add(findings, code, "critical", "pages",
+                    f"{label} repository state has not propagated to the public rendered site", "pages")
         if pages.get("editorialFreshnessMatch") is False:
             add(findings, "PUBLIC_EDITORIAL_STALE", "warning", "pages",
                 "public probe reports editorial freshness failure; root-cause freshness checks are evaluated separately")
 
-    # Voice: do not chase routine partial coverage. Repair only if the public manifest
-    # is mismatched or if voice has clearly fallen behind changing Live content.
     if tts.get("engine") != "typangaa/canto-tts-nano" or int(tts.get("availableArticleCount") or 0) <= 0:
-        add(findings, "VOICE_ENGINE_INVALID", "critical", "voice",
-            "Canto Nano manifest is missing/invalid", "voice")
+        add(findings, "VOICE_ENGINE_INVALID", "critical", "voice", "Canto Nano manifest is missing/invalid", "voice")
     voice_age = age_minutes(tts.get("lastVoicePublishedAt") or tts.get("generatedAt"), now)
     live_dt = parse_iso(live.get("lastUpdated"))
     voice_dt = parse_iso(tts.get("generatedAt"))
@@ -282,8 +294,12 @@ def audit(
             f"{int(tts.get('pendingArticleCount') or 0)} article(s) remain pending; scheduled voice production owns the backlog")
 
     add(findings, "DISCORD_DELIVERY_OBSERVABILITY", "info", "discord",
-        "Discord workflow delivery cannot be proven from newsroom JSON alone; workflow-run health remains the delivery evidence")
+        "Discord proves newsroom data changed, not that GitHub Pages deployed; public probe is the publication authority")
+    if pages and pages.get("liveMatch") is False and live_age is not None and live_age <= 95:
+        add(findings, "DISCORD_PUBLICATION_TRUTH_GAP", "warning", "discord",
+            "new newsroom headlines may reach Discord before Pages; label them publication-pending until public probe confirms propagation")
 
+    previous_codes: set[str] = set()
     if previous:
         previous_codes = {
             str(f.get("code")) for f in (previous.get("findings") or [])
@@ -292,20 +308,32 @@ def audit(
         persistent = [f for f in findings if f.severity == "critical" and f.repair and f.code in previous_codes]
         for f in persistent:
             add(findings, "PERSISTENT_" + f.code, "critical", f.area,
-                f"{f.code} remains unresolved after the previous Editor-in-Chief cycle; automatic repair alone is no longer sufficient")
+                f"{f.code} remains unresolved after the previous cycle; verify actual progress and treat an over-age active repair as STUCK",
+                f.repair)
 
     repair_keys: list[str] = []
     for f in findings:
         if f.repair and f.repair not in repair_keys:
             repair_keys.append(f.repair)
-    workflows = [REPAIR_WORKFLOWS[k] for k in repair_keys]
+
+    repair_plan = []
+    for key in repair_keys:
+        repair_plan.append({
+            "area": key,
+            "owner": RECOVERY_OWNERS.get(key),
+            "workflow": REPAIR_WORKFLOWS.get(key),
+            "todayFirst": key in {"daily", "collection", "live", "desk", "stock"},
+        })
 
     critical = [f for f in findings if f.severity == "critical"]
     unresolved = [f for f in critical if not f.repair]
     warnings = [f for f in findings if f.severity == "warning"]
+    persistent_count = sum(1 for f in critical if f.code.startswith("PERSISTENT_"))
     if unresolved:
         status = "EDITORIAL_ATTENTION_REQUIRED"
-    elif workflows:
+    elif persistent_count:
+        status = "RECOVERY_ESCALATION_REQUIRED"
+    elif repair_plan:
         status = "AUTO_REPAIRING"
     elif warnings:
         status = "HEALTHY_WITH_WARNINGS"
@@ -313,7 +341,7 @@ def audit(
         status = "HEALTHY"
 
     return {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "role": "Editor-in-Chief",
         "checkedAt": now.isoformat(),
         "checkedAtHKT": now_hkt.isoformat(),
@@ -325,13 +353,29 @@ def audit(
             "autoRepairDeterministicInfrastructure": True,
             "escalateUnverifiableEditorialGaps": True,
             "semanticCopyeditingGate": True,
+            "todayFirstRecovery": True,
+            "historicalBacklogNonBlocking": True,
+            "antiSnowball": True,
+            "outcomeBasedRecovery": True,
+            "publicRenderedOutcomeIsAuthority": True,
+            "publisherOwnershipGuard": True,
+            "stuckActiveRunEscalation": True,
+            "discordAlertIsNotPublicationProof": True,
+            "stockFailureMustNotMasqueradeAsWholeSiteSuccess": True,
+        },
+        "currentDay": {
+            "expectedDate": today,
+            "dailyCurrent": current_daily,
+            "recoveryMode": "TODAY_FIRST_NO_BACKFILL",
         },
         "summary": {
             "criticalCount": len(critical),
             "warningCount": len(warnings),
             "findingCount": len(findings),
-            "repairWorkflowCount": len(workflows),
+            "repairActionCount": len(repair_plan),
+            "repairWorkflowCount": sum(1 for x in repair_plan if x.get("workflow")),
             "unresolvedCriticalCount": len(unresolved),
+            "persistentCriticalCount": persistent_count,
             "liveSemanticCopyErrorCount": live_semantic_errors,
         },
         "deskAudit": desk_summary,
@@ -342,7 +386,7 @@ def audit(
             "pagesProbeAgeMinutes": pages_age,
             "voiceAgeMinutes": voice_age,
         },
-        "repairPlan": [{"area": key, "workflow": REPAIR_WORKFLOWS[key]} for key in repair_keys],
+        "repairPlan": repair_plan,
         "findings": [asdict(f) for f in findings],
     }
 
