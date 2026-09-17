@@ -18,8 +18,6 @@ on:
       - "data/stocks-latest.json"
       - "data/tts-manifest.json"
   schedule:
-    # Runs at :35 every hour. HKT and UTC use the same minute value.
-    # This is intentionally after the xx:15 newsroom/Discord publication slot.
     - cron: "35 * * * *"
   workflow_dispatch:
 
@@ -166,9 +164,10 @@ jobs:
                   summary['findingCount']=int(summary.get('findingCount',0))+1
               plan=data.setdefault('repairPlan',[])
               if not any(isinstance(x,dict) and x.get('workflow')=='canto-nano-production.yml' for x in plan):
-                  plan.append({'area':'voice','workflow':'canto-nano-production.yml'})
+                  plan.append({'area':'voice','owner':'workflow:canto-nano-production.yml','workflow':'canto-nano-production.yml','todayFirst':False})
                   data['summary']['repairWorkflowCount']=int(data['summary'].get('repairWorkflowCount',0))+1
-              if data.get('status') != 'EDITORIAL_ATTENTION_REQUIRED':
+                  data['summary']['repairActionCount']=int(data['summary'].get('repairActionCount',0))+1
+              if data.get('status') not in {'EDITORIAL_ATTENTION_REQUIRED','RECOVERY_ESCALATION_REQUIRED'}:
                   data['status']='AUTO_REPAIRING'
 
           status_path.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
@@ -216,7 +215,7 @@ jobs:
                           'code':'DESK_FRESHNESS_SLA_FAILED',
                           'severity':'critical',
                           'area':slug,
-                          'message':f"{slug} freshness/daily-sync failed: age={row.get('newestAgeHours')}h sla={row.get('freshnessSlaHours')}h missingDaily={row.get('missingCurrentDailyArticleIds')}",
+                          'message':f"{slug} freshness/daily-sync failed: age={row.get('newestAgeHours')}h sla={row.get('freshnessSlaHours')}h missingDaily={row.get('missingCurrentDailyArticleIds')}; recover with current verified news, not historical timestamp refresh",
                           'repair':'desk',
                       })
                       data['summary']['criticalCount']=int(data['summary'].get('criticalCount',0))+1
@@ -253,9 +252,6 @@ jobs:
               wf=str(row.get('workflow') or '').strip()
               if wf and wf not in workflows:
                   workflows.append(wf)
-          # Freshness failures are deterministically repairable by the Rolling
-          # Desk merge workflow because it now synchronizes the verified Daily
-          # baseline before merging Live.
           if any(isinstance(f,dict) and f.get('code')=='DESK_FRESHNESS_SLA_FAILED' for f in data.get('findings') or []):
               if 'merge-live-into-desk.yml' not in workflows:
                   workflows.append('merge-live-into-desk.yml')
@@ -266,9 +262,6 @@ jobs:
           while IFS= read -r wf; do
             [ -n "$wf" ] || continue
 
-            # Voice is a long-running progressive pipeline.  If the supervisory
-            # audit proved an active run stale, cancel only those stale IDs before
-            # normal active-owner protection.  Healthy active runs are never killed.
             if [ "$wf" = "canto-nano-production.yml" ]; then
               stale_ids=$(python - <<'PY'
           import json
@@ -283,13 +276,69 @@ jobs:
               [ -z "$stale_ids" ] || sleep 5
             fi
 
-            active=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow "$wf" --limit 10 --json status --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
+            # Do not let `already-active` become a permanent deadlock. Healthy
+            # active owners are protected; persistent faults with an over-age run
+            # are classified STUCK, cancelled, and restarted once.
+            gh run list --repo "${GITHUB_REPOSITORY}" --workflow "$wf" --limit 10 \
+              --json databaseId,status,createdAt,updatedAt > /tmp/active-runs.json 2>/dev/null || printf '[]' > /tmp/active-runs.json
+
+            read -r active persistent max_age stale_ids <<< "$(WF="$wf" python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          d=json.load(open('/tmp/editor-in-chief-status.json',encoding='utf-8'))
+          runs=json.load(open('/tmp/active-runs.json',encoding='utf-8'))
+          wf=os.environ['WF']
+          active=[r for r in runs if r.get('status') != 'completed']
+          plan_areas={str(x.get('area')) for x in (d.get('repairPlan') or []) if x.get('workflow')==wf}
+          persistent=any(
+              isinstance(f,dict) and str(f.get('code','')).startswith('PERSISTENT_') and str(f.get('repair')) in plan_areas
+              for f in (d.get('findings') or [])
+          )
+          grace={
+              'pages.yml':20,
+              'merge-live-into-desk.yml':20,
+              'live-publication-maintenance.yml':25,
+              'stock-publication-maintenance.yml':30,
+              'rolling-news-search.yml':35,
+              'canto-nano-production.yml':110,
+          }.get(wf,45)
+          now=datetime.now(timezone.utc)
+          stale=[]
+          max_age=0.0
+          for r in active:
+              try:
+                  created=datetime.fromisoformat(str(r.get('createdAt')).replace('Z','+00:00')).astimezone(timezone.utc)
+                  age=max(0.0,(now-created).total_seconds()/60.0)
+              except Exception:
+                  age=0.0
+              max_age=max(max_age,age)
+              if age > grace:
+                  stale.append(str(r.get('databaseId')))
+          print(len(active), '1' if persistent else '0', f'{max_age:.1f}', ','.join(stale))
+          PY
+            )"
+
             if [ "${active:-0}" -gt 0 ]; then
-              printf '{"workflow":"%s","dispatched":false,"reason":"already-active"}\n' "$wf" >> /tmp/editor-repairs.jsonl
-              continue
+              if [ "${persistent:-0}" = "1" ] && [ -n "${stale_ids:-}" ]; then
+                IFS=',' read -ra ids <<< "$stale_ids"
+                for run_id in "${ids[@]}"; do
+                  [ -n "$run_id" ] || continue
+                  echo "Editor-in-Chief: persistent fault + stale active ${wf} run ${run_id}; cancelling stuck owner"
+                  gh run cancel "$run_id" --repo "${GITHUB_REPOSITORY}" || true
+                done
+                sleep 5
+              else
+                printf '{"workflow":"%s","dispatched":false,"reason":"already-active-healthy","maxAgeMinutes":%s}\n' "$wf" "${max_age:-0}" >> /tmp/editor-repairs.jsonl
+                continue
+              fi
             fi
+
             if gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main; then
-              printf '{"workflow":"%s","dispatched":true,"reason":"editor-in-chief-safe-repair"}\n' "$wf" >> /tmp/editor-repairs.jsonl
+              if [ -n "${stale_ids:-}" ] && [ "${persistent:-0}" = "1" ]; then
+                printf '{"workflow":"%s","dispatched":true,"reason":"stuck-active-restarted","previousMaxAgeMinutes":%s}\n' "$wf" "${max_age:-0}" >> /tmp/editor-repairs.jsonl
+              else
+                printf '{"workflow":"%s","dispatched":true,"reason":"editor-in-chief-safe-repair"}\n' "$wf" >> /tmp/editor-repairs.jsonl
+              fi
             else
               printf '{"workflow":"%s","dispatched":false,"reason":"dispatch-failed"}\n' "$wf" >> /tmp/editor-repairs.jsonl
             fi
@@ -305,6 +354,7 @@ jobs:
           data['repairExecution']=rows
           data['repairsDispatched']=sum(1 for r in rows if r.get('dispatched'))
           data['repairsSkipped']=sum(1 for r in rows if not r.get('dispatched'))
+          data['stuckRepairsRestarted']=sum(1 for r in rows if r.get('reason')=='stuck-active-restarted')
           failed=[r for r in rows if r.get('reason')=='dispatch-failed']
           if failed:
               data['findings'].append({
@@ -349,7 +399,7 @@ jobs:
           set -euo pipefail
           status=$(python -c 'import json; print(json.load(open("/tmp/editor-in-chief-status.json",encoding="utf-8")).get("status","UNKNOWN"))')
           echo "EDITOR_IN_CHIEF_STATUS=${status}"
-          if [ "$status" = "EDITORIAL_ATTENTION_REQUIRED" ]; then
-            echo "Unresolved editorial/maintenance failures require attention." >&2
+          if [ "$status" = "EDITORIAL_ATTENTION_REQUIRED" ] || [ "$status" = "RECOVERY_ESCALATION_REQUIRED" ]; then
+            echo "Unresolved editorial/maintenance failures require attention or recovery escalation." >&2
             exit 1
           fi
