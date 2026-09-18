@@ -1,0 +1,337 @@
+name: Rolling Desk P0 Self-Healing Watchdog
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "data/desk-latest.json"
+      - "data/live.json"
+      - "scripts/atomic_publish.py"
+      - "scripts/restore_complete_desk_reservoir.py"
+      - "scripts/validate_desk_integrity.py"
+      - "scripts/test_atomic_publish.py"
+      - "scripts/test_desk_self_heal.py"
+      - ".github/workflows/rolling-desk-self-heal.yml"
+  pull_request:
+    paths:
+      - "scripts/atomic_publish.py"
+      - "scripts/restore_complete_desk_reservoir.py"
+      - "scripts/validate_desk_integrity.py"
+      - "scripts/test_atomic_publish.py"
+      - "scripts/test_desk_self_heal.py"
+      - ".github/workflows/rolling-desk-self-heal.yml"
+  workflow_run:
+    workflows:
+      - "Editor-in-Chief Auto Maintenance"
+      - "Merge Live into Rolling Desk"
+    types: [completed]
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: "rolling-desk-p0-self-heal"
+  cancel-in-progress: false
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Checkout tested revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify atomic last-known-good protection
+        run: python scripts/test_atomic_publish.py
+
+      - name: Reproduce and recover issue 59
+        run: python scripts/test_desk_self_heal.py
+
+  watchdog:
+    if: github.event_name != 'pull_request'
+    needs: regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Checkout current main with recovery history
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Load previous watchdog telemetry
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f /tmp/desk-self-heal-previous.json
+          git fetch -q origin desk-health || true
+          git show origin/desk-health:data/desk-self-heal-status.json > /tmp/desk-self-heal-previous.json 2>/dev/null || true
+
+      - name: Inspect canonical Rolling Desk before repair
+        id: before
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, 'scripts')
+          from validate_desk_integrity import inspect
+
+          state, detail = inspect()
+          Path('/tmp/desk-before.json').write_text(
+              json.dumps({'state': state, 'detail': detail}, ensure_ascii=False, indent=2) + '\n',
+              encoding='utf-8',
+          )
+          recover = state in {'MISSING', 'ZERO_BYTE', 'INVALID_JSON'} or detail.get('depthMet') is False
+          merge = recover or state == 'STALE'
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+              out.write(f'state={state}\n')
+              out.write(f'recover={str(bool(recover)).lower()}\n')
+              out.write(f'merge={str(bool(merge)).lower()}\n')
+          print(json.dumps({'state': state, 'detail': detail, 'recover': recover, 'merge': merge}, ensure_ascii=False))
+          PY
+
+      - name: Restore last-known-good reservoir after catastrophic source failure
+        id: recovery
+        if: steps.before.outputs.recover == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/restore_complete_desk_reservoir.py
+          python scripts/validate_desk_integrity.py --allow-stale
+          echo "action=restore-last-known-good" >> "$GITHUB_OUTPUT"
+          echo "result=restored" >> "$GITHUB_OUTPUT"
+
+      - name: Persist recovered canonical source before regeneration
+        id: persist
+        if: steps.before.outputs.recover == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- data/desk-latest.json
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "ROLLING_DESK_SELF_HEAL_RECOVERY_NOOP"
+            exit 0
+          fi
+          git commit -m "Self-heal Rolling Desk from last-known-good reservoir"
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+              echo "ROLLING_DESK_SELF_HEAL_RECOVERY_PERSISTED"
+              exit 0
+            fi
+            sleep $((attempt * 2))
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              git reset --hard origin/main
+              python scripts/restore_complete_desk_reservoir.py
+              python scripts/validate_desk_integrity.py --allow-stale
+              git add -- data/desk-latest.json
+              git commit -m "Self-heal Rolling Desk from last-known-good reservoir"
+            fi
+          done
+          echo "Could not persist recovered Rolling Desk after retries" >&2
+          exit 1
+
+      - name: Re-inspect source after local recovery
+        id: after
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          from validate_desk_integrity import inspect
+
+          state, detail = inspect()
+          Path('/tmp/desk-after.json').write_text(
+              json.dumps({'state': state, 'detail': detail}, ensure_ascii=False, indent=2) + '\n',
+              encoding='utf-8',
+          )
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+              out.write(f'state={state}\n')
+              out.write(f'cycle={detail.get("generatedAt", "")}\n')
+              out.write(f'depth={str(detail.get("depthMet") is True).lower()}\n')
+          print(json.dumps({'state': state, 'detail': detail}, ensure_ascii=False))
+          PY
+
+      - name: Dispatch current-cycle regeneration when required
+        id: merge_dispatch
+        if: steps.after.outputs.state != 'CURRENT'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          active=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow merge-live-into-desk.yml --limit 10 --json status --jq '[.[] | select(.status != "completed")] | length')
+          if [ "${active:-0}" -gt 0 ]; then
+            echo "result=already-active" >> "$GITHUB_OUTPUT"
+            echo "ROLLING_DESK_SELF_HEAL_MERGE_ALREADY_ACTIVE"
+            exit 0
+          fi
+          gh workflow run merge-live-into-desk.yml --repo "${GITHUB_REPOSITORY}" --ref main
+          echo "result=dispatched" >> "$GITHUB_OUTPUT"
+          echo "ROLLING_DESK_SELF_HEAL_MERGE_DISPATCHED"
+
+      - name: Signal Japanese downstream only from a valid current cycle
+        id: downstream
+        if: steps.after.outputs.state == 'CURRENT' && steps.after.outputs.depth == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CYCLE: ${{ steps.after.outputs.cycle }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_cycle=$(python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/desk-self-heal-previous.json')
+          if not p.is_file():
+              print('')
+          else:
+              try:
+                  d=json.loads(p.read_text(encoding='utf-8'))
+                  print(str((d.get('downstream') or {}).get('cycle') or ''))
+              except Exception:
+                  print('')
+          PY
+          )
+          if [ -n "$CYCLE" ] && [ "$previous_cycle" = "$CYCLE" ]; then
+            echo "result=already-signalled" >> "$GITHUB_OUTPUT"
+            echo "ROLLING_DESK_JAPANESE_SIGNAL_ALREADY_CURRENT ${CYCLE}"
+            exit 0
+          fi
+          python - <<'PY' > /tmp/japanese-rolling-dispatch.json
+          import json, os
+          print(json.dumps({
+              'event_type': 'japanese_rolling_desk_ready',
+              'client_payload': {
+                  'cycle': os.environ.get('CYCLE',''),
+                  'source': 'rolling-desk-p0-self-heal',
+                  'producerRunId': os.environ.get('GITHUB_RUN_ID',''),
+              },
+          }))
+          PY
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" --input /tmp/japanese-rolling-dispatch.json
+          echo "result=dispatched" >> "$GITHUB_OUTPUT"
+          echo "ROLLING_DESK_JAPANESE_DOWNSTREAM_SIGNAL ${CYCLE}"
+
+      - name: Build health telemetry
+        if: always()
+        env:
+          RECOVERY_ACTION: ${{ steps.recovery.outputs.action }}
+          RECOVERY_RESULT: ${{ steps.recovery.outputs.result }}
+          MERGE_RESULT: ${{ steps.merge_dispatch.outputs.result }}
+          DOWNSTREAM_RESULT: ${{ steps.downstream.outputs.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          def read(path):
+              p=Path(path)
+              if not p.is_file(): return {'state':'UNKNOWN','detail':{}}
+              try: return json.loads(p.read_text(encoding='utf-8'))
+              except Exception: return {'state':'UNKNOWN','detail':{}}
+
+          before=read('/tmp/desk-before.json')
+          after=read('/tmp/desk-after.json')
+          detail=after.get('detail') or {}
+          cycle=str(detail.get('generatedAt') or '')
+          downstream_result=os.environ.get('DOWNSTREAM_RESULT') or 'not-eligible'
+          status={
+              'schemaVersion': 1,
+              'checkedAt': datetime.now(timezone.utc).isoformat(),
+              'producerRunId': os.environ.get('GITHUB_RUN_ID',''),
+              'producerRunAttempt': os.environ.get('GITHUB_RUN_ATTEMPT',''),
+              'trigger': os.environ.get('GITHUB_EVENT_NAME',''),
+              'stateBefore': before.get('state'),
+              'stateAfter': after.get('state'),
+              'bytes': detail.get('bytes', 0),
+              'generatedAt': cycle,
+              'sourceCycle': detail.get('liveLastUpdated',''),
+              'deskCounts': detail.get('counts') or {},
+              'depthMet': detail.get('depthMet') is True,
+              'recovery': {
+                  'action': os.environ.get('RECOVERY_ACTION') or 'none',
+                  'result': os.environ.get('RECOVERY_RESULT') or 'not-needed',
+              },
+              'regeneration': {
+                  'result': os.environ.get('MERGE_RESULT') or ('not-needed' if after.get('state') == 'CURRENT' else 'not-dispatched'),
+              },
+              'downstream': {
+                  'eventType': 'japanese_rolling_desk_ready',
+                  'eligible': after.get('state') == 'CURRENT' and detail.get('depthMet') is True,
+                  'result': downstream_result,
+                  'cycle': cycle if downstream_result in {'dispatched','already-signalled'} else '',
+              },
+          }
+          Path('/tmp/desk-self-heal-status.json').write_text(
+              json.dumps(status, ensure_ascii=False, indent=2) + '\n', encoding='utf-8'
+          )
+          print(json.dumps(status, ensure_ascii=False))
+          PY
+
+      - name: Publish independent desk-health snapshot
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s /tmp/desk-self-heal-status.json
+          rm -rf /tmp/desk-health-publish
+          mkdir -p /tmp/desk-health-publish/data
+          cp /tmp/desk-self-heal-status.json /tmp/desk-health-publish/data/desk-self-heal-status.json
+          cd /tmp/desk-health-publish
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q -b desk-health
+          git add data/desk-self-heal-status.json
+          git commit -q -m "Update Rolling Desk self-heal status"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push -q --force origin desk-health
+
+      - name: Final watchdog verdict
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          state=$(python -c 'import json; print(json.load(open("/tmp/desk-self-heal-status.json",encoding="utf-8")).get("stateAfter","UNKNOWN"))')
+          regen=$(python -c 'import json; print((json.load(open("/tmp/desk-self-heal-status.json",encoding="utf-8")).get("regeneration") or {}).get("result",""))')
+          echo "ROLLING_DESK_SELF_HEAL state=${state} regeneration=${regen}"
+          if [ "$state" = "MISSING" ] || [ "$state" = "ZERO_BYTE" ] || [ "$state" = "INVALID_JSON" ]; then
+            echo "Rolling Desk remains catastrophically invalid after self-heal." >&2
+            exit 1
+          fi
+          if [ "$state" = "STALE" ] && [ "$regen" != "dispatched" ] && [ "$regen" != "already-active" ]; then
+            echo "Rolling Desk is stale without an active regeneration owner." >&2
+            exit 1
+          fi
