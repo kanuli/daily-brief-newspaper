@@ -1,0 +1,90 @@
+name: Today Daily Recovery
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "data/live.json"
+      - "data/desk-latest.json"
+      - "scripts/build_today_daily_from_desk.py"
+      - ".github/workflows/daily-today-recovery.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "today-daily-recovery"
+  cancel-in-progress: true
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build TODAY Daily from current verified Rolling Desk when stale
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          before=$(python -c 'import json; print(json.load(open("data/latest.json",encoding="utf-8")).get("date",""))')
+          python scripts/build_today_daily_from_desk.py --write | tee /tmp/daily-recovery.json
+          after=$(python -c 'import json; print(json.load(open("data/latest.json",encoding="utf-8")).get("date",""))')
+          echo "before=${before}" >> "$GITHUB_OUTPUT"
+          echo "after=${after}" >> "$GITHUB_OUTPUT"
+          if [ "$before" != "$after" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate recovered Daily
+        if: steps.build.outputs.changed == 'true'
+        run: |
+          python scripts/validate_daily_v3.py
+          python - <<'PY'
+          import json
+          from datetime import datetime, timedelta, timezone
+          d=json.load(open('data/latest.json',encoding='utf-8'))
+          today=datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8))).date().isoformat()
+          if d.get('date') != today:
+              raise SystemExit(f"Daily recovery did not reach today: {d.get('date')} != {today}")
+          print('TODAY_DAILY_RECOVERY_VALIDATED', today, len(d.get('articles') or []))
+          PY
+
+      - name: Commit TODAY Daily to main
+        if: steps.build.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          today="${{ steps.build.outputs.after }}"
+          git add -- data/latest.json "data/${today}.json" "data/topic-more/${today}.json"
+          git commit -m "Publish ${today} Daily from verified Rolling Desk"
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "TODAY_DAILY_RECOVERY_PUSHED ${today}"
+              exit 0
+            fi
+            git fetch origin main
+            git rebase origin/main
+            sleep $((attempt * 2))
+          done
+          echo "Daily recovery push failed after retries" >&2
+          exit 1
+
+      - name: Recovery status
+        if: always()
+        run: echo "Daily recovery ${{ steps.build.outputs.before }} -> ${{ steps.build.outputs.after }} changed=${{ steps.build.outputs.changed }}"
