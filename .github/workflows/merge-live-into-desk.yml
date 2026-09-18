@@ -6,6 +6,9 @@ on:
     paths:
       - "data/latest.json"
       - "data/live.json"
+      - "scripts/atomic_publish.py"
+      - "scripts/test_atomic_publish.py"
+      - "scripts/validate_desk_integrity.py"
       - "scripts/merge_live_into_desk.py"
       - "scripts/catch_up_live_into_desk.py"
       - "scripts/desk_retention.py"
@@ -52,6 +55,10 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
 
+      - name: Regression test atomic publication guard
+        shell: bash
+        run: python scripts/test_atomic_publish.py
+
       - name: Normalize and validate Daily v3 sections
         shell: bash
         run: |
@@ -88,6 +95,10 @@ jobs:
       - name: Restore complete reservoir after destructive overwrite
         shell: bash
         run: python scripts/restore_complete_desk_reservoir.py
+
+      - name: Validate recovered reservoir before persistence
+        shell: bash
+        run: python scripts/validate_desk_integrity.py --allow-stale
 
       - name: Persist emergency reservoir recovery
         shell: bash
@@ -126,6 +137,14 @@ jobs:
       - name: Recover hard desk depth
         shell: bash
         run: python scripts/recover_desk_depth_watchdog.py
+
+      # This integrity gate is intentionally before the checkpoint below.  It
+      # allows stale-but-complete emergency restoration earlier in the job, but
+      # the canonical progress checkpoint itself may only persist a non-empty,
+      # valid, current, hard-depth-complete desk matching the current Live cycle.
+      - name: Fail closed before Rolling Desk persistence
+        shell: bash
+        run: python scripts/validate_desk_integrity.py
 
       # Persistence must happen before freshness validation. Otherwise one stale
       # desk prevents legitimate new Live stories for every other desk from ever
