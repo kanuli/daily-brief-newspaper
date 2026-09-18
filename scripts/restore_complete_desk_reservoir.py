@@ -15,6 +15,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from atomic_publish import atomic_write_text
+
 DESK_PATH = Path("data/desk-latest.json")
 HARD_FLOORS = {
     "world": 8,
@@ -74,6 +76,13 @@ def _missing_desks(counts: dict[str, int]) -> list[str]:
     return [slug for slug, floor in HARD_FLOORS.items() if counts.get(slug, 0) < floor]
 
 
+def _validated_complete_raw(raw: str) -> None:
+    candidate = _load(raw)
+    counts = _counts(candidate)
+    if not _meets_all_floors(counts):
+        raise ValueError(f"recovery candidate below hard floors: {counts}")
+
+
 def _restore_recent_complete_reservoir() -> None:
     current_raw = DESK_PATH.read_text(encoding="utf-8") if DESK_PATH.exists() else ""
     try:
@@ -124,7 +133,11 @@ def _restore_recent_complete_reservoir() -> None:
         if not _meets_all_floors(candidate_counts):
             continue
 
-        DESK_PATH.write_text(candidate_raw.rstrip("\n") + "\n", encoding="utf-8")
+        atomic_write_text(
+            DESK_PATH,
+            candidate_raw.rstrip("\n") + "\n",
+            validator=_validated_complete_raw,
+        )
         print(
             "ROLLING_DESK_RESERVOIR_RESTORED "
             f"commit={sha} counts={candidate_counts}"
