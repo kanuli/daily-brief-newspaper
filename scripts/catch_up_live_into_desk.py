@@ -16,6 +16,8 @@ import subprocess
 import sys
 from datetime import datetime
 
+from atomic_publish import atomic_write_json
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 LIVE = DATA / "live.json"
@@ -74,13 +76,13 @@ def main() -> int:
         return 0
 
     for stamp, snap in ordered:
-        LIVE.write_text(json.dumps(snap, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        atomic_write_json(LIVE, snap)
         subprocess.run([sys.executable, str(MERGE)], cwd=ROOT, check=True)
         print("ROLLING_DESK_CATCHUP_REPLAYED", stamp.isoformat(), snap.get("windowLabel"))
 
     # Ensure the working tree finishes with the current snapshot even if git
     # history contained another commit at the same timestamp.
-    LIVE.write_text(json.dumps(current, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic_write_json(LIVE, current)
     subprocess.run([sys.executable, str(MERGE)], cwd=ROOT, check=True)
     print("ROLLING_DESK_CATCHUP_PASS", f"replayed={len(ordered)}", f"through={current.get('lastUpdated')}")
     return 0
