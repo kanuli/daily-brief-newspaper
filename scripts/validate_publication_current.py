@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import datetime
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -29,6 +30,11 @@ DEPTH_FLOOR = {
     "manchester-united": 4, "football": 10,
 }
 MIN_BODY_MEASURE = 95
+
+# Pages must be able to publish today's healthy Daily/Live/desks while an
+# unrelated desk remains honestly stale.  The Editor-in-Chief workflow does not
+# have this workflow name, so supervisory/maintenance validation stays strict.
+PAGES_DEPLOY_MODE = os.environ.get("GITHUB_WORKFLOW", "") == "Deploy Daily Brief to GitHub Pages"
 
 
 def load(name):
@@ -124,13 +130,20 @@ def validate_desks(desk):
     need(desk.get("mode") == "ROLLING_DESK_LATEST", "desk-latest mode invalid")
     desks = desk.get("desks")
     need(isinstance(desks, dict), "desk-latest desks must be an object")
+    stale_isolated = []
     for slug, minimum in DEPTH_FLOOR.items():
         stories = desks.get(slug)
         need(isinstance(stories, list), f"desk {slug} must be an array")
         need(len(stories) >= minimum, f"desk {slug} depth {len(stories)} < {minimum}")
         age = newest_age_hours(stories)
         max_age = PUBLIC_DESK_FRESHNESS_HOURS[slug]
-        need(age is not None and age <= max_age, f"desk {slug} stale: newest age={age!r}h > {max_age}h")
+        need(age is not None, f"desk {slug} has no resolvable newest timestamp")
+        if age > max_age:
+            if PAGES_DEPLOY_MODE:
+                stale_isolated.append((slug, age, max_age))
+                print(f"DESK_STALE_ISOLATED_NONBLOCKING {slug} age={age:.2f}h sla={max_age}h", file=sys.stderr)
+            else:
+                need(False, f"desk {slug} stale: newest age={age!r}h > {max_age}h")
         seen = set()
         previous = None
         for index, story in enumerate(stories):
@@ -147,6 +160,8 @@ def validate_desks(desk):
                 need(previous >= stamp, f"desk {slug} not newest-first at index {index}: {story['id']}")
             previous = stamp
     need(len(desks.get("japan", [])) >= 8, "Japan desk must contain at least 8 unique current stories")
+    if stale_isolated:
+        print("PAGES_STALE_DESKS_ISOLATED " + ",".join(slug for slug, _, _ in stale_isolated))
 
 
 def report_voice_currentness_nonblocking():
