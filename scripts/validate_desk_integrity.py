@@ -7,6 +7,7 @@ Depth failure is reported separately and is never publishable.
 """
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -75,6 +76,14 @@ def inspect(desk_path: Path = DESK_PATH, live_path: Path = LIVE_PATH) -> tuple[s
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--allow-stale",
+        action="store_true",
+        help="allow a complete stale reservoir before automatic Live catch-up",
+    )
+    args = parser.parse_args()
+
     state, detail = inspect()
     print(
         "ROLLING_DESK_HEALTH",
@@ -85,7 +94,8 @@ def main() -> int:
         f"depthMet={detail.get('depthMet', False)}",
         f"counts={detail.get('counts', {})}",
     )
-    if state != "CURRENT":
+    allowed_states = {"CURRENT", "STALE"} if args.allow_stale else {"CURRENT"}
+    if state not in allowed_states:
         raise SystemExit(f"Rolling Desk is not publishable: state={state} detail={detail}")
     if detail.get("depthMet") is not True:
         raise SystemExit(f"Rolling Desk is below hard desk floors: {detail.get('counts')}")
