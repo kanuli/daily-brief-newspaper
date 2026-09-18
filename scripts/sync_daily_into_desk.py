@@ -15,6 +15,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from atomic_publish import atomic_write_json
 from desk_freshness_policy import (
     EXPECTED_DESKS,
     current_daily_dates,
@@ -111,7 +112,7 @@ def main() -> int:
     for slug in EXPECTED_DESKS:
         desks[slug] = newest_first(desks.get(slug, []))
 
-    DESK.write_text(json.dumps(desk, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic_write_json(DESK, desk)
     changed = {k: v for k, v in promoted.items() if v}
     print(f"DAILY_TO_DESK_SYNC_PASS edition={latest_date} promoted={changed} removed_misroutes={len(removed)} newest_first=true")
     if removed:
