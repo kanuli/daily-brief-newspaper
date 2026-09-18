@@ -5,6 +5,7 @@ import pathlib
 import re
 from datetime import datetime, timezone
 
+from atomic_publish import atomic_write_json
 from desk_retention import keep_on_desk
 from desk_freshness_policy import editorial_story_time, routed_slugs
 
@@ -303,8 +304,10 @@ def main():
     if publication_ready:
         coverage.pop("blockingIssues", None)
 
-    DESK.write_text(json.dumps(desk, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    LIVE.write_text(json.dumps(live, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # Never truncate a canonical publication in place.  Both candidates have
+    # passed all schema/depth/routing gates above before the atomic replace.
+    atomic_write_json(DESK, desk)
+    atomic_write_json(LIVE, live)
     if expired_cross_posts:
         print("ROLLING DESK EXPIRED CROSS-POSTS", expired_cross_posts)
     print("ROLLING DESK MERGE OK", counts)
