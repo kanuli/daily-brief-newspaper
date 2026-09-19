@@ -1,0 +1,442 @@
+{
+  "schemaVersion": 3,
+  "role": "Editor-in-Chief",
+  "checkedAt": "2026-09-19T15:58:11.890320+00:00",
+  "checkedAtHKT": "2026-09-19T23:58:11.890320+08:00",
+  "status": "EDITORIAL_ATTENTION_REQUIRED",
+  "policy": {
+    "fabricateNews": false,
+    "fakeFreshness": false,
+    "weakenVerificationGates": false,
+    "autoRepairDeterministicInfrastructure": true,
+    "escalateUnverifiableEditorialGaps": true,
+    "semanticCopyeditingGate": true,
+    "todayFirstRecovery": true,
+    "historicalBacklogNonBlocking": true,
+    "antiSnowball": true,
+    "outcomeBasedRecovery": true,
+    "publicRenderedOutcomeIsAuthority": true,
+    "publisherOwnershipGuard": true,
+    "stuckActiveRunEscalation": true,
+    "discordAlertIsNotPublicationProof": true,
+    "stockFailureMustNotMasqueradeAsWholeSiteSuccess": true
+  },
+  "currentDay": {
+    "expectedDate": "2026-09-19",
+    "dailyCurrent": true,
+    "recoveryMode": "TODAY_FIRST_NO_BACKFILL"
+  },
+  "summary": {
+    "criticalCount": 11,
+    "warningCount": 0,
+    "findingCount": 12,
+    "repairActionCount": 3,
+    "repairWorkflowCount": 3,
+    "unresolvedCriticalCount": 1,
+    "persistentCriticalCount": 3,
+    "liveSemanticCopyErrorCount": 0
+  },
+  "deskAudit": {
+    "world": {
+      "storyCount": 186,
+      "newestAgeMinutes": 58.198172,
+      "freshnessSlaHours": 24,
+      "fresh": true,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "asia": {
+      "storyCount": 218,
+      "newestAgeMinutes": 478.198172,
+      "freshnessSlaHours": 24,
+      "fresh": true,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "hong-kong": {
+      "storyCount": 72,
+      "newestAgeMinutes": 118.19817200000001,
+      "freshnessSlaHours": 24,
+      "fresh": true,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "japan": {
+      "storyCount": 164,
+      "newestAgeMinutes": 238.198172,
+      "freshnessSlaHours": 24,
+      "fresh": true,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "market-economy": {
+      "storyCount": 103,
+      "newestAgeMinutes": 178.198172,
+      "freshnessSlaHours": 24,
+      "fresh": true,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "ai-tech": {
+      "storyCount": 108,
+      "newestAgeMinutes": 778.198172,
+      "freshnessSlaHours": 24,
+      "fresh": true,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "manga-anime": {
+      "storyCount": 29,
+      "newestAgeMinutes": 9598.198172,
+      "freshnessSlaHours": 48,
+      "fresh": false,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "manchester-united": {
+      "storyCount": 36,
+      "newestAgeMinutes": 7798.198172,
+      "freshnessSlaHours": 48,
+      "fresh": false,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    },
+    "football": {
+      "storyCount": 129,
+      "newestAgeMinutes": 1558.198172,
+      "freshnessSlaHours": 48,
+      "fresh": true,
+      "qualityErrorCount": 0,
+      "semanticCopyErrorCount": 0,
+      "staleCrossDeskFootballCount": 0,
+      "hardRoutingErrorCount": 0,
+      "newestFirstErrorCount": 0
+    }
+  },
+  "freshness": {
+    "liveAgeMinutes": 0.0,
+    "stockCheckAgeMinutes": 97.58025160000001,
+    "stockContentAgeMinutes": 97.29904918333334,
+    "pagesProbeAgeMinutes": 50.6972188,
+    "voiceAgeMinutes": 52.29597775
+  },
+  "repairPlan": [
+    {
+      "area": "collection",
+      "owner": "workflow:rolling-news-search.yml",
+      "workflow": "rolling-news-search.yml",
+      "todayFirst": true
+    },
+    {
+      "area": "stock",
+      "owner": "workflow:stock-publication-maintenance.yml",
+      "workflow": "stock-publication-maintenance.yml",
+      "todayFirst": true
+    },
+    {
+      "area": "pages",
+      "owner": "workflow:pages.yml",
+      "workflow": "pages.yml",
+      "todayFirst": false
+    }
+  ],
+  "findings": [
+    {
+      "code": "COLLECTION_STALE",
+      "severity": "critical",
+      "area": "collection",
+      "message": "rolling discovery is stale (59.087866016666666 min)",
+      "repair": "collection"
+    },
+    {
+      "code": "DESK_EDITORIAL_GAP",
+      "severity": "critical",
+      "area": "manga-anime",
+      "message": "newest parseable story is 160.0 hours old (SLA 48h); repair with a genuine current story, not timestamp refresh",
+      "repair": "collection"
+    },
+    {
+      "code": "DESK_EDITORIAL_GAP",
+      "severity": "critical",
+      "area": "manchester-united",
+      "message": "newest parseable story is 130.0 hours old (SLA 48h); repair with a genuine current story, not timestamp refresh",
+      "repair": "collection"
+    },
+    {
+      "code": "STOCK_CHECK_STALE",
+      "severity": "critical",
+      "area": "stock",
+      "message": "Stock check age/status is 97.58025160000001/COMPLETE",
+      "repair": "stock"
+    },
+    {
+      "code": "PUBLIC_PROBE_STALE",
+      "severity": "critical",
+      "area": "pages",
+      "message": "public Pages probe is missing or older than 30 minutes",
+      "repair": "pages"
+    },
+    {
+      "code": "DISCORD_DELIVERY_OBSERVABILITY",
+      "severity": "info",
+      "area": "discord",
+      "message": "Discord proves newsroom data changed, not that GitHub Pages deployed; public probe is the publication authority",
+      "repair": null
+    },
+    {
+      "code": "PERSISTENT_DESK_EDITORIAL_GAP",
+      "severity": "critical",
+      "area": "manga-anime",
+      "message": "DESK_EDITORIAL_GAP remains unresolved after the previous cycle; verify actual progress and treat an over-age active repair as STUCK",
+      "repair": "collection"
+    },
+    {
+      "code": "PERSISTENT_DESK_EDITORIAL_GAP",
+      "severity": "critical",
+      "area": "manchester-united",
+      "message": "DESK_EDITORIAL_GAP remains unresolved after the previous cycle; verify actual progress and treat an over-age active repair as STUCK",
+      "repair": "collection"
+    },
+    {
+      "code": "PERSISTENT_PUBLIC_PROBE_STALE",
+      "severity": "critical",
+      "area": "pages",
+      "message": "PUBLIC_PROBE_STALE remains unresolved after the previous cycle; verify actual progress and treat an over-age active repair as STUCK",
+      "repair": "pages"
+    },
+    {
+      "code": "DESK_FRESHNESS_SLA_FAILED",
+      "severity": "critical",
+      "area": "manga-anime",
+      "message": "manga-anime freshness/daily-sync failed: age=159.97032494833334h sla=48h missingDaily=[]; recover with current verified news, not historical timestamp refresh",
+      "repair": "desk"
+    },
+    {
+      "code": "DESK_FRESHNESS_SLA_FAILED",
+      "severity": "critical",
+      "area": "manchester-united",
+      "message": "manchester-united freshness/daily-sync failed: age=129.97032494833334h sla=48h missingDaily=[]; recover with current verified news, not historical timestamp refresh",
+      "repair": "desk"
+    },
+    {
+      "code": "NEWSROOM_VALIDATOR_FAILED",
+      "severity": "critical",
+      "area": "editorial",
+      "message": "One or more existing newsroom validators failed: publication-current, desk-freshness, editorial-v2",
+      "repair": null
+    }
+  ],
+  "voiceWorkflowAudit": {
+    "coverageComplete": true,
+    "availableArticleCount": 1024,
+    "collectedStoryCount": 1024,
+    "pendingArticleCount": 0,
+    "activeRunIds": [
+      35453433302
+    ],
+    "staleRunIds": [],
+    "latestRunId": 35453433302,
+    "latestRunStatus": "in_progress",
+    "latestRunConclusion": "",
+    "voiceAgeMinutes": 52.3
+  },
+  "validatorAudit": [
+    {
+      "name": "daily-v3",
+      "ok": true
+    },
+    {
+      "name": "stock-news",
+      "ok": true
+    },
+    {
+      "name": "publication-current",
+      "ok": false,
+      "exitCode": 1
+    },
+    {
+      "name": "desk-freshness",
+      "ok": false,
+      "exitCode": 2
+    },
+    {
+      "name": "desk-freshness-tests",
+      "ok": true
+    },
+    {
+      "name": "editor-in-chief-tests",
+      "ok": true
+    },
+    {
+      "name": "editorial-v2",
+      "ok": false,
+      "exitCode": 1
+    },
+    {
+      "name": "tts-language",
+      "ok": true
+    }
+  ],
+  "deskFreshnessAudit": {
+    "checkedAt": "2026-09-19T15:58:13.169814+00:00",
+    "latestDate": "2026-09-19",
+    "currentDaily": true,
+    "status": "FAIL",
+    "desks": {
+      "world": {
+        "storyCount": 186,
+        "newestAgeHours": 0.9703249483333333,
+        "freshnessSlaHours": 24,
+        "fresh": true,
+        "currentDailyArticleIds": [
+          "world-who-health-workforce-ageing-shortage-20260919-0700",
+          "world-us-trump-media-white-house-ban-20260919-0600"
+        ],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "asia": {
+        "storyCount": 218,
+        "newestAgeHours": 7.970324948333333,
+        "freshnessSlaHours": 24,
+        "fresh": true,
+        "currentDailyArticleIds": [
+          "asia-yemen-displacement-west-coast-20260918-2000",
+          "philippines-banga-school-shooting-20260918-1700"
+        ],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "hong-kong": {
+        "storyCount": 72,
+        "newestAgeHours": 1.9703249483333334,
+        "freshnessSlaHours": 24,
+        "fresh": true,
+        "currentDailyArticleIds": [
+          "hong-kong-local-chikungunya-20260918-1800"
+        ],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "japan": {
+        "storyCount": 164,
+        "newestAgeHours": 3.9703249483333334,
+        "freshnessSlaHours": 24,
+        "fresh": true,
+        "currentDailyArticleIds": [
+          "japan-august-core-cpi-20260918-1000"
+        ],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "market-economy": {
+        "storyCount": 103,
+        "newestAgeHours": 2.9703249483333334,
+        "freshnessSlaHours": 24,
+        "fresh": true,
+        "currentDailyArticleIds": [
+          "vietnam-ftse-upgrade-foreign-buying-20260918-1400",
+          "boj-rate-hike-125-20260918-1200"
+        ],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "ai-tech": {
+        "storyCount": 108,
+        "newestAgeHours": 12.970324948333333,
+        "freshnessSlaHours": 24,
+        "fresh": true,
+        "currentDailyArticleIds": [
+          "ai-tech-anthropic-biology-wet-lab-20260918-1900"
+        ],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "manga-anime": {
+        "storyCount": 29,
+        "newestAgeHours": 159.97032494833334,
+        "freshnessSlaHours": 48,
+        "fresh": false,
+        "currentDailyArticleIds": [],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "manchester-united": {
+        "storyCount": 36,
+        "newestAgeHours": 129.97032494833334,
+        "freshnessSlaHours": 48,
+        "fresh": false,
+        "currentDailyArticleIds": [],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      },
+      "football": {
+        "storyCount": 129,
+        "newestAgeHours": 25.97032494833333,
+        "freshnessSlaHours": 48,
+        "fresh": true,
+        "currentDailyArticleIds": [
+          "football-portugal-ronaldo-nations-league-20260918-2200",
+          "football-inter-miami-messi-100-campeones-cup-20260917-1800"
+        ],
+        "missingCurrentDailyArticleIds": [],
+        "dailySynced": true
+      }
+    },
+    "failures": [
+      "manga-anime: newest story age 159.97032494833334h exceeds 48h SLA",
+      "manchester-united: newest story age 129.97032494833334h exceeds 48h SLA"
+    ]
+  },
+  "repairExecution": [
+    {
+      "workflow": "rolling-news-search.yml",
+      "dispatched": true,
+      "reason": "editor-in-chief-safe-repair"
+    },
+    {
+      "workflow": "stock-publication-maintenance.yml",
+      "dispatched": true,
+      "reason": "editor-in-chief-safe-repair"
+    },
+    {
+      "workflow": "pages.yml",
+      "dispatched": false,
+      "reason": "already-active-healthy",
+      "maxAgeMinutes": 0.5
+    },
+    {
+      "workflow": "merge-live-into-desk.yml",
+      "dispatched": false,
+      "reason": "already-active-healthy",
+      "maxAgeMinutes": 0.5
+    }
+  ],
+  "repairsDispatched": 2,
+  "repairsSkipped": 2,
+  "stuckRepairsRestarted": 0
+}
