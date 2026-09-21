@@ -45,6 +45,8 @@ jobs:
           python -m py_compile scripts/build_today_daily_from_desk.py
           python -m py_compile scripts/sync_daily_archive.py
           python -m py_compile scripts/test_daily_archive_recovery.py
+          python -m py_compile scripts/recover_manga_freshness_watchdog.py
+          python -m py_compile scripts/test_specialist_freshness_recovery.py
 
       - name: Desk retention regression tests
         run: python scripts/test_desk_retention.py
@@ -57,6 +59,9 @@ jobs:
 
       - name: Daily and archive recovery regression tests
         run: python scripts/test_daily_archive_recovery.py
+
+      - name: Specialist freshness recovery regression tests
+        run: PYTHONPATH=scripts python scripts/test_specialist_freshness_recovery.py
 
       - name: Validate newsroom JavaScript
         run: |
