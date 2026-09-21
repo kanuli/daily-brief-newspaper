@@ -28,6 +28,9 @@ jobs:
       - name: Rebuild Rolling Desk from proposed Live snapshot
         run: python scripts/merge_live_into_desk.py
 
+      - name: Apply verification-gated public-desk freshness recovery
+        run: PYTHONPATH=scripts python scripts/recover_manga_freshness_watchdog.py
+
       - name: Validate Python syntax for deployment builders
         run: |
           python -m py_compile scripts/build_static_news_fallback.py
@@ -122,8 +125,6 @@ jobs:
               if stories[0].get('title') not in Path(page).read_text(encoding='utf-8'):
                   raise SystemExit(f'{page}: current story not prerendered')
 
-          # Regression: stale Football cross-posts may remain on Football but must
-          # not linger for days on regional pages.
           stale_ids={'football-jleague-machida-20260825','football-hkpl-shatin-20260825'}
           for slug in ('japan','hong-kong'):
               ids={str(s.get('id') or '') for s in ((desk.get('desks') or {}).get(slug) or []) if isinstance(s,dict)}
