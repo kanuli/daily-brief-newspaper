@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: daily-archive-self-heal
@@ -87,22 +88,36 @@ jobs:
 
           if ! commit_if_needed; then
             echo "DAILY_ARCHIVE_SELF_HEAL_NOOP"
-            exit 0
+          else
+            pushed=false
+            for attempt in 1 2 3 4 5; do
+              if git push origin HEAD:main; then
+                echo "DAILY_ARCHIVE_SELF_HEAL_PUSHED"
+                pushed=true
+                break
+              fi
+              git fetch origin main
+              git reset --hard origin/main
+              python scripts/sync_daily_archive.py
+              if ! commit_if_needed; then
+                echo "Another run already persisted the archive repair."
+                pushed=true
+                break
+              fi
+              sleep $((attempt * 2))
+            done
+            if [ "$pushed" != "true" ]; then
+              echo "Archive self-heal push failed after retries" >&2
+              exit 1
+            fi
           fi
 
-          for attempt in 1 2 3 4 5; do
-            if git push origin HEAD:main; then
-              echo "DAILY_ARCHIVE_SELF_HEAL_PUSHED"
-              exit 0
-            fi
-            git fetch origin main
-            git reset --hard origin/main
-            python scripts/sync_daily_archive.py
-            if ! commit_if_needed; then
-              echo "Another run already persisted the archive repair."
-              exit 0
-            fi
-            sleep $((attempt * 2))
-          done
-          echo "Archive self-heal push failed after retries" >&2
-          exit 1
+      - name: Force Pages publication safety net
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run pages.yml --repo "${GITHUB_REPOSITORY}" --ref main
+          echo "DAILY_ARCHIVE_RECOVERY_PAGES_DISPATCHED"
