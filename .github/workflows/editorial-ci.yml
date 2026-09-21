@@ -111,8 +111,8 @@ jobs:
           home=Path('index.html').read_text(encoding='utf-8')
           if not lead or lead.get('title') not in home:
               raise SystemExit('homepage prerender missing current lead')
-          if '各版最新' not in home or '今小時有甚麼變化' not in home:
-              raise SystemExit('homepage missing Live-vs-Desk editorial hierarchy')
+          if '各版最新' not in home or 'id="live-summary"' not in home:
+              raise SystemExit('homepage missing Live-vs-Desk structural hierarchy')
 
           desk=json.load(open('data/desk-latest.json',encoding='utf-8'))
           mapping={'world.html':'world','asia.html':'asia','hong-kong.html':'hong-kong','japan.html':'japan',
