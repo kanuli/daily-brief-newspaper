@@ -25,11 +25,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Rebuild Rolling Desk from proposed Live snapshot
-        run: python scripts/merge_live_into_desk.py
-
       - name: Apply verification-gated public-desk freshness recovery
         run: PYTHONPATH=scripts python scripts/recover_manga_freshness_watchdog.py
+
+      - name: Rebuild Rolling Desk and Live coverage metadata
+        run: python scripts/merge_live_into_desk.py
 
       - name: Validate Python syntax for deployment builders
         run: |
