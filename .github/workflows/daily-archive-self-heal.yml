@@ -2,28 +2,29 @@ name: Daily Archive Self-Heal
 
 on:
   push:
-    branches: ["main"]
+    branches:
+      - main
     paths:
-      - "data/latest.json"
-      - "data/20??-??-??.json"
-      - "scripts/sync_daily_archive.py"
-      - ".github/workflows/daily-archive-self-heal.yml"
+      - data/latest.json
+      - data/20??-??-??.json
+      - scripts/sync_daily_archive.py
+      - .github/workflows/daily-archive-self-heal.yml
   pull_request:
-    branches: ["main"]
+    branches:
+      - main
     paths:
-      - "scripts/sync_daily_archive.py"
-      - "scripts/test_daily_archive_recovery.py"
-      - ".github/workflows/daily-archive-self-heal.yml"
+      - scripts/sync_daily_archive.py
+      - scripts/test_daily_archive_recovery.py
+      - .github/workflows/daily-archive-self-heal.yml
   schedule:
-    # Independent archive integrity check every hour.
-    - cron: "17 * * * *"
+    - cron: '17 * * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: "daily-archive-self-heal-${{ github.event.pull_request.number || 'production' }}"
+  group: daily-archive-self-heal
   cancel-in-progress: false
 
 jobs:
@@ -39,12 +40,13 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.12'
 
       - name: Rebuild archive only from valid dated Daily editions
         run: python scripts/sync_daily_archive.py
 
       - name: Validate archive referential integrity
+        shell: bash
         run: |
           python - <<'PY'
           import json
