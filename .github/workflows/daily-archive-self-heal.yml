@@ -1,0 +1,108 @@
+name: Daily Archive Self-Heal
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - data/latest.json
+      - scripts/sync_daily_archive.py
+      - .github/workflows/daily-archive-self-heal.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - scripts/sync_daily_archive.py
+      - scripts/test_daily_archive_recovery.py
+      - .github/workflows/daily-archive-self-heal.yml
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-archive-self-heal
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Checkout tested/current revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Rebuild archive only from valid dated Daily editions
+        run: python scripts/sync_daily_archive.py
+
+      - name: Validate archive referential integrity
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          archive=json.load(open('data/archive.json',encoding='utf-8'))
+          rows=archive.get('editions') or []
+          if not rows:
+              raise SystemExit('archive has no editions')
+          dates=[str(row.get('date') or '') for row in rows]
+          if dates != sorted(dates, reverse=True) or len(dates) != len(set(dates)):
+              raise SystemExit('archive dates are not unique reverse chronology')
+          for row in rows:
+              date=row['date']
+              daily=Path('data') / f'{date}.json'
+              wrapper=Path(str(row.get('url') or ''))
+              if not daily.is_file():
+                  raise SystemExit(f'archive references missing Daily JSON: {daily}')
+              if not wrapper.is_file():
+                  raise SystemExit(f'archive references missing wrapper: {wrapper}')
+          print('DAILY_ARCHIVE_INTEGRITY_OK', dates[0], len(dates))
+          PY
+
+      - name: Persist archive repairs
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          commit_if_needed() {
+            git add -- data/archive.json editions
+            if git diff --cached --quiet; then
+              return 1
+            fi
+            git commit -m "Self-heal Daily archive index and edition wrappers"
+            return 0
+          }
+
+          if ! commit_if_needed; then
+            echo "DAILY_ARCHIVE_SELF_HEAL_NOOP"
+            exit 0
+          fi
+
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "DAILY_ARCHIVE_SELF_HEAL_PUSHED"
+              exit 0
+            fi
+            git fetch origin main
+            git reset --hard origin/main
+            python scripts/sync_daily_archive.py
+            if ! commit_if_needed; then
+              echo "Another run already persisted the archive repair."
+              exit 0
+            fi
+            sleep $((attempt * 2))
+          done
+          echo "Archive self-heal push failed after retries" >&2
+          exit 1
