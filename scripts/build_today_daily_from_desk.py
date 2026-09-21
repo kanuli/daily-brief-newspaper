@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Build TODAY's Daily Edition from already-verified Rolling Desk stories.
 
-This is a recovery path, not a news generator.  It never invents copy and never
-retimestamps old stories.  It copies current, already-published newsroom stories
+This is a recovery path, not a news generator. It never invents copy and never
+retimestamps old stories. It copies current, already-published newsroom stories
 from data/desk-latest.json into a current Daily Edition when the normal Daily
 publisher has failed to advance data/latest.json.
+
+Recovery deliberately re-runs the Daily public-copy gate on every candidate.
+One contaminated Rolling Desk story must be skipped, not allowed to freeze the
+entire Daily publication.
 """
 from __future__ import annotations
 
@@ -16,10 +20,12 @@ from pathlib import Path
 from typing import Any
 
 from desk_freshness_policy import editorial_story_time
+from validate_daily_v3 import validate_story
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 HKT = timezone(timedelta(hours=8))
+DAILY_OPEN_HOUR_HKT = 8
 
 DESK_ORDER = (
     "world", "asia", "hong-kong", "japan", "market-economy",
@@ -64,26 +70,51 @@ def story_stamp(story: dict[str, Any], now: datetime) -> datetime:
     return editorial_story_time(story, now=now) or datetime.min.replace(tzinfo=timezone.utc)
 
 
+def daily_candidate(story: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
+    """Return a Daily-safe copy, or the exact validation reason for rejection."""
+    copied = copy.deepcopy(story)
+    copied.pop("status", None)
+    sid = str(copied.get("id") or "<missing-id>")
+    try:
+        validate_story(copied, f"Daily recovery candidate id={sid}")
+    except Exception as exc:
+        return None, str(exc)
+    return copied, None
+
+
 def build(now: datetime | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     now_hkt = now.astimezone(HKT)
     today = now_hkt.date().isoformat()
     latest_path = DATA / "latest.json"
-    desk_path = DATA / "desk-latest.json"
     previous = load(latest_path)
-    desk = load(desk_path)
 
     if previous.get("date") == today:
         return previous, {"changed": False, "reason": "daily-already-current", "date": today}
+
+    # The canonical Daily opens at 08:00 HKT. Before then, retain yesterday's
+    # edition and let Live/Rolling Desk carry overnight updates. This prevents a
+    # 05:xx recovery run from silently becoming the day's Daily Edition.
+    if now_hkt.hour < DAILY_OPEN_HOUR_HKT:
+        return previous, {
+            "changed": False,
+            "reason": "before-daily-window",
+            "date": today,
+            "dailyOpenHourHKT": DAILY_OPEN_HOUR_HKT,
+        }
+
+    desk_path = DATA / "desk-latest.json"
+    desk = load(desk_path)
     if desk.get("date") != today:
         raise SystemExit(f"Rolling Desk is not current enough to build Daily: desk date={desk.get('date')} expected={today}")
 
     desks = desk.get("desks") if isinstance(desk.get("desks"), dict) else {}
     selected_by_desk: dict[str, list[dict[str, Any]]] = {}
     seen: set[str] = set()
+    rejected: list[dict[str, str]] = []
 
-    # Take up to two genuinely current verified stories from each healthy desk.
-    # Stale desks remain omitted/fail-closed instead of blocking today's edition.
+    # Take up to two genuinely current, Daily-safe stories from each healthy
+    # desk. A bad candidate is skipped and the next candidate is tried.
     for slug in DESK_ORDER:
         rows = desks.get(slug) if isinstance(desks.get(slug), list) else []
         current = [s for s in rows if isinstance(s, dict) and current_story(s, slug, now)]
@@ -93,8 +124,10 @@ def build(now: datetime | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
             sid = str(story.get("id") or "").strip()
             if not sid or sid in seen:
                 continue
-            copied = copy.deepcopy(story)
-            copied.pop("status", None)
+            copied, error = daily_candidate(story)
+            if copied is None:
+                rejected.append({"desk": slug, "id": sid, "reason": error or "invalid-public-copy"})
+                continue
             picked.append(copied)
             seen.add(sid)
             if len(picked) >= 2:
@@ -105,7 +138,10 @@ def build(now: datetime | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
     articles = [s for slug in DESK_ORDER for s in selected_by_desk.get(slug, [])]
     articles.sort(key=lambda s: story_stamp(s, now), reverse=True)
     if len(articles) < 8:
-        raise SystemExit(f"Only {len(articles)} current verified Rolling Desk stories available; refusing weak Daily catch-up")
+        raise SystemExit(
+            f"Only {len(articles)} current Daily-safe Rolling Desk stories available; "
+            f"refusing weak Daily catch-up; rejected={len(rejected)}"
+        )
 
     sections = []
     for slug in DESK_ORDER:
@@ -149,6 +185,7 @@ def build(now: datetime | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
         "topFive": top_ids,
         "headline": "；".join(headline_titles),
         "omittedStaleDesks": [slug for slug in DESK_ORDER if slug not in selected_by_desk],
+        "rejectedInvalidStories": rejected,
     }
     return daily, meta
 
