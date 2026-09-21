@@ -2,26 +2,24 @@ name: Today Daily Recovery
 
 on:
   push:
-    branches: ["main"]
+    branches:
+      - main
     paths:
-      - "data/live.json"
-      - "data/desk-latest.json"
-      - "data/latest.json"
-      - "data/20??-??-??.json"
-      - "scripts/build_today_daily_from_desk.py"
-      - "scripts/sync_daily_archive.py"
-      - ".github/workflows/daily-today-recovery.yml"
+      - data/live.json
+      - data/desk-latest.json
+      - data/latest.json
+      - scripts/build_today_daily_from_desk.py
+      - scripts/sync_daily_archive.py
+      - .github/workflows/daily-today-recovery.yml
   schedule:
-    # Independent safety net. Live/Desk pushes normally trigger this sooner.
-    - cron: "*/15 * * * *"
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: "today-daily-recovery"
-  # Never cancel the recovery owner because another frequent newsroom push arrived.
+  group: today-daily-recovery
   cancel-in-progress: false
 
 jobs:
@@ -38,7 +36,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.12'
 
       - name: Build TODAY Daily from current verified Rolling Desk when stale
         id: build
@@ -71,7 +69,6 @@ jobs:
           PY
 
       - name: Self-heal Daily archive from every valid dated edition
-        id: archive
         shell: bash
         run: |
           set -euo pipefail
@@ -104,7 +101,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           stage_and_commit() {
-            git add -- data/latest.json data/archive.json data/20??-??-??.json data/topic-more editions
+            git add -- data/latest.json data/archive.json data/topic-more editions
+            git add -- data/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].json
             if git diff --cached --quiet; then
               echo "TODAY_DAILY_ARCHIVE_RECOVERY_NOOP"
               return 1
@@ -123,7 +121,6 @@ jobs:
               echo "TODAY_DAILY_ARCHIVE_RECOVERY_PUSHED"
               exit 0
             fi
-
             echo "Push race on attempt ${attempt}; rebuilding from latest main"
             git fetch origin main
             git reset --hard origin/main
