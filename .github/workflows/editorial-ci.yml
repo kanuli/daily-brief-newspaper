@@ -25,7 +25,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Rebuild Rolling Desk from proposed Live snapshot
+      - name: Apply verification-gated public-desk freshness recovery
+        run: PYTHONPATH=scripts python scripts/recover_manga_freshness_watchdog.py
+
+      - name: Rebuild Rolling Desk and Live coverage metadata
         run: python scripts/merge_live_into_desk.py
 
       - name: Validate Python syntax for deployment builders
@@ -45,6 +48,8 @@ jobs:
           python -m py_compile scripts/build_today_daily_from_desk.py
           python -m py_compile scripts/sync_daily_archive.py
           python -m py_compile scripts/test_daily_archive_recovery.py
+          python -m py_compile scripts/recover_manga_freshness_watchdog.py
+          python -m py_compile scripts/test_specialist_freshness_recovery.py
 
       - name: Desk retention regression tests
         run: python scripts/test_desk_retention.py
@@ -57,6 +62,9 @@ jobs:
 
       - name: Daily and archive recovery regression tests
         run: python scripts/test_daily_archive_recovery.py
+
+      - name: Specialist freshness recovery regression tests
+        run: PYTHONPATH=scripts python scripts/test_specialist_freshness_recovery.py
 
       - name: Validate newsroom JavaScript
         run: |
@@ -103,8 +111,8 @@ jobs:
           home=Path('index.html').read_text(encoding='utf-8')
           if not lead or lead.get('title') not in home:
               raise SystemExit('homepage prerender missing current lead')
-          if '各版最新' not in home or '今小時有甚麼變化' not in home:
-              raise SystemExit('homepage missing Live-vs-Desk editorial hierarchy')
+          if '各版最新' not in home or 'id="live-summary"' not in home:
+              raise SystemExit('homepage missing Live-vs-Desk structural hierarchy')
 
           desk=json.load(open('data/desk-latest.json',encoding='utf-8'))
           mapping={'world.html':'world','asia.html':'asia','hong-kong.html':'hong-kong','japan.html':'japan',
@@ -117,8 +125,6 @@ jobs:
               if stories[0].get('title') not in Path(page).read_text(encoding='utf-8'):
                   raise SystemExit(f'{page}: current story not prerendered')
 
-          # Regression: stale Football cross-posts may remain on Football but must
-          # not linger for days on regional pages.
           stale_ids={'football-jleague-machida-20260825','football-hkpl-shatin-20260825'}
           for slug in ('japan','hong-kong'):
               ids={str(s.get('id') or '') for s in ((desk.get('desks') or {}).get(slug) or []) if isinstance(s,dict)}
