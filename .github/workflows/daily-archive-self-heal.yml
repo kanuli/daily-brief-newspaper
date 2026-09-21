@@ -8,6 +8,12 @@ on:
       - "data/20??-??-??.json"
       - "scripts/sync_daily_archive.py"
       - ".github/workflows/daily-archive-self-heal.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "scripts/sync_daily_archive.py"
+      - "scripts/test_daily_archive_recovery.py"
+      - ".github/workflows/daily-archive-self-heal.yml"
   schedule:
     # Independent archive integrity check every hour.
     - cron: "17 * * * *"
@@ -17,7 +23,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: "daily-archive-self-heal"
+  group: "daily-archive-self-heal-${{ github.event.pull_request.number || 'production' }}"
   cancel-in-progress: false
 
 jobs:
@@ -25,10 +31,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
-      - name: Checkout current main
+      - name: Checkout tested/current revision
         uses: actions/checkout@v4
         with:
-          ref: main
           fetch-depth: 1
 
       - name: Set up Python
@@ -64,6 +69,7 @@ jobs:
           PY
 
       - name: Persist archive repairs
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
