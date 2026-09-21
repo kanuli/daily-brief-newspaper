@@ -6,8 +6,14 @@ on:
     paths:
       - "data/live.json"
       - "data/desk-latest.json"
+      - "data/latest.json"
+      - "data/20??-??-??.json"
       - "scripts/build_today_daily_from_desk.py"
+      - "scripts/sync_daily_archive.py"
       - ".github/workflows/daily-today-recovery.yml"
+  schedule:
+    # Independent safety net. Live/Desk pushes normally trigger this sooner.
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -15,7 +21,8 @@ permissions:
 
 concurrency:
   group: "today-daily-recovery"
-  cancel-in-progress: true
+  # Never cancel the recovery owner because another frequent newsroom push arrived.
+  cancel-in-progress: false
 
 jobs:
   recover:
@@ -26,7 +33,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -63,26 +70,73 @@ jobs:
           print('TODAY_DAILY_RECOVERY_VALIDATED', today, len(d.get('articles') or []))
           PY
 
-      - name: Commit TODAY Daily to main
-        if: steps.build.outputs.changed == 'true'
+      - name: Self-heal Daily archive from every valid dated edition
+        id: archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/sync_daily_archive.py | tee /tmp/archive-sync.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          archive=json.load(open('data/archive.json',encoding='utf-8'))
+          rows=archive.get('editions') or []
+          if not rows:
+              raise SystemExit('Archive is empty after self-heal')
+          dates=[str(r.get('date') or '') for r in rows]
+          if dates != sorted(dates, reverse=True):
+              raise SystemExit('Archive is not reverse chronological')
+          for row in rows:
+              url=str(row.get('url') or '')
+              if not url or not Path(url).is_file():
+                  raise SystemExit(f"Archive wrapper missing: {url}")
+              dated=Path('data') / f"{row['date']}.json"
+              if not dated.is_file():
+                  raise SystemExit(f"Archive points to missing Daily JSON: {dated}")
+          print('DAILY_ARCHIVE_SELF_HEAL_VALIDATED', rows[0]['date'], len(rows))
+          PY
+
+      - name: Commit recovered Daily and archive to main
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          today="${{ steps.build.outputs.after }}"
-          git add -- data/latest.json "data/${today}.json" "data/topic-more/${today}.json"
-          git commit -m "Publish ${today} Daily from verified Rolling Desk"
+
+          stage_and_commit() {
+            git add -- data/latest.json data/archive.json data/20??-??-??.json data/topic-more editions
+            if git diff --cached --quiet; then
+              echo "TODAY_DAILY_ARCHIVE_RECOVERY_NOOP"
+              return 1
+            fi
+            current=$(python -c 'import json; print(json.load(open("data/latest.json",encoding="utf-8")).get("date","unknown"))')
+            git commit -m "Self-heal Daily and archive through ${current}"
+            return 0
+          }
+
+          if ! stage_and_commit; then
+            exit 0
+          fi
+
           for attempt in 1 2 3 4 5; do
             if git push origin HEAD:main; then
-              echo "TODAY_DAILY_RECOVERY_PUSHED ${today}"
+              echo "TODAY_DAILY_ARCHIVE_RECOVERY_PUSHED"
               exit 0
             fi
+
+            echo "Push race on attempt ${attempt}; rebuilding from latest main"
             git fetch origin main
-            git rebase origin/main
+            git reset --hard origin/main
+            python scripts/build_today_daily_from_desk.py --write
+            python scripts/validate_daily_v3.py
+            python scripts/sync_daily_archive.py
+            if ! stage_and_commit; then
+              echo "Another producer already persisted the same recovery state."
+              exit 0
+            fi
             sleep $((attempt * 2))
           done
-          echo "Daily recovery push failed after retries" >&2
+          echo "Daily/archive recovery push failed after retries" >&2
           exit 1
 
       - name: Recovery status
