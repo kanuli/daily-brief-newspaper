@@ -1,0 +1,26 @@
+name: Discord Webhook Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-discord:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Discord test message
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          test -n "$DISCORD_WEBHOOK_URL" || { echo "DISCORD_WEBHOOK_URL secret is missing"; exit 1; }
+          code=$(curl -sS -o /tmp/discord-response.txt -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            -d '{"content":"Daily News GitHub → Discord push test ✅"}' \
+            "$DISCORD_WEBHOOK_URL")
+          echo "Discord HTTP $code"
+          if [ "$code" != "204" ] && [ "$code" != "200" ]; then
+            cat /tmp/discord-response.txt
+            exit 1
+          fi
