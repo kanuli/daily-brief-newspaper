@@ -96,6 +96,31 @@ def normalize_live_route(item):
     return slugs
 
 
+def live_item_rejection_reason(item):
+    """Return an editorial rejection reason without blocking the whole cycle.
+
+    A single malformed/process-copy story must never prevent unrelated valid
+    stories from advancing the Rolling Desk for every topic page. Rejected
+    items are omitted from the sanitized Live snapshot and logged by ID.
+    """
+    if not isinstance(item, dict):
+        return "not an object"
+    if not desk_slugs(item):
+        return "no valid editorial route"
+    for field in REQUIRED:
+        if not isinstance(item.get(field), str) or not item[field].strip():
+            return f"missing {field}"
+    paras = [p.strip() for p in re.split(r"\n\s*\n", item["body"]) if p.strip()]
+    if len(paras) < 2:
+        return "body lacks 2 paragraphs"
+    public = " ".join(str(item.get(k, "")) for k in (
+        "title", "dek", "summary", "body", "context", "why", "watchNext"
+    ))
+    if FORBIDDEN.search(public):
+        return "contains process copy"
+    return ""
+
+
 def story_identity(story):
     story_id = str(story.get("id") or "").strip()
     if story_id:
@@ -201,10 +226,30 @@ def main():
     desks = desk.setdefault("desks", {})
     expired_cross_posts = []
 
+    raw_live_items = [item for item in live.get("items", []) if isinstance(item, dict)]
+    live_items = []
+    quarantined_live_items = []
+    for raw_item in raw_live_items:
+        item = copy.deepcopy(raw_item)
+        reason = live_item_rejection_reason(item)
+        if reason:
+            quarantined_live_items.append((str(item.get("id") or "unknown"), reason))
+            continue
+        normalize_live_route(item)
+        live_items.append(item)
+
+    if raw_live_items and not live_items:
+        rejected = ", ".join(item_id for item_id, _ in quarantined_live_items)
+        raise SystemExit(f"All Live items rejected by editorial gate: {rejected}")
+
+    # The public Live snapshot must never retain a rejected item. This keeps the
+    # gate fail-closed per story while allowing unrelated valid stories and all
+    # topic pages to advance instead of deadlocking the whole publication cycle.
+    live["items"] = live_items
+
     current_routes = {}
-    for item in live.get("items", []):
-        if isinstance(item, dict):
-            current_routes[story_identity(item)] = set(desk_slugs(item))
+    for item in live_items:
+        current_routes[story_identity(item)] = set(desk_slugs(item))
 
     for slug in FLOORS:
         retained = []
@@ -230,21 +275,8 @@ def main():
             retained.append(normalized)
         desks[slug] = newest_first(retained)
 
-    live_items = [item for item in live.get("items", []) if isinstance(item, dict)]
     for item in live_items:
         slugs = normalize_live_route(item)
-        for field in REQUIRED:
-            if not isinstance(item.get(field), str) or not item[field].strip():
-                raise SystemExit(f"Live item {item.get('id')} missing {field}")
-        paras = [p.strip() for p in re.split(r"\n\s*\n", item["body"]) if p.strip()]
-        if len(paras) < 2:
-            raise SystemExit(f"Live item {item.get('id')} body lacks 2 paragraphs")
-        public = " ".join(str(item.get(k, "")) for k in (
-            "title", "dek", "summary", "body", "context", "why", "watchNext"
-        ))
-        if FORBIDDEN.search(public):
-            raise SystemExit(f"Live item {item.get('id')} contains process copy")
-
         for slug in slugs:
             if not keep_on_desk(item, slug):
                 expired_cross_posts.append((slug, str(item.get("id") or item.get("title") or "unknown")))
@@ -304,10 +336,13 @@ def main():
     if publication_ready:
         coverage.pop("blockingIssues", None)
 
-    # Never truncate a canonical publication in place.  Both candidates have
+    # Never truncate a canonical publication in place. Both candidates have
     # passed all schema/depth/routing gates above before the atomic replace.
     atomic_write_json(DESK, desk)
     atomic_write_json(LIVE, live)
+    if quarantined_live_items:
+        for item_id, reason in quarantined_live_items:
+            print("ROLLING DESK QUARANTINED LIVE ITEM", item_id, reason)
     if expired_cross_posts:
         print("ROLLING DESK EXPIRED CROSS-POSTS", expired_cross_posts)
     print("ROLLING DESK MERGE OK", counts)
