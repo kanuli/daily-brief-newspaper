@@ -15,7 +15,7 @@ on:
       - ".github/workflows/page-news-sentinel.yml"
   schedule:
     # Availability is already checked every 10 minutes by pages-probe.
-    # This lower-frequency supervisory pass avoids adding queue pressure.
+    # This pass reports editorial/public freshness to the Editor-in-Chief.
     - cron: "47 * * * *"
   workflow_dispatch:
 
@@ -73,48 +73,102 @@ jobs:
           echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Dispatch targeted safe repairs
+      - name: Publish sentinel status snapshot
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY' > /tmp/page-news-sentinel-workflows.txt
+          test -s /tmp/page-news-sentinel-status.json
+          rm -rf /tmp/page-sentinel-status
+          mkdir -p /tmp/page-sentinel-status/data
+          cp /tmp/page-news-sentinel-status.json /tmp/page-sentinel-status/data/page-news-sentinel-status.json
+          cd /tmp/page-sentinel-status
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q -b page-sentinel-status
+          git add data/page-news-sentinel-status.json
+          git commit -q -m "Update page news sentinel status"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push -q --force origin page-sentinel-status
+
+      - name: Assign page findings to Editor-in-Chief
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          needs_editor=$(python - <<'PY'
           import json
-          data=json.load(open('/tmp/page-news-sentinel-status.json',encoding='utf-8'))
-          for wf in data.get('repairWorkflows') or []:
-              print(wf)
+          d=json.load(open('/tmp/page-news-sentinel-status.json',encoding='utf-8'))
+          print('true' if d.get('failedPageCount',0) or d.get('repairWorkflows') else 'false')
           PY
+          )
 
-          : > /tmp/page-news-sentinel-repairs.jsonl
-          while IFS= read -r wf; do
-            [ -n "$wf" ] || continue
-            active=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow "$wf" --limit 10 --json status --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
-            if [ "${active:-0}" -gt 0 ]; then
-              printf '{"workflow":"%s","dispatched":false,"reason":"already-active"}\n' "$wf" >> /tmp/page-news-sentinel-repairs.jsonl
-              continue
-            fi
-            if gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main; then
-              printf '{"workflow":"%s","dispatched":true,"reason":"page-news-sentinel"}\n' "$wf" >> /tmp/page-news-sentinel-repairs.jsonl
-            else
-              printf '{"workflow":"%s","dispatched":false,"reason":"dispatch-failed"}\n' "$wf" >> /tmp/page-news-sentinel-repairs.jsonl
-            fi
-          done < /tmp/page-news-sentinel-workflows.txt
+          if [ "$needs_editor" != "true" ]; then
+            echo 'EDITOR_IN_CHIEF_ASSIGNMENT_NOT_REQUIRED'
+            exit 0
+          fi
 
-          python - <<'PY'
-          import json
+          wf='editor-in-chief-newsroom-assignment.yml'
+          active=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow "$wf" --limit 10 --json status --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
+          if [ "${active:-0}" -gt 0 ]; then
+            result='already-active'
+            echo 'EDITOR_IN_CHIEF_ASSIGNMENT_ALREADY_ACTIVE'
+          elif gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main; then
+            result='assigned'
+            echo 'EDITOR_IN_CHIEF_ASSIGNMENT_DISPATCHED'
+          else
+            result='dispatch-failed'
+            echo 'EDITOR_IN_CHIEF_ASSIGNMENT_DISPATCH_FAILED' >&2
+          fi
+
+          python - "$result" <<'PY'
+          import json,sys
           from pathlib import Path
           path=Path('/tmp/page-news-sentinel-status.json')
-          data=json.loads(path.read_text(encoding='utf-8'))
-          rows=[json.loads(x) for x in Path('/tmp/page-news-sentinel-repairs.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
-          data['repairExecution']=rows
-          if any(r.get('reason') == 'dispatch-failed' for r in rows):
-              data['status']='EDITORIAL_ATTENTION_REQUIRED'
-              data['escalationRequired']=True
-          path.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          d=json.loads(path.read_text(encoding='utf-8'))
+          d['editorInChiefAssignment']={
+              'workflow':'editor-in-chief-newsroom-assignment.yml',
+              'result':sys.argv[1],
+              'requestedRepairs':d.get('repairWorkflows') or [],
+          }
+          if sys.argv[1] == 'dispatch-failed':
+              d['status']='EDITORIAL_ATTENTION_REQUIRED'
+              d['escalationRequired']=True
+          path.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
           PY
 
+          if [ "$result" = "dispatch-failed" ]; then
+            exit 1
+          fi
+
+      - name: Republish sentinel state with assignment result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s /tmp/page-news-sentinel-status.json
+          rm -rf /tmp/page-sentinel-status
+          mkdir -p /tmp/page-sentinel-status/data
+          cp /tmp/page-news-sentinel-status.json /tmp/page-sentinel-status/data/page-news-sentinel-status.json
+          cd /tmp/page-sentinel-status
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q -b page-sentinel-status
+          git add data/page-news-sentinel-status.json
+          git commit -q -m "Update page news sentinel assignment status"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push -q --force origin page-sentinel-status
+
       - name: Escalate persistent page-news failures
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -149,9 +203,7 @@ jobs:
           for row in d.get('pageResults') or []:
               if not row.get('ok'):
                   print(f"- `{row.get('page')}`: {'; '.join(row.get('reasons') or [])}")
-          if d.get('runnerFailure'):
-              print(f"- Sentinel runner: {d.get('runnerFailure')}")
-          print('\nThe robot attempted only verification-gated repair workflows. It did not fabricate news or rewrite timestamps.')
+          print('\nPage Sentinel does not dispatch repair Robots directly. It assigns findings to the Editor-in-Chief, which owns Robot selection and deduplication. No news or timestamps are fabricated.')
           PY
           )
           existing=$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search "$title in:title" --json number --jq '.[0].number // empty')
@@ -160,27 +212,6 @@ jobs:
           else
             gh issue create --repo "${GITHUB_REPOSITORY}" --title "$title" --body "$body"
           fi
-
-      - name: Publish sentinel status snapshot
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -s /tmp/page-news-sentinel-status.json
-          rm -rf /tmp/page-sentinel-status
-          mkdir -p /tmp/page-sentinel-status/data
-          cp /tmp/page-news-sentinel-status.json /tmp/page-sentinel-status/data/page-news-sentinel-status.json
-          cd /tmp/page-sentinel-status
-          git init -q
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -q -b page-sentinel-status
-          git add data/page-news-sentinel-status.json
-          git commit -q -m "Update page news sentinel status"
-          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git push -q --force origin page-sentinel-status
 
       - name: Final sentinel verdict
         if: always()
