@@ -39,7 +39,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Build TODAY Daily from current verified Rolling Desk when stale
+      - name: Build required Daily from current verified Rolling Desk when stale
         id: build
         shell: bash
         run: |
@@ -62,11 +62,17 @@ jobs:
           python - <<'PY'
           import json
           from datetime import datetime, timedelta, timezone
+
+          HKT=timezone(timedelta(hours=8))
+          now_hkt=datetime.now(timezone.utc).astimezone(HKT)
+          required_date=(now_hkt.date() if now_hkt.hour >= 8 else now_hkt.date()-timedelta(days=1)).isoformat()
           d=json.load(open('data/latest.json',encoding='utf-8'))
-          today=datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8))).date().isoformat()
-          if d.get('date') != today:
-              raise SystemExit(f"Daily recovery did not reach today: {d.get('date')} != {today}")
-          print('TODAY_DAILY_RECOVERY_VALIDATED', today, len(d.get('articles') or []))
+          if d.get('date') != required_date:
+              raise SystemExit(
+                  f"Daily recovery did not reach required handover date: "
+                  f"{d.get('date')} != {required_date} (HKT hour={now_hkt.hour})"
+              )
+          print('REQUIRED_DAILY_RECOVERY_VALIDATED', required_date, len(d.get('articles') or []))
           PY
 
       - name: Self-heal Daily archive from every valid dated edition
