@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Record Stock News publication/search freshness without rewriting old events as new.
+"""Record Stock News collection/review freshness without faking article freshness.
 
-A fresh symbol-specific review is necessary but is not sufficient publication
-freshness. Every tracked symbol must also carry at least one genuinely current
-substantive event or market read-through. Review/check/display timestamps never
-refresh an old public story.
+Every tracked symbol must be reviewed by the current authoritative collection.
+A symbol is NOT required to produce a new article when no new verified catalyst
+exists. Old public stories keep their real event timestamps; review/check
+metadata is tracked separately from substantive-news freshness.
 """
 from __future__ import annotations
 
@@ -113,6 +113,8 @@ def reviewed_symbols(staging: dict, current: list[dict]) -> set[str]:
         planned_queries = int(stock_audit.get("queries") or 0)
     except Exception:
         planned_queries = 0
+    # Query-plan completion is valid evidence that a quiet symbol was reviewed,
+    # even when that symbol produced no current candidate/article.
     if planned_queries >= len(TRACKED):
         found.update(TRACKED)
     return found
@@ -131,15 +133,21 @@ def refresh_coverage_freshness(stocks: dict, published: datetime, reviewed: set[
     tickers = stocks.get("tickers") if isinstance(stocks.get("tickers"), dict) else {}
     freshness: dict[str, dict] = {}
     stale_symbols: list[str] = []
+    stale_content_symbols: list[str] = []
     for ticker in TRACKED:
         block = tickers.get(ticker) if isinstance(tickers.get(ticker), dict) else {}
         stories = block.get("stories") if isinstance(block.get("stories"), list) else []
         review_evidence = ticker in reviewed
         substantive_age, substantive_story_id, substantive_time_source = newest_substantive_story(stories, published)
         substantive_current = substantive_age is not None and substantive_age <= MAX_SUBSTANTIVE_STORY_AGE_HOURS
-        stale = (not stories) or (not search_current) or (not review_evidence) or (not substantive_current)
-        if stale:
+
+        # HARD gate = was this symbol actually reviewed recently?
+        # News may legitimately be quiet; lack of a new catalyst is not a failed review.
+        coverage_stale = (not search_current) or (not review_evidence)
+        if coverage_stale:
             stale_symbols.append(ticker)
+        if not substantive_current:
+            stale_content_symbols.append(ticker)
 
         freshness[ticker] = {
             "lastReviewedAt": checked.isoformat() if checked is not None else None,
@@ -150,14 +158,17 @@ def refresh_coverage_freshness(stocks: dict, published: datetime, reviewed: set[
             "newestSubstantiveStoryId": substantive_story_id,
             "substantiveTimeSource": substantive_time_source,
             "substantiveCurrent": substantive_current,
-            "stale": stale,
+            "coverageStale": coverage_stale,
+            "stale": coverage_stale,
             "storyCount": len(stories),
         }
 
     stocks["coverageFreshness"] = freshness
     stocks["staleSymbols"] = stale_symbols
+    stocks["staleContentSymbols"] = stale_content_symbols
     quality = stocks.get("qualityGates") if isinstance(stocks.get("qualityGates"), dict) else {}
     quality["freshnessGateMet"] = not stale_symbols
+    quality["substantiveFreshnessGateMet"] = not stale_content_symbols
     stocks["qualityGates"] = quality
 
 
@@ -198,12 +209,12 @@ def main() -> int:
         "generatedAt": "actual completion time of the current Stock News publication check",
         "verifiedContentUpdatedAt": "time the verified story set last changed",
         "lastCheckedAt": "source-search time after authoritative 15-symbol Stock collection",
-        "coverageFreshness": "per-symbol fresh review plus at least one genuinely current substantive event or market read-through",
+        "coverageFreshness": "per-symbol review freshness; a quiet symbol is valid when its current query completed without a verified catalyst",
         "maxCoverageCheckAgeHours": MAX_COVERAGE_CHECK_AGE_HOURS,
         "maxSubstantiveStoryAgeHours": MAX_SUBSTANTIVE_STORY_AGE_HOURS,
         "substantiveTimeFields": list(SUBSTANTIVE_TIME_FIELDS),
         "legacyStoryIdDateFallback": True,
-        "reviewRule": "a fresh review cannot make stale substantive content current",
+        "reviewRule": "fresh review is independent from article freshness and never changes an old event timestamp",
         "schemaRule": "freshness metadata does not add or fabricate event timestamps on public stories",
     }
 
@@ -251,9 +262,11 @@ def main() -> int:
     STOCKS_PATH.write_text(json.dumps(stocks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(message)
     if stocks.get("staleSymbols"):
-        print("STOCK_COVERAGE_FRESHNESS_FAIL", ",".join(stocks["staleSymbols"]))
+        print("STOCK_COVERAGE_REVIEW_FAIL", ",".join(stocks["staleSymbols"]))
     else:
-        print("STOCK_COVERAGE_FRESHNESS_PASS", len(TRACKED), "symbols")
+        print("STOCK_COVERAGE_REVIEW_PASS", len(TRACKED), "symbols")
+    if stocks.get("staleContentSymbols"):
+        print("STOCK_NO_RECENT_VERIFIED_CATALYST", ",".join(stocks["staleContentSymbols"]))
     return 0
 
 
