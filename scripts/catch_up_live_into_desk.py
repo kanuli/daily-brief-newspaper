@@ -7,6 +7,11 @@ current committed Live snapshot. This script scans git history for committed
 oldest-first through the normal merge implementation. It prevents the next
 successful hour from silently losing distinct stories published during a
 failed merge window.
+
+Historical snapshots that contain no publishable story are quarantined and
+skipped. They must not deadlock all later valid snapshots. The current Live
+snapshot is still merged fail-closed at the end, so a presently invalid
+publication can never be made healthy merely by skipping it.
 """
 from __future__ import annotations
 
@@ -17,6 +22,7 @@ import sys
 from datetime import datetime
 
 from atomic_publish import atomic_write_json
+from merge_live_into_desk import live_item_rejection_reason
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -48,6 +54,21 @@ def committed_live(sha: str) -> dict | None:
     return value if isinstance(value, dict) else None
 
 
+def publishable_story_count(snapshot: dict) -> tuple[int, list[tuple[str, str]]]:
+    publishable = 0
+    rejected: list[tuple[str, str]] = []
+    for item in snapshot.get("items", []):
+        if not isinstance(item, dict):
+            rejected.append(("unknown", "not an object"))
+            continue
+        reason = live_item_rejection_reason(item)
+        if reason:
+            rejected.append((str(item.get("id") or "unknown"), reason))
+        else:
+            publishable += 1
+    return publishable, rejected
+
+
 def main() -> int:
     desk = json.loads(DESK.read_text(encoding="utf-8"))
     current = json.loads(LIVE.read_text(encoding="utf-8"))
@@ -75,16 +96,40 @@ def main() -> int:
         print("ROLLING_DESK_CATCHUP_NO_SNAPSHOTS", desk.get("generatedAt"), current.get("lastUpdated"))
         return 0
 
-    for stamp, snap in ordered:
-        atomic_write_json(LIVE, snap)
-        subprocess.run([sys.executable, str(MERGE)], cwd=ROOT, check=True)
-        print("ROLLING_DESK_CATCHUP_REPLAYED", stamp.isoformat(), snap.get("windowLabel"))
+    replayed = 0
+    skipped = 0
+    try:
+        for stamp, snap in ordered:
+            publishable, rejected = publishable_story_count(snap)
+            raw_items = snap.get("items", [])
+            if not isinstance(raw_items, list) or publishable == 0:
+                skipped += 1
+                print(
+                    "ROLLING_DESK_CATCHUP_SKIPPED_REJECTED_SNAPSHOT",
+                    stamp.isoformat(),
+                    snap.get("windowLabel"),
+                    f"rejected={rejected}",
+                )
+                continue
 
-    # Ensure the working tree finishes with the current snapshot even if git
-    # history contained another commit at the same timestamp.
-    atomic_write_json(LIVE, current)
+            atomic_write_json(LIVE, snap)
+            subprocess.run([sys.executable, str(MERGE)], cwd=ROOT, check=True)
+            replayed += 1
+            print("ROLLING_DESK_CATCHUP_REPLAYED", stamp.isoformat(), snap.get("windowLabel"))
+    finally:
+        # A replay failure must never leave the working tree pointing at a
+        # historical Live snapshot. Always restore the committed current state.
+        atomic_write_json(LIVE, current)
+
+    # Current publication stays fail-closed. Historical poison pills may be
+    # skipped, but the latest Live must itself pass the normal merge gate.
     subprocess.run([sys.executable, str(MERGE)], cwd=ROOT, check=True)
-    print("ROLLING_DESK_CATCHUP_PASS", f"replayed={len(ordered)}", f"through={current.get('lastUpdated')}")
+    print(
+        "ROLLING_DESK_CATCHUP_PASS",
+        f"replayed={replayed}",
+        f"skipped={skipped}",
+        f"through={current.get('lastUpdated')}",
+    )
     return 0
 
 
