@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/editor-in-chief-newsroom-assignment.yml"
       - "scripts/rolling_news_collector.py"
+      - "scripts/general_news_verified_producer.py"
       - "scripts/validate_desk_freshness.py"
       - "scripts/validate_stock_news.py"
       - "scripts/validate_publication_current.py"
@@ -129,8 +130,7 @@ jobs:
 
           if rc('/tmp/desk-rc') != 0 or refresh:
               add('rolling-news-search.yml', 'one or more newsroom desks need fresh discovery')
-              add('live-publication-maintenance.yml', 'verified current candidates must be promoted through the Live publisher')
-              add('merge-live-into-desk.yml', 'current verified Live/Daily items must reach Rolling Desk pages')
+              add('general-news-producer.yml', 'fresh discovery must become a source-constrained verified general-news draft')
 
           sentinel=load('/tmp/page-news-sentinel.json',{})
           failed_pages=set(sentinel.get('persistentFailedPages') or [])

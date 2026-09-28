@@ -1,0 +1,94 @@
+name: General News Verified Producer
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/general-news-producer.yml"
+      - "scripts/general_news_verified_producer.py"
+      - "scripts/promote_verified_live_draft.py"
+  schedule:
+    - cron: "11,26,41,56 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: "general-news-verified-producer"
+  cancel-in-progress: false
+
+jobs:
+  produce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout current newsroom code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Load the latest discovery reservoir
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch -q origin news-staging:refs/remotes/origin/news-staging
+          git show origin/news-staging:data/search-staging.json > /tmp/search-staging.json
+
+      - name: Produce a source-constrained verified draft
+        id: producer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/general_news_verified_producer.py /tmp/search-staging.json --output /tmp/general-news-prepublish.json
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          data=json.load(open('/tmp/general-news-prepublish.json',encoding='utf-8'))
+          print('publishable=' + ('true' if data.get('status') == 'VERIFIED_DRAFT' and data.get('articles') else 'false'))
+          print('draft_id=' + str(data.get('draftId') or ''))
+          print('article_count=' + str(len(data.get('articles') or [])))
+          PY
+
+      - name: Persist the verified draft on the isolated prepublish branch
+        if: steps.producer.outputs.publishable == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin prepublish-news
+          git checkout -B prepublish-news origin/prepublish-news
+          cp /tmp/general-news-prepublish.json data/prepublish.json
+          git add -- data/prepublish.json
+          if git diff --cached --quiet; then
+            echo "GENERAL_NEWS_PREPUBLISH_NOOP draft already persisted"
+            exit 0
+          fi
+          git commit -m "Prepare verified general-news draft"
+          for attempt in 1 2 3 4; do
+            if git push origin HEAD:prepublish-news; then
+              echo "GENERAL_NEWS_PREPUBLISH_PASS"
+              exit 0
+            fi
+            git fetch origin prepublish-news
+            git rebase origin/prepublish-news
+            sleep $((attempt * 2))
+          done
+          echo "Could not persist general-news draft" >&2
+          exit 1
+
+      - name: Dispatch the Live publisher for the new verified draft
+        if: steps.producer.outputs.publishable == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run live-publication-maintenance.yml --repo "${GITHUB_REPOSITORY}" --ref main
+          echo "GENERAL_NEWS_LIVE_PUBLISHER_DISPATCHED draft=${{ steps.producer.outputs.draft_id }} articles=${{ steps.producer.outputs.article_count }}"
+
+      - name: Report a safe no-op
+        if: steps.producer.outputs.publishable != 'true'
+        run: echo "GENERAL_NEWS_PRODUCER_NOOP no stale desk has a new same-day source-backed candidate"

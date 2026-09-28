@@ -98,14 +98,10 @@ jobs:
           allowed_now=(due_hour in (0,6,7) or 9 <= due_hour <= 23)
           due=local_now.replace(minute=0,second=0,microsecond=0)
           current_is_due=allowed_now and current.astimezone(HKT) >= due
-          repair=(current_is_due and not coverage_ok)
-
           promote=False
           reason='healthy'
           target=None
-          if repair:
-              reason='current-live-coverage-or-freshness-incomplete'
-          elif not have_draft:
+          if not have_draft:
               reason='no-prepublish-draft'
           else:
               try:
@@ -134,6 +130,13 @@ jobs:
                       else:
                           promote=True
                           reason='main-live-behind-verified-draft'
+
+          # A verified draft is the only safe way to add genuinely new news.
+          # Prefer it over recovery scripts that can only rearrange stories
+          # already present in Live or the Rolling Desk.
+          repair=(current_is_due and not coverage_ok and not promote)
+          if repair:
+              reason='current-live-coverage-or-freshness-incomplete-no-promotable-draft'
 
           print('REPAIR=' + ('true' if repair else 'false'))
           print('PROMOTE=' + ('true' if promote else 'false'))
@@ -206,6 +209,10 @@ jobs:
             git reset --hard origin/main
 
             python scripts/promote_verified_live_draft.py /tmp/prepublish.json
+            # Merge the genuinely new verified stories before legacy recovery
+            # checks. Otherwise a stale desk can abort before its new Live
+            # article has a chance to repair it.
+            python scripts/merge_live_into_desk.py
             python scripts/recover_desk_container_watchdog.py
             python scripts/sync_daily_into_desk_watchdog.py
             python scripts/recover_manga_freshness_watchdog.py

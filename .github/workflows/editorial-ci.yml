@@ -41,6 +41,8 @@ jobs:
           python -m py_compile scripts/stock_news_heartbeat.py
           python -m py_compile scripts/stock_verified_producer.py
           python -m py_compile scripts/test_stock_news_pipeline.py
+          python -m py_compile scripts/general_news_verified_producer.py
+          python -m py_compile scripts/test_general_news_producer.py
           python -m py_compile scripts/promote_verified_live_draft.py
           python -m py_compile scripts/promote_verified_stock_draft.py
           python -m py_compile scripts/editor_in_chief.py
@@ -56,6 +58,9 @@ jobs:
 
       - name: Stock verification regression tests
         run: python scripts/test_stock_news_pipeline.py
+
+      - name: General-news producer regression tests
+        run: PYTHONPATH=scripts python scripts/test_general_news_producer.py
 
       - name: Editor-in-Chief regression tests
         run: python scripts/test_editor_in_chief.py
