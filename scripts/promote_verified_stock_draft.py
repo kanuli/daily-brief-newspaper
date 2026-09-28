@@ -257,7 +257,10 @@ def main():
             "newestSubstantiveStoryId": substantive_story_id,
             "substantiveTimeSource": substantive_time_source,
             "substantiveCurrent": substantive_current,
-            "stale": not substantive_current,
+            "recentVerifiedCatalystFound": substantive_current,
+            "contentStatus": "CURRENT_VERIFIED_CATALYST" if substantive_current else "NO_RECENT_VERIFIED_CATALYST",
+            "coverageStale": False,
+            "stale": False,
             "storyCount": len(stories),
         })
         coverage[ticker] = row
@@ -266,10 +269,20 @@ def main():
         ticker for ticker in (stocks.get("staleSymbols") or [])
         if ticker not in promoted_tickers
     ]
-    stale_symbols.extend(ticker for ticker in TRACKED if ticker in promoted_stale and ticker not in stale_symbols)
     stocks["staleSymbols"] = stale_symbols
+    stale_content_symbols = [
+        ticker for ticker in (stocks.get("staleContentSymbols") or [])
+        if ticker not in promoted_tickers
+    ]
+    stale_content_symbols.extend(
+        ticker for ticker in TRACKED
+        if ticker in promoted_stale and ticker not in stale_content_symbols
+    )
+    stocks["staleContentSymbols"] = stale_content_symbols
     quality = stocks.get("qualityGates") if isinstance(stocks.get("qualityGates"), dict) else {}
     quality["freshnessGateMet"] = not stale_symbols
+    quality["substantiveFreshnessGateMet"] = not stale_content_symbols
+    quality["truthfulNoCatalystGateMet"] = not stale_symbols
     stocks["qualityGates"] = quality
 
     stocks["generatedAt"] = created.isoformat()

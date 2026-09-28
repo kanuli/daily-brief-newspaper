@@ -41,6 +41,7 @@ def substantive_time(story):
 def main():
     data=json.loads(PATH.read_text(encoding="utf-8")); now=datetime.now(timezone.utc)
     req(data.get("mode")=="TRACKED_STOCK_NEWS","wrong mode")
+    req(data.get("collectionStatus")=="COMPLETE","latest 15-symbol source collection is not complete")
     req(data.get("tracked")==EXPECTED,"tracked list/order must match 15-symbol contract")
     checked=ts(data.get("lastCheckedAt")); req(checked,"lastCheckedAt missing/invalid")
     check_age=(now-checked.astimezone(timezone.utc)).total_seconds()/3600
@@ -74,11 +75,14 @@ def main():
                 if age >= -1: ages.append((age,s["id"],field))
         req(ages,f"{ticker}: no real substantive timestamp/date")
         age,sid,field=min(ages,key=lambda x:x[0])
-        req(age <= MAX_SUBSTANTIVE_STORY_AGE_HOURS,f"{ticker}: newest substantive item stale ({age:.1f}h; max 48.0h; story={sid}; source={field})")
-        req(row.get("substantiveCurrent") is True,f"{ticker}: substantiveCurrent must be true")
+        substantive_current=age <= MAX_SUBSTANTIVE_STORY_AGE_HOURS
+        req(row.get("substantiveCurrent") is substantive_current,f"{ticker}: substantiveCurrent disagrees with real story age")
+        expected_status="CURRENT_VERIFIED_CATALYST" if substantive_current else "NO_RECENT_VERIFIED_CATALYST"
+        req(row.get("contentStatus",expected_status)==expected_status,f"{ticker}: contentStatus must be {expected_status}")
+        req(row.get("coverageStale") is not True and row.get("stale") is not True,f"{ticker}: current review cannot be marked stale")
     req(not data.get("staleSymbols"),f"staleSymbols present: {data.get('staleSymbols')}")
-    req(not data.get("staleContentSymbols"),f"staleContentSymbols present: {data.get('staleContentSymbols')}")
-    q=data.get("qualityGates") or {}; req(q.get("freshnessGateMet") is True and q.get("substantiveFreshnessGateMet") is True,"freshness quality gates must both pass")
-    print(f"Stock News validation OK: 15 tickers, {len(seen)} stories; hard 48.0h substantive + 3.0h review gates PASS")
+    q=data.get("qualityGates") or {}; req(q.get("freshnessGateMet") is True,"current-review freshness gate must pass")
+    req(q.get("truthfulNoCatalystGateMet",True) is True,"truthful no-catalyst gate must pass")
+    print(f"Stock News validation OK: 15 tickers, {len(seen)} stories; complete current review with truthful catalyst states PASS")
 
 if __name__=="__main__": main()

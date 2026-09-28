@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Create a source-constrained general-news VERIFIED_DRAFT.
+"""Create a source-constrained Cantonese general-news VERIFIED_DRAFT.
 
 The rolling collector is discovery only. This producer closes the missing
-middle without inventing facts: it selects same-day candidates from named
-publishers, limits public copy to facts present in the source headline, and
-records the original candidate metadata for auditability.
+middle without inventing facts. Discovery headlines alone are never
+publishable: every selected candidate must carry independently verified,
+article-specific Cantonese copy and source evidence.
 """
 from __future__ import annotations
 
@@ -52,6 +52,34 @@ TRUSTED_SOURCE = re.compile(
     r"nhk|共同|時事通信|政府|gov\.|gov$|信報|香港電台|明報|經濟日報|kai-you|動畫",
     re.I,
 )
+COPY_FIELDS = ("title", "dek", "summary", "body", "context", "why", "watchNext")
+PROCESS_FILLER = re.compile(
+    r"只整理來源標題|標題以外.*公開來源支持|讀者可經原文連結|"
+    r"事件仍可能隨官方聲明|資訊邊界維持|只採用來源標題|補回相應新聞頁",
+)
+
+
+def cantonese_copy(candidate: dict[str, Any]) -> dict[str, Any] | None:
+    copy = candidate.get("verifiedCopy")
+    if not isinstance(copy, dict):
+        return None
+    if any(not clean(copy.get(field)) for field in COPY_FIELDS):
+        return None
+    public = " ".join(clean(copy.get(field)) for field in COPY_FIELDS)
+    if PROCESS_FILLER.search(public) or "\n\n" not in str(copy.get("body") or ""):
+        return None
+    cjk = len(re.findall(r"[\u3400-\u9fff]", public))
+    ascii_letters = len(re.findall(r"[A-Za-z]", public))
+    japanese = len(re.findall(r"[\u3040-\u30ff]", public))
+    if cjk < 120 or cjk < ascii_letters or japanese > 8:
+        return None
+    evidence = candidate.get("sourceEvidence")
+    if not isinstance(evidence, list) or not any(
+        isinstance(row, dict) and clean(row.get("url")).startswith("http")
+        for row in evidence
+    ):
+        return None
+    return copy
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -133,6 +161,8 @@ def candidate_ok(candidate: Any, desk: str, now: datetime, urls: set[str], title
     published = parse_iso(candidate.get("publishedAt"))
     if not title or not source or not url.startswith("http") or not published:
         return False
+    if cantonese_copy(candidate) is None:
+        return False
     if BAD_TEXT.search(title) or len(title) < 12:
         return False
     if LOW_VALUE.search(title):
@@ -182,7 +212,9 @@ def display_title(candidate: dict[str, Any], desk: str) -> str:
 
 
 def build_article(candidate: dict[str, Any], desk: str, now: datetime) -> dict[str, Any]:
-    title = display_title(candidate, desk)
+    verified = cantonese_copy(candidate)
+    assert verified is not None
+    title = clean(verified["title"])
     original = TITLE_SUFFIX.sub("", clean(candidate.get("title"))).strip(" -|–—")
     source = clean(candidate.get("source"))
     published = parse_iso(candidate.get("publishedAt"))
@@ -190,31 +222,22 @@ def build_article(candidate: dict[str, Any], desk: str, now: datetime) -> dict[s
     local_label = published.astimezone(HKT).strftime("%m月%d日 %H:%M HKT")
     digest = hashlib.sha1(f"{desk}\n{candidate.get('id')}\n{candidate.get('url')}".encode("utf-8")).hexdigest()[:12]
     routes = DESK_ROUTES.get(desk, [desk])
-    body = (
-        f"據{source}於{local_label}發布的報道，原文標題指出：「{original}」。"
-        "這項更新只整理來源標題明確披露的事件，不加入標題以外而未獲公開來源支持的數字、引述或因果判斷。"
-        "讀者可經原文連結核對發布機構、時間及最新修訂。\n\n"
-        "事件仍可能隨官方聲明、當事人回應或後續報道而更新。"
-        "如來源補充更多可核實資料，新聞頁會以新的發布時間、清楚來源及修訂內容跟進；在此之前，"
-        "本條目的資訊邊界維持在上述標題直接支持的範圍。"
-    )
+    evidence = [row for row in candidate["sourceEvidence"] if isinstance(row, dict) and clean(row.get("url")).startswith("http")]
     return {
         "id": f"general-{desk}-{digest}", "desk": routes[0], "deskSlugs": routes,
         "section": DESK_LABELS[desk], "sectionLabel": DESK_LABELS[desk], "title": title,
-        "dek": f"{source}於{local_label}發布相關消息；現有稿件只採用來源標題可直接支持的內容。",
-        "summary": f"{source}的報道標題指出「{original}」。以下更新保留原始來源及發布時間，方便讀者直接核對。",
-        "body": body,
-        "context": f"來源為{source}，原始發布時間為{local_label}；編採範圍限於來源標題可直接核實的資料。",
-        "why": "這項消息屬於今日更新，能補回相應新聞頁缺少同日報道的情況，同時保留可追溯的原文來源。",
-        "watchNext": "留意原發布機構、相關官方渠道及當事人其後公布的補充資料或更正。",
+        "dek": clean(verified["dek"]), "summary": clean(verified["summary"]),
+        "body": str(verified["body"]).strip(), "context": clean(verified["context"]),
+        "why": clean(verified["why"]), "watchNext": clean(verified["watchNext"]),
         "sourceName": source, "sourceUrl": clean(candidate.get("url")),
-        "sources": [{"name": source, "url": clean(candidate.get("url"))}],
+        "sources": evidence,
         "publishedAt": iso(published), "verifiedAt": iso(now),
         "timeLabel": now.astimezone(HKT).strftime("%m月%d日 %H:%M HKT核實"),
         "verification": {
-            "mode": "source-headline-constrained", "candidateId": clean(candidate.get("id")),
+            "mode": "source-evidence-cantonese", "candidateId": clean(candidate.get("id")),
             "provider": clean(candidate.get("provider")), "query": clean(candidate.get("query")),
             "originalTitle": clean(candidate.get("title")), "noUnsupportedDetail": True,
+            "cantoneseCopyVerified": True,
         },
     }
 
@@ -253,7 +276,7 @@ def produce(staging: dict[str, Any], desk_data: dict[str, Any], live_data: dict[
             "staleDesks": stale, "producedDesks": [row["desk"] for row in articles],
             "skippedDesks": skipped,
             "candidateSnapshotAt": staging.get("lastSearchAt") or staging.get("lastSearchStartedAt"),
-            "verificationMode": "source-headline-constrained",
+            "verificationMode": "source-evidence-cantonese",
         },
     }
 

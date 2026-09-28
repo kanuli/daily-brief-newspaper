@@ -158,6 +158,8 @@ def refresh_coverage_freshness(stocks: dict, published: datetime, reviewed: set[
             "newestSubstantiveStoryId": substantive_story_id,
             "substantiveTimeSource": substantive_time_source,
             "substantiveCurrent": substantive_current,
+            "recentVerifiedCatalystFound": substantive_current,
+            "contentStatus": "CURRENT_VERIFIED_CATALYST" if substantive_current else "NO_RECENT_VERIFIED_CATALYST",
             "coverageStale": coverage_stale,
             "stale": coverage_stale,
             "storyCount": len(stories),
@@ -169,6 +171,7 @@ def refresh_coverage_freshness(stocks: dict, published: datetime, reviewed: set[
     quality = stocks.get("qualityGates") if isinstance(stocks.get("qualityGates"), dict) else {}
     quality["freshnessGateMet"] = not stale_symbols
     quality["substantiveFreshnessGateMet"] = not stale_content_symbols
+    quality["truthfulNoCatalystGateMet"] = not stale_symbols
     stocks["qualityGates"] = quality
 
 

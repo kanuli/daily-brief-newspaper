@@ -25,11 +25,27 @@ desk = {"desks": {
 
 
 def candidate(desk_name, title, ident):
+    body = (
+        "測試來源公布一項與所屬新聞版面直接相關的新進展，交代事件的主要參與者、已確認行動及公布時間。"
+        "編輯核對來源頁面後，以香港繁體中文整理重點，並保留原始連結供讀者查閱。\n\n"
+        "第二段補充事件背景、目前已知影響及下一個可核實節點；內容只採用來源正文及附帶證據，"
+        "不會用空泛流程說明代替新聞事實，亦不會把外語標題直接當作中文報道發布。"
+    )
     return {
         "id": ident, "desk": desk_name, "title": title,
         "url": f"https://news.example/{ident}", "source": "Example News",
         "provider": "Test RSS", "query": f"{desk_name} when:8h",
         "publishedAt": "2026-09-28T03:30:00Z",
+        "sourceEvidence": [{"name": "Example News", "url": f"https://news.example/{ident}"}],
+        "verifiedCopy": {
+            "title": "測試新聞來源公布具體新進展並交代後續安排",
+            "dek": "來源正文確認事件內容、相關參與者及公布時間，報道以香港繁體中文整理。",
+            "summary": "這是一則有來源正文支持的具體新聞摘要，並非只重複外語標題或編採流程。",
+            "body": body,
+            "context": "事件與相應新聞版面直接相關，來源證據已包含正文層面的具體資料。",
+            "why": "新進展會影響相關讀者對事件現況及下一步安排的理解。",
+            "watchNext": "留意發布機構及當事人其後公布的執行時間、結果或正式修訂。",
+        },
     }
 
 
@@ -51,6 +67,7 @@ for article in result["articles"]:
     assert article["sourceName"] == "Example News"
     assert article["sourceUrl"].startswith("https://news.example/")
     assert article["verification"]["noUnsupportedDetail"] is True
+    assert article["verification"]["cantoneseCopyVerified"] is True
     assert "\n\n" in article["body"]
     assert len(re.findall(r"[\u3400-\u9fff]", article["body"])) >= 95
 
@@ -61,5 +78,9 @@ assert "japan" in deduped["coverage"]["skippedDesks"], deduped
 staging["desks"]["football"][0]["publishedAt"] = "2026-09-29T03:30:00Z"
 future = produce(staging, desk, live, NOW)
 assert "football" in future["coverage"]["skippedDesks"], future
+
+staging["desks"]["manchester-united"][0].pop("verifiedCopy")
+untranslated = produce(staging, desk, live, NOW)
+assert "manchester-united" in untranslated["coverage"]["skippedDesks"], untranslated
 
 print("GENERAL_NEWS_PRODUCER_TESTS_OK")

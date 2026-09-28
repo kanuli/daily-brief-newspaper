@@ -30,6 +30,10 @@ DEPTH_FLOOR = {
     "manchester-united": 4, "football": 10,
 }
 MIN_BODY_MEASURE = 95
+PROCESS_FILLER = re.compile(
+    r"只整理來源標題|標題以外.*公開來源支持|讀者可經原文連結|"
+    r"事件仍可能隨官方聲明|資訊邊界維持|只採用來源標題|補回相應新聞頁",
+)
 
 # Pages must be able to publish today's healthy Daily/Live/desks while an
 # unrelated desk remains honestly stale.  The Editor-in-Chief workflow does not
@@ -56,6 +60,13 @@ def rich_story(story, label):
     cjk = len(re.findall(r"[\u3400-\u9fff]", story["body"]))
     measure = cjk if cjk >= 50 else len(re.sub(r"\s+", "", story["body"]))
     need(measure >= MIN_BODY_MEASURE, f"{label}: body too short ({measure}; approx-100 floor={MIN_BODY_MEASURE})")
+    if label.startswith("live["):
+        public = " ".join(str(story.get(field) or "") for field in REQUIRED_STORY_FIELDS)
+        need(not PROCESS_FILLER.search(public), f"{label}: generic source/process filler is not news copy")
+        all_cjk = len(re.findall(r"[\u3400-\u9fff]", public))
+        ascii_letters = len(re.findall(r"[A-Za-z]", public))
+        japanese = len(re.findall(r"[\u3040-\u30ff]", public))
+        need(all_cjk >= 120 and all_cjk >= ascii_letters and japanese <= 8, f"{label}: substantive Cantonese copy required")
 
 
 def publication_dates_align(latest_date, live_date):

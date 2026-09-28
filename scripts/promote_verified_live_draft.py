@@ -11,6 +11,7 @@ import copy
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -21,6 +22,24 @@ REQUIRED = (
     "id", "title", "dek", "summary", "body", "context", "why",
     "watchNext", "sourceName", "sourceUrl", "timeLabel",
 )
+PROCESS_FILLER = re.compile(
+    r"只整理來源標題|標題以外.*公開來源支持|讀者可經原文連結|"
+    r"事件仍可能隨官方聲明|資訊邊界維持|只採用來源標題|補回相應新聞頁",
+)
+
+
+def cantonese_quality_error(article):
+    public = " ".join(clean(article.get(field)) for field in (
+        "title", "dek", "summary", "body", "context", "why", "watchNext"
+    ))
+    if PROCESS_FILLER.search(public):
+        return "contains generic source/process filler"
+    cjk = len(re.findall(r"[\u3400-\u9fff]", public))
+    ascii_letters = len(re.findall(r"[A-Za-z]", public))
+    japanese = len(re.findall(r"[\u3040-\u30ff]", public))
+    if cjk < 120 or cjk < ascii_letters or japanese > 8:
+        return "is not substantive Cantonese copy"
+    return ""
 
 DESK_SLUGS = {
     "world": ["world"],
@@ -105,6 +124,9 @@ def validate_draft(draft, now: datetime, grace_minutes: int, max_age_minutes: in
                 raise SystemExit(f"draft[{index}] missing {field}")
         if "\n\n" not in str(article.get("body") or ""):
             raise SystemExit(f"draft[{index}] body needs two paragraphs")
+        quality_error = cantonese_quality_error(article)
+        if quality_error:
+            raise SystemExit(f"draft[{index}] {quality_error}")
     return target, articles
 
 

@@ -2,9 +2,10 @@
 """Regression tests for strict Stock News verification rules."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from stock_news_rules import best_corroboration, match_tickers
+from stock_news_heartbeat import TRACKED, refresh_coverage_freshness
 from stock_verified_producer import PrimaryEvent, build_sec_article, select_articles
 
 
@@ -31,6 +32,38 @@ def assert_required_story_shape(story: dict) -> None:
 
 
 def main() -> int:
+    # A completed current review is healthy even when there is no verified
+    # catalyst within 48 hours. Old events retain their real timestamps and
+    # are labelled explicitly instead of being silently retimestamped.
+    quiet_now = datetime(2026, 9, 28, 4, 0, tzinfo=timezone.utc)
+    quiet_stocks = {
+        "lastCheckedAt": quiet_now.isoformat(),
+        "collectionStatus": "COMPLETE",
+        "tickers": {
+            ticker: {"stories": [{
+                "id": f"{ticker.lower()}-quiet-event",
+                "sourcePublishedAt": (quiet_now - timedelta(hours=72)).isoformat(),
+            }]}
+            for ticker in TRACKED
+        },
+    }
+    refresh_coverage_freshness(quiet_stocks, quiet_now, set(TRACKED))
+    assert quiet_stocks["staleSymbols"] == []
+    assert quiet_stocks["staleContentSymbols"] == TRACKED
+    assert quiet_stocks["qualityGates"]["freshnessGateMet"] is True
+    assert quiet_stocks["qualityGates"]["substantiveFreshnessGateMet"] is False
+    assert quiet_stocks["qualityGates"]["truthfulNoCatalystGateMet"] is True
+    for ticker in TRACKED:
+        row = quiet_stocks["coverageFreshness"][ticker]
+        assert row["contentStatus"] == "NO_RECENT_VERIFIED_CATALYST"
+        assert row["coverageStale"] is False
+        assert row["stale"] is False
+
+    # Missing review evidence is still a hard failure.
+    refresh_coverage_freshness(quiet_stocks, quiet_now, set(TRACKED) - {"GOOG"})
+    assert quiet_stocks["staleSymbols"] == ["GOOG"]
+    assert quiet_stocks["qualityGates"]["freshnessGateMet"] is False
+
     # Known false positives observed in the production discovery reservoir.
     assert match_tickers("Navitas Semiconductor (NVDA) Tests Its Claros Deal Against An Undervalued Narrative", "Yahoo Finance", "stocks") == []
     assert match_tickers("Blacksburg police hold door-to-door meetings regarding VT game days", "WFXRtv", "tracked stock query") == []

@@ -43,7 +43,9 @@ REQUIRED = (
 FORBIDDEN = re.compile(
     r"本輪(?:發布|更新|檢查|搜尋|核實|候選|稿件|新聞)|本報訊|incremental|duplicate|重複刊登|coverage\s*(?:check|test)|"
     r"collection\s*(?:design|test)|這次重新檢查|之後每一輪|每一輪Football|"
-    r"固定檢查HKFA|不應由全球搜尋排名決定", re.I,
+    r"固定檢查HKFA|不應由全球搜尋排名決定|只整理來源標題|"
+    r"標題以外.*公開來源支持|讀者可經原文連結|事件仍可能隨官方聲明|"
+    r"資訊邊界維持|只採用來源標題|補回相應新聞頁", re.I,
 )
 
 
@@ -118,6 +120,11 @@ def live_item_rejection_reason(item):
     ))
     if FORBIDDEN.search(public):
         return "contains process copy"
+    cjk = len(re.findall(r"[\u3400-\u9fff]", public))
+    ascii_letters = len(re.findall(r"[A-Za-z]", public))
+    japanese = len(re.findall(r"[\u3040-\u30ff]", public))
+    if cjk < 120 or cjk < ascii_letters or japanese > 8:
+        return "not substantive Cantonese copy"
     return ""
 
 
@@ -323,11 +330,17 @@ def main():
     # observed public ownership to exactly match canonical routed_slugs().
     geographic_gate = routing_gate
     football_gate = counts["football"] >= FLOORS["football"]
-    publication_ready = depth_met and source_gate and geographic_gate and football_gate
+    # The copy gate describes the exact public payload after quarantine.  A
+    # rejected item must keep the publication incomplete even though valid
+    # siblings can still advance, while a fully accepted non-empty payload is
+    # safe to publish.
+    copy_gate = bool(live_items) and not quarantined_live_items
+    publication_ready = depth_met and source_gate and copy_gate and geographic_gate and football_gate
     coverage["deskLatestStoryCounts"] = counts
     coverage["deskLatestDepthMet"] = depth_met
     coverage["japanCountVerified"] = counts["japan"]
     coverage["sourceGateMet"] = source_gate
+    coverage["copyGateMet"] = copy_gate
     coverage["routingGateMet"] = routing_gate
     coverage["geographicGateMet"] = geographic_gate
     coverage["footballGateMet"] = football_gate
