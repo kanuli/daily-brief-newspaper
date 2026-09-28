@@ -3,9 +3,10 @@
 
 The sentinel complements the Editor-in-Chief supervisor by proving, page by
 page, that a public HTML route is reachable and that the newsroom data feeding
-that route is still within its editorial freshness SLA. Root HTML pages are
-discovered automatically so a newly-added page cannot silently escape the
-monitor.
+that route is current. A broad SLA remains a hard-staleness backstop, but it is
+not allowed to hide a desk that has no verified news from the current HKT day.
+Root HTML pages are discovered automatically so a newly-added page cannot
+silently escape the monitor.
 
 The sentinel never fabricates news or rewrites timestamps. It emits targeted,
 verification-gated repair workflows only.
@@ -31,6 +32,7 @@ from desk_freshness_policy import (  # noqa: E402
     EXPECTED_DESKS,
     PUBLIC_DESK_FRESHNESS_HOURS,
     current_daily_dates,
+    freshest_story_time,
     newest_age_hours,
 )
 
@@ -51,6 +53,7 @@ REPAIR_WORKFLOWS = {
 }
 
 NON_NEWS_PAGES = {"archive.html"}
+TODAY_COVERAGE_GRACE_MINUTES = 45
 
 
 def parse_iso(value: Any) -> datetime | None:
@@ -130,6 +133,10 @@ def _topic_health(slugs: list[str], desk: dict[str, Any], latest: dict[str, Any]
     latest_date = str(latest.get("date") or "")
     daily_current = latest_date in current_daily_dates(now=now)
     daily_articles = latest.get("articles") if isinstance(latest.get("articles"), list) else []
+    local_now = now.astimezone(HKT)
+    today_hkt = local_now.date().isoformat()
+    minutes_after_midnight = local_now.hour * 60 + local_now.minute
+    today_required = minutes_after_midnight >= TODAY_COVERAGE_GRACE_MINUTES
 
     for slug in slugs:
         if slug not in EXPECTED_DESKS:
@@ -140,6 +147,10 @@ def _topic_health(slugs: list[str], desk: dict[str, Any], latest: dict[str, Any]
         age = newest_age_hours(stories, now=now)
         limit = PUBLIC_DESK_FRESHNESS_HOURS[slug]
         fresh = age is not None and age <= limit
+        newest_stamp = freshest_story_time(stories, now=now)
+        newest_hkt_date = newest_stamp.astimezone(HKT).date().isoformat() if newest_stamp is not None else None
+        today_coverage = newest_hkt_date == today_hkt
+        needs_today_coverage = bool(today_required and stories and not today_coverage)
 
         required_ids: list[str] = []
         if daily_current:
@@ -161,6 +172,11 @@ def _topic_health(slugs: list[str], desk: dict[str, Any], latest: dict[str, Any]
             reasons.append(f"{slug}: desk empty")
         elif not fresh:
             reasons.append(f"{slug}: newest news age {age!r}h exceeds {limit}h SLA")
+        if needs_today_coverage:
+            reasons.append(
+                f"{slug}: newest formal news date {newest_hkt_date} HKT is not today {today_hkt}; "
+                "same-day verified coverage required"
+            )
         if missing_daily:
             reasons.append(f"{slug}: current Daily article(s) missing from public desk: {', '.join(missing_daily)}")
         rows[slug] = {
@@ -168,6 +184,10 @@ def _topic_health(slugs: list[str], desk: dict[str, Any], latest: dict[str, Any]
             "newestAgeHours": age,
             "freshnessSlaHours": limit,
             "fresh": fresh,
+            "newestNewsDateHKT": newest_hkt_date,
+            "hasTodayCoverage": today_coverage,
+            "todayCoverageRequired": today_required,
+            "needsTodayCoverage": needs_today_coverage,
             "missingCurrentDailyArticleIds": missing_daily,
             "dailySynced": not missing_daily,
         }
@@ -317,7 +337,7 @@ def audit_public_site(
         status = "HEALTHY"
 
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "role": "Page News Sentinel",
         "checkedAt": now.astimezone(timezone.utc).isoformat(),
         "checkedAtHKT": now.astimezone(HKT).isoformat(),
@@ -331,6 +351,8 @@ def audit_public_site(
         "policy": {
             "autoDiscoverRootHtmlPages": True,
             "requireFreshNewsNotOnlyHttp200": True,
+            "requireSameDayVerifiedTopicCoverage": True,
+            "sameDayCoverageGraceMinutesAfterMidnightHKT": TODAY_COVERAGE_GRACE_MINUTES,
             "fabricateNews": False,
             "fakeFreshness": False,
         },
