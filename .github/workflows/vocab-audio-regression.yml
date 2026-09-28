@@ -1,0 +1,28 @@
+name: Vocab audio source regression
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "assets/js/daily-extras.js"
+      - "tests/test_daily_vocab_audio_source.py"
+      - ".github/workflows/vocab-audio-regression.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-production-audio-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify Daily Brief uses japanese-vocab-game production F1 records
+        run: python tests/test_daily_vocab_audio_source.py
