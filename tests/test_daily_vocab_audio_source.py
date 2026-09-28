@@ -166,8 +166,6 @@ class DailyVocabAudioSourceTests(unittest.TestCase):
                 payload = fetch_json(url)
                 cls.catalogs.append((url, payload))
             except Exception as exc:
-                # Production resolver intentionally continues through its
-                # precedence chain when one optional delta layer is unavailable.
                 cls.catalog_errors.append(f"{url}: {exc}")
         if not cls.catalogs:
             raise AssertionError("no authoritative japanese-vocab-game catalog could be loaded")
@@ -206,7 +204,7 @@ class DailyVocabAudioSourceTests(unittest.TestCase):
     def test_central_range_semantics_are_inclusive_and_size_checked(self):
         for source in (self.delta_source, self.base_source):
             self.assertRegex(source, r"offset\s*\+\s*size\s*-\s*1")
-            self.assertRegex(source, r"Range\s*:\s*`bytes=\$\{offset\}-\$\{end\}`")
+            self.assertRegex(source, r"Range\s*:\s*['\"]bytes=['\"]\s*\+\s*offset\s*\+\s*['\"]-['\"]\s*\+\s*end")
             self.assertRegex(source, r"byteLength\s*!==\s*size")
 
     @classmethod
