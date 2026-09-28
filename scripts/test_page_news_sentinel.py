@@ -46,10 +46,14 @@ PAGES = {
 }
 
 
-def make_request(*, stale_manga=False, broken_page=None):
+def make_request(*, stale_manga=False, yesterday_world=False, broken_page=None):
     desk = {"generatedAt": DESK["generatedAt"], "desks": {k: [dict(x) for x in v] for k, v in DESK["desks"].items()}}
     if stale_manga:
         desk["desks"]["manga-anime"][0]["publishedAt"] = "2026-08-26T00:00:00+00:00"
+    if yesterday_world:
+        # 27 Aug 23:50 HKT. This is less than 24 hours old at NOW, but it is
+        # still yesterday and must not make World look current on 28 Aug.
+        desk["desks"]["world"][0]["publishedAt"] = "2026-08-27T15:50:00+00:00"
 
     def request(url):
         import json
@@ -83,6 +87,24 @@ result = audit_public_site(
 )
 assert result["status"] == "HEALTHY", result
 assert result["failedPageCount"] == 0, result
+
+# Regression: yesterday must not be called healthy merely because it remains
+# inside the old 24-hour SLA.
+result = audit_public_site(
+    public_base="https://example.com/site/",
+    pages=list(PAGES),
+    local_html=PAGES,
+    now=NOW,
+    request=make_request(yesterday_world=True),
+)
+assert result["status"] == "AUTO_REPAIRING", result
+world = next(row for row in result["pageResults"] if row["page"] == "world.html")
+assert not world["ok"], world
+assert world["detail"]["world"]["fresh"] is True, world
+assert world["detail"]["world"]["hasTodayCoverage"] is False, world
+assert world["detail"]["world"]["needsTodayCoverage"] is True, world
+assert "rolling-news-search.yml" in result["repairWorkflows"], result
+assert "merge-live-into-desk.yml" in result["repairWorkflows"], result
 
 result = audit_public_site(
     public_base="https://example.com/site/",
