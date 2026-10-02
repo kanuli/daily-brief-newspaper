@@ -7,6 +7,7 @@ on:
       - ".github/workflows/editor-in-chief-newsroom-assignment.yml"
       - "scripts/rolling_news_collector.py"
       - "scripts/general_news_verified_producer.py"
+      - "scripts/general_news_verification_robot.py"
       - "scripts/validate_desk_freshness.py"
       - "scripts/validate_stock_news.py"
       - "scripts/validate_publication_current.py"
@@ -15,8 +16,8 @@ on:
       - "data/desk-latest.json"
       - "data/stocks-latest.json"
   schedule:
-    # Collector runs at :00/:15/:30/:45. Give it a few minutes, then let the
-    # Editor-in-Chief inspect the newsroom and assign only the robots required.
+    # Collector normally runs at :00/:15/:30/:45. Inspect after it has had time
+    # to finish, then assign the next Robot from evidence rather than by timer.
     - cron: "8,23,38,53 * * * *"
   workflow_dispatch:
 
@@ -101,8 +102,9 @@ jobs:
                   staging_age_minutes=max(0.0,(datetime.now(timezone.utc)-dt).total_seconds()/60.0)
               except Exception:
                   pass
-          if staging_age_minutes > 25:
-              add('rolling-news-search.yml', f'collector staging stale ({staging_age_minutes:.1f}m)')
+          collector_stale=staging_age_minutes > 25
+          if collector_stale:
+              add('rolling-news-search.yml', f'collector staging stale ({staging_age_minutes:.1f}m); refresh evidence before production')
 
           freshness=load('/tmp/desk-freshness.json',{})
           # These are proactive refresh targets, not permission to fabricate news.
@@ -128,9 +130,9 @@ jobs:
               if hard_bad or soft_bad:
                   refresh.append({'desk':slug,'ageHours':age,'targetHours':soft_limit,'hardFailed':hard_bad})
 
-          if rc('/tmp/desk-rc') != 0 or refresh:
-              add('rolling-news-search.yml', 'one or more newsroom desks need fresh discovery')
-              add('general-news-producer.yml', 'fresh discovery must become a source-constrained verified general-news draft')
+          general_news_needed=(rc('/tmp/desk-rc') != 0 or bool(refresh))
+          if general_news_needed and not collector_stale:
+              add('general-news-producer.yml', 'current discovery evidence must be source-verified and converted into a publishable Cantonese draft')
 
           sentinel=load('/tmp/page-news-sentinel.json',{})
           failed_pages=set(sentinel.get('persistentFailedPages') or [])
@@ -149,7 +151,9 @@ jobs:
           evidence={
               'checkedAt':datetime.now(timezone.utc).isoformat().replace('+00:00','Z'),
               'collectorAgeMinutes':round(staging_age_minutes,1),
+              'collectorEvidenceCurrent':not collector_stale,
               'deskRefreshNeeded':refresh,
+              'generalNewsProductionNeeded':general_news_needed,
               'publicFailedPages':sorted(failed_pages),
               'assignments':plan,
           }
