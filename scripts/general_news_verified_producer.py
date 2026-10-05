@@ -215,11 +215,9 @@ def build_article(candidate: dict[str, Any], desk: str, now: datetime) -> dict[s
     verified = cantonese_copy(candidate)
     assert verified is not None
     title = clean(verified["title"])
-    original = TITLE_SUFFIX.sub("", clean(candidate.get("title"))).strip(" -|–—")
     source = clean(candidate.get("source"))
     published = parse_iso(candidate.get("publishedAt"))
     assert published is not None
-    local_label = published.astimezone(HKT).strftime("%m月%d日 %H:%M HKT")
     digest = hashlib.sha1(f"{desk}\n{candidate.get('id')}\n{candidate.get('url')}".encode("utf-8")).hexdigest()[:12]
     routes = DESK_ROUTES.get(desk, [desk])
     evidence = [row for row in candidate["sourceEvidence"] if isinstance(row, dict) and clean(row.get("url")).startswith("http")]
@@ -242,10 +240,38 @@ def build_article(candidate: dict[str, Any], desk: str, now: datetime) -> dict[s
     }
 
 
+def _allowed_live_hour(hour: int) -> bool:
+    return hour in (0, 6, 7) or 9 <= hour <= 23
+
+
+def _next_allowed_slot(local: datetime) -> datetime:
+    local = local.replace(second=0, microsecond=0)
+    if _allowed_live_hour(local.hour):
+        return local
+    if 1 <= local.hour <= 5:
+        return local.replace(hour=6, minute=0)
+    if local.hour == 8:
+        return local.replace(hour=9, minute=0)
+    return (local + timedelta(days=1)).replace(hour=0, minute=0)
+
+
 def target_time(now: datetime, current_live: datetime | None) -> datetime:
-    target = now - timedelta(minutes=9)
-    if current_live and target <= current_live:
-        target = current_live + timedelta(minutes=1)
+    """Choose an immediately recoverable target without creating fake story time.
+
+    When Live is catastrophically stale (>6h), target a point just behind now so
+    the emergency publisher can recover immediately even outside the normal
+    publication window. Otherwise schedule the draft into a valid Live slot.
+    """
+    now_utc = now.astimezone(timezone.utc)
+    if current_live is not None and now_utc - current_live.astimezone(timezone.utc) > timedelta(hours=6):
+        target = now_utc - timedelta(minutes=9)
+    else:
+        candidate = (now_utc - timedelta(minutes=9)).astimezone(HKT)
+        target = _next_allowed_slot(candidate).astimezone(timezone.utc)
+
+    if current_live and target <= current_live.astimezone(timezone.utc):
+        candidate = (current_live.astimezone(HKT) + timedelta(minutes=1))
+        target = _next_allowed_slot(candidate).astimezone(timezone.utc)
     return target.replace(second=0, microsecond=0)
 
 
