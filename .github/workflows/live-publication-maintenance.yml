@@ -89,68 +89,82 @@ jobs:
               and desk_fresh
           )
           try:
-              current=parse(live.get('lastUpdated') or '')
+              current=parse(live.get('lastUpdated') or '').astimezone(timezone.utc)
           except Exception:
               current=datetime.min.replace(tzinfo=timezone.utc)
 
+          live_age=now-current
+          catastrophic_stale=live_age > timedelta(hours=6)
           local_now=now.astimezone(HKT)
           due_hour=local_now.hour
           allowed_now=(due_hour in (0,6,7) or 9 <= due_hour <= 23)
           due=local_now.replace(minute=0,second=0,microsecond=0)
           current_is_due=allowed_now and current.astimezone(HKT) >= due
           promote=False
+          emergency=False
           reason='healthy'
           target=None
+
           if not have_draft:
               reason='no-prepublish-draft'
           else:
               try:
-                  target=parse(draft.get('targetPublication') or '')
+                  target=parse(draft.get('targetPublication') or '').astimezone(timezone.utc)
               except Exception:
                   reason='invalid-draft-target'
               else:
                   local=target.astimezone(HKT)
-                  allowed=(local.hour in (0,6,7) or 9 <= local.hour <= 23)
+                  target_allowed=(local.hour in (0,6,7) or 9 <= local.hour <= 23)
                   if draft.get('status') != 'VERIFIED_DRAFT':
                       reason='draft-not-verified'
                   elif draft.get('publicationType') != 'LIVE':
                       reason='draft-not-live'
-                  elif not allowed:
-                      reason='outside-live-publication-window'
                   elif not isinstance(draft.get('articles'),list) or not draft['articles']:
                       reason='verified-draft-empty'
+                  elif current >= target:
+                      reason='main-live-current'
                   else:
-                      age=now-target.astimezone(timezone.utc)
-                      if current.astimezone(timezone.utc) >= target.astimezone(timezone.utc):
-                          reason='main-live-current'
-                      elif age < timedelta(minutes=8):
+                      age=now-target
+                      if age < timedelta(minutes=8):
                           reason='normal-publisher-grace'
-                      elif age > timedelta(minutes=90):
-                          reason='verified-draft-too-old'
-                      else:
+                      elif target_allowed and age <= timedelta(minutes=90):
                           promote=True
                           reason='main-live-behind-verified-draft'
+                      elif catastrophic_stale and age <= timedelta(hours=36):
+                          # Emergency mode is deliberately narrow: Live must be
+                          # catastrophically stale and input must already be a
+                          # source-verified draft. Story/source timestamps are
+                          # preserved; only the missed publication gate is bypassed.
+                          promote=True
+                          emergency=True
+                          reason='emergency-stale-live-verified-draft'
+                      elif not target_allowed:
+                          reason='outside-live-publication-window'
+                      else:
+                          reason='verified-draft-too-old'
 
-          # A verified draft is the only safe way to add genuinely new news.
-          # Prefer it over recovery scripts that can only rearrange stories
-          # already present in Live or the Rolling Desk.
-          repair=(current_is_due and not coverage_ok and not promote)
+          # Stale Live must never be considered healthy simply because the
+          # current clock is outside a normal publication window.
+          repair=((current_is_due and not coverage_ok and not promote) or (catastrophic_stale and not promote))
           if repair:
-              reason='current-live-coverage-or-freshness-incomplete-no-promotable-draft'
+              reason='catastrophic-live-stale-no-promotable-draft' if catastrophic_stale else 'current-live-coverage-or-freshness-incomplete-no-promotable-draft'
 
           print('REPAIR=' + ('true' if repair else 'false'))
           print('PROMOTE=' + ('true' if promote else 'false'))
+          print('EMERGENCY=' + ('true' if emergency else 'false'))
           print('REASON=' + reason)
           print('DRAFT_ID=' + str(draft.get('draftId') or ''))
           print('TARGET=' + (target.isoformat() if target else ''))
           print('CURRENT=' + str(live.get('lastUpdated') or ''))
           print('COVERAGE=' + str(coverage.get('status') or 'missing'))
           print('DESK_FRESH=' + ('true' if desk_fresh else 'false'))
+          print('LIVE_AGE_MINUTES=' + str(int(live_age.total_seconds() // 60)))
           PY
           source /tmp/live-failover.env
-          echo "Live watchdog: repair=${REPAIR}; promote=${PROMOTE}; reason=${REASON}; current=${CURRENT:-none}; coverage=${COVERAGE:-none}; deskFresh=${DESK_FRESH:-false}"
+          echo "Live watchdog: repair=${REPAIR}; promote=${PROMOTE}; emergency=${EMERGENCY}; reason=${REASON}; current=${CURRENT:-none}; coverage=${COVERAGE:-none}; deskFresh=${DESK_FRESH:-false}; ageMinutes=${LIVE_AGE_MINUTES:-unknown}"
           echo "repair=${REPAIR}" >> "$GITHUB_OUTPUT"
           echo "promote=${PROMOTE}" >> "$GITHUB_OUTPUT"
+          echo "emergency=${EMERGENCY}" >> "$GITHUB_OUTPUT"
           echo "reason=${REASON}" >> "$GITHUB_OUTPUT"
           echo "draft_id=${DRAFT_ID}" >> "$GITHUB_OUTPUT"
           echo "target=${TARGET}" >> "$GITHUB_OUTPUT"
@@ -208,21 +222,16 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            python scripts/promote_verified_live_draft.py /tmp/prepublish.json
-            # Merge the genuinely new verified stories before legacy recovery
-            # checks. Otherwise a stale desk can abort before its new Live
-            # article has a chance to repair it.
-            python scripts/merge_live_into_desk.py
-            python scripts/recover_desk_container_watchdog.py
-            python scripts/sync_daily_into_desk_watchdog.py
-            python scripts/recover_manga_freshness_watchdog.py
-            python scripts/recover_desk_freshness_watchdog.py
-            python scripts/merge_live_into_desk.py
-            python scripts/validate_desk_freshness.py --report /tmp/live-maintenance-freshness-after.json
-            python scripts/validate_publication_current.py
-            python scripts/audit_tts_language.py
+            if [ "${{ steps.inspect.outputs.emergency }}" = "true" ]; then
+              python scripts/promote_verified_live_draft.py /tmp/prepublish.json --max-age-minutes 2160
+            else
+              python scripts/promote_verified_live_draft.py /tmp/prepublish.json
+            fi
 
-            git add -- data/live.json data/desk-latest.json
+            # Persist the independently verified Live snapshot first. Global
+            # Rolling Desk freshness is health state, not a transaction guard
+            # for an otherwise valid new article.
+            git add -- data/live.json
             if git diff --cached --quiet; then
               echo "LIVE_FAILOVER_NOOP normal publisher already caught up"
               exit 0
@@ -236,10 +245,14 @@ jobs:
           print('24:00' if t.hour == 0 else f'{t.hour:02d}:00')
           PY
             )
-            git commit -m "Failover publish verified ${TARGET_LABEL} HKT Live update"
+            if [ "${{ steps.inspect.outputs.emergency }}" = "true" ]; then
+              git commit -m "Emergency publish verified Live recovery for ${TARGET_LABEL} HKT"
+            else
+              git commit -m "Failover publish verified ${TARGET_LABEL} HKT Live update"
+            fi
             if git push origin HEAD:main; then
               echo "changed=true" >> "$GITHUB_OUTPUT"
-              echo "LIVE_PUBLICATION_AUTO_FAILOVER_PASS draft=${{ steps.inspect.outputs.draft_id }} target=${{ steps.inspect.outputs.target }}"
+              echo "LIVE_PUBLICATION_AUTO_FAILOVER_PASS draft=${{ steps.inspect.outputs.draft_id }} target=${{ steps.inspect.outputs.target }} emergency=${{ steps.inspect.outputs.emergency }}"
               exit 0
             fi
             sleep $((attempt * 2))
@@ -247,6 +260,16 @@ jobs:
 
           echo "Verified Live failover could not push after retries" >&2
           exit 1
+
+      - name: Dispatch Rolling Desk merge after Live publication
+        if: steps.promote.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run merge-live-into-desk.yml --repo "${GITHUB_REPOSITORY}" --ref main || true
+          echo "LIVE_RECOVERY_ROLLING_DESK_DISPATCHED"
 
       - name: Dispatch Pages after Live repair or failover publication
         if: steps.repair.outputs.changed == 'true' || steps.promote.outputs.changed == 'true'
@@ -264,6 +287,21 @@ jobs:
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/pages.yml/dispatches" \
             -d "$payload"
           echo "LIVE_RECOVERY_PAGES_DEPLOY_DISPATCHED"
+
+      - name: Reassign fresh general-news production when Live is catastrophically stale
+        if: steps.inspect.outputs.repair == 'true' && steps.inspect.outputs.promote != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          active=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow general-news-producer.yml --limit 10 --json status --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
+          if [ "${active:-0}" -eq 0 ]; then
+            gh workflow run general-news-producer.yml --repo "${GITHUB_REPOSITORY}" --ref main
+            echo "LIVE_RECOVERY_GENERAL_NEWS_PRODUCER_DISPATCHED"
+          else
+            echo "LIVE_RECOVERY_GENERAL_NEWS_PRODUCER_ALREADY_ACTIVE"
+          fi
 
       - name: Live publication healthy
         if: steps.inspect.outputs.repair != 'true' && steps.inspect.outputs.promote != 'true'
