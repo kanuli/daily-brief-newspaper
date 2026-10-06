@@ -32,6 +32,16 @@ Editor-in-Chief Newsroom Assignment
 The fixed assignment schedule is the Editor-in-Chief's roster clock and safety
 net. Normal pipeline continuation is event-driven from robot completion.
 
+Every leaf robot has exactly one allowed downstream dispatch: an explicit
+`workflow_dispatch` callback to `editor-in-chief-newsroom-assignment.yml`
+with its workflow name, conclusion and run ID. The leaf never selects or calls
+the next leaf robot. The Editor-in-Chief re-audits production evidence and
+decides the next assignment.
+
+This explicit callback is used instead of relying on chained
+`workflow_run` events, so a robot launched by the controller can reliably
+report its outcome back to the controller.
+
 Standing duties are also assigned centrally:
 
 - Collector: 15-minute discovery duty, 24x7.
@@ -124,6 +134,19 @@ The 48-hour substantive freshness and 3-hour review gates remain production
 hard gates. A workflow start, completion timestamp or fresh review label never
 makes old market news current.
 
+### Daily currentness vs Pages
+
+Daily Recovery owns only the required repository Daily edition date:
+`data/latest.json.date` must equal the current HKT Daily target (today at/after
+08:00 HKT, otherwise yesterday). A failing Live/Desk publication validator or a
+stale public page is **not** by itself a Daily Recovery fault.
+
+Pages may wait for in-flight Daily/General/Live/Desk writers that are about to
+change the same core publication state. It does not wait for independent Stock
+or Vocab work; those robots trigger another deployment after their own
+successful completion. This prevents an unrelated Stock repair from freezing
+otherwise healthy public news deployment.
+
 ### Daily vocabulary
 
 Vocab is **TODAY-FIRST** in Asia/Hong_Kong. Historical missing dates do not
@@ -149,6 +172,7 @@ that stale state.
 `scripts/test_newsroom_orchestration_contract.py` rejects changes that:
 
 - add autonomous schedule/push/workflow-run triggers back to leaf robots;
+- remove a leaf robot's explicit outcome callback to the Editor-in-Chief;
 - allow one leaf robot to dispatch another;
 - make Pages mutate newsroom content;
 - restore historical Vocab backfill ahead of TODAY;

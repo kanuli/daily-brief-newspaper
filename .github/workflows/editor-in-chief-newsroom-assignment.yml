@@ -22,22 +22,26 @@ on:
       - "data/stocks-latest.json"
       - "data/vocab/**"
       - "data/tts-manifest.json"
-  workflow_run:
-    workflows:
-      - "Rolling News Search 15m"
-      - "General News Verified Producer"
-      - "Live Publication Auto Maintenance"
-      - "Merge Live into Rolling Desk"
-      - "Stock News Hourly Maintenance"
-      - "Daily Japanese vocab"
-      - "Today Daily Recovery"
-      - "Deploy Daily Brief to GitHub Pages"
-      - "Publish Canto Nano Female Cantonese News Voice"
-    types: [completed]
   schedule:
-    # Safety net only. Normal continuation is event-driven from robot completion.
+    # Editor-in-Chief roster clock / safety net.
     - cron: "8,23,38,53 * * * *"
   workflow_dispatch:
+    inputs:
+      trigger_workflow:
+        description: "Leaf robot reporting completion"
+        required: false
+        default: ""
+        type: string
+      trigger_conclusion:
+        description: "Leaf robot conclusion: success/failure/cancelled"
+        required: false
+        default: ""
+        type: string
+      trigger_run_id:
+        description: "Leaf robot GitHub Actions run id"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   actions: write
@@ -123,8 +127,9 @@ jobs:
 
       - name: Editor-in-Chief classifies faults, dependencies and prior outcomes
         env:
-          TRIGGER_WORKFLOW: ${{ github.event.workflow_run.name }}
-          TRIGGER_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          TRIGGER_WORKFLOW: ${{ inputs.trigger_workflow || '' }}
+          TRIGGER_CONCLUSION: ${{ inputs.trigger_conclusion || '' }}
+          TRIGGER_RUN_ID: ${{ inputs.trigger_run_id || '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -147,7 +152,10 @@ jobs:
             --vocab-rc "$(cat /tmp/vocab-rc)" \
             --trigger-workflow "${TRIGGER_WORKFLOW:-}" \
             --trigger-conclusion "${TRIGGER_CONCLUSION:-}" \
+            --trigger-run-id "${TRIGGER_RUN_ID:-}" \
             --output /tmp/editor-news-assignments.json
+
+          echo "EDITOR_CALLBACK trigger_workflow=${TRIGGER_WORKFLOW:-none} trigger_conclusion=${TRIGGER_CONCLUSION:-none} trigger_run_id=${TRIGGER_RUN_ID:-none}"
 
           python - <<'PY' > /tmp/editor-news-queue.b64
           import base64, json

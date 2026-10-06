@@ -61,6 +61,7 @@ def run_case(
     vocab_rc=0,
     trigger_workflow="",
     trigger_conclusion="",
+    trigger_run_id="",
 ):
     data = base_files()
     if mutate:
@@ -107,6 +108,8 @@ def run_case(
                 trigger_workflow,
                 "--trigger-conclusion",
                 trigger_conclusion,
+                "--trigger-run-id",
+                trigger_run_id,
                 "--now",
                 NOW_ISO,
                 "--output",
@@ -131,6 +134,32 @@ assert registry["controlPlane"]["leafRobotsManualDispatchOnly"] is True
 r = run_case()
 assert r["assignments"] == [], r
 assert r["healthy"] is True, r
+
+# A strict publication validator failure is not automatically a Daily fault.
+# With today's Daily already present, route recovery to the publication chain.
+r = run_case(publication_rc=1)
+robots = {x["robot"] for x in r["assignments"]}
+assert "daily-recovery" not in robots, r
+assert "general-producer" in robots, r
+assert r["dailyRepositoryCurrent"] is True, r
+
+def stale_daily(d):
+    d["latest"]["date"] = "2026-10-05"
+
+r = run_case(mutate=stale_daily)
+daily = next(x for x in r["assignments"] if x["robot"] == "daily-recovery")
+assert daily["faultClass"] == "daily-currentness", r
+assert r["requiredDailyDateHKT"] == "2026-10-06", r
+assert r["dailyRepositoryCurrent"] is False, r
+
+def stock_and_public_page_fault(d):
+    d["sentinel"]["persistentFailedPages"] = ["stock.html"]
+
+r = run_case(mutate=stock_and_public_page_fault, stock_rc=1)
+pages = next(x for x in r["assignments"] if x["robot"] == "pages")
+assert pages["dispatchable"] is True, r
+assert pages["blockedBy"] == [], r
+assert "stock" in {x["robot"] for x in r["assignments"]}, r
 
 def collector_duty_due(d):
     due=(NOW - timedelta(minutes=13)).isoformat().replace("+00:00", "Z")
@@ -187,11 +216,23 @@ robots = {x["robot"] for x in r["assignments"]}
 assert "live-publisher" in robots, r
 assert "general-producer" not in robots, r
 
+def pending_with_public_fault(d):
+    pending(d)
+    d["sentinel"]["persistentFailedPages"] = ["index.html"]
+
+r = run_case(mutate=pending_with_public_fault)
+pages = next(x for x in r["assignments"] if x["robot"] == "pages")
+assert pages["dispatchable"] is False, r
+assert "live-publisher" in pages["blockedBy"], r
+assert "stock" not in pages["blockedBy"], r
+
 r = run_case(
     mutate=stale_with_candidates,
     trigger_workflow="Live Publication Auto Maintenance",
     trigger_conclusion="success",
+    trigger_run_id="123456",
 )
+assert r["trigger"]["runId"] == "123456", r
 merge = next(x for x in r["assignments"] if x["robot"] == "desk-merge")
 assert merge["dispatchable"] is True, r
 assert "general-producer" not in {x["robot"] for x in r["assignments"]}, r
