@@ -295,6 +295,9 @@ def apply_previous_outcomes(
     robots: dict[str, dict[str, Any]],
     previous: dict[str, Any],
     snapshot: dict[str, Any],
+    *,
+    now: datetime,
+    trigger_robot: str | None,
 ) -> None:
     previous_rows = {
         str(row.get("robot")): row
@@ -308,8 +311,27 @@ def apply_previous_outcomes(
         if not prior:
             continue
         execution = execution_for(previous, row["workflow"])
-        attempted = bool(execution and (execution.get("dispatched") or str(execution.get("reason") or "").startswith("already-active")))
-        if not attempted:
+        # "already-active" is ownership evidence, not a completed attempt. Never
+        # escalate a healthy in-flight robot merely because its output has not
+        # appeared yet.
+        if not execution or not execution.get("dispatched"):
+            continue
+
+        previous_checked = parse_iso(previous.get("checkedAt"))
+        max_runtime = float(prior.get("maxRuntimeMinutes") or robots[row["robot"]].get("maxRuntimeMinutes") or 30)
+        runtime_expired = bool(
+            previous_checked
+            and (now - previous_checked).total_seconds() / 60.0 > max_runtime + 5.0
+        )
+        completed_event = trigger_robot == row["robot"]
+        if not completed_event and not runtime_expired:
+            row["previousOutcome"] = {
+                "cycleId": previous.get("cycleId"),
+                "progress": None,
+                "mode": prior.get("mode"),
+                "attempt": prior.get("attempt", 1),
+                "evaluation": "deferred-in-flight",
+            }
             continue
 
         progress = made_progress(row["robot"], prior.get("outcomeBefore") or {}, snapshot)
@@ -679,7 +701,14 @@ def main() -> int:
         )
 
     snapshot["staleDesks"] = sorted(stale_desks)
-    apply_previous_outcomes(plan, robots, previous, snapshot)
+    apply_previous_outcomes(
+        plan,
+        robots,
+        previous,
+        snapshot,
+        now=now,
+        trigger_robot=trigger_robot,
+    )
     block_downstream_races(plan)
 
     cycle_id = make_cycle_id(now)
