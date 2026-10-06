@@ -61,6 +61,7 @@ def run_case(
     vocab_rc=0,
     trigger_workflow="",
     trigger_conclusion="",
+    trigger_run_id="",
 ):
     data = base_files()
     if mutate:
@@ -107,6 +108,8 @@ def run_case(
                 trigger_workflow,
                 "--trigger-conclusion",
                 trigger_conclusion,
+                "--trigger-run-id",
+                trigger_run_id,
                 "--now",
                 NOW_ISO,
                 "--output",
@@ -227,7 +230,9 @@ r = run_case(
     mutate=stale_with_candidates,
     trigger_workflow="Live Publication Auto Maintenance",
     trigger_conclusion="success",
+    trigger_run_id="123456",
 )
+assert r["trigger"]["runId"] == "123456", r
 merge = next(x for x in r["assignments"] if x["robot"] == "desk-merge")
 assert merge["dispatchable"] is True, r
 assert "general-producer" not in {x["robot"] for x in r["assignments"]}, r
