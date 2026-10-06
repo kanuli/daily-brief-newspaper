@@ -18,6 +18,15 @@ on:
     - cron: "5 22,23 * * *"
     - cron: "5 1-16 * * *"
   workflow_dispatch:
+    inputs:
+      recovery_mode:
+        description: "Recovery path: normal uses rolling state; deep forces fresh discovery before primary-source rebuild"
+        required: false
+        default: "normal"
+        type: choice
+        options:
+          - normal
+          - deep
 
 permissions:
   contents: write
@@ -37,6 +46,21 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+
+      - name: Select recovery mode
+        id: mode
+        env:
+          REQUESTED_MODE: ${{ github.event.inputs.recovery_mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mode="${REQUESTED_MODE:-normal}"
+          case "$mode" in
+            normal|deep) ;;
+            *) echo "Unsupported recovery_mode=$mode" >&2; exit 2 ;;
+          esac
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "STOCK_RECOVERY_MODE=$mode"
 
       - name: Read manual verified draft and latest rolling discovery
         id: inputs
@@ -59,7 +83,7 @@ jobs:
           fi
 
       - name: Enforce 15-symbol rolling collector contract and refresh Stock discovery
-        if: steps.inputs.outputs.staging_available == 'true'
+        if: steps.inputs.outputs.staging_available == 'true' || steps.mode.outputs.mode == 'deep' || steps.mode.outputs.mode == 'deep'
         shell: bash
         run: |
           set -euo pipefail
@@ -104,11 +128,23 @@ jobs:
           print('STOCK_COLLECTOR_15_SYMBOL_CONTRACT_PASS', ','.join(required))
           PY
 
-          # Discovery refresh is useful but must never block verified text publication.
-          # The already-fetched staging snapshot remains available to heartbeat/producer
-          # if network collection hangs or fails; downstream 48h/3h Stock QA still fails
-          # closed on stale or invalid substantive content.
-          if timeout 120s python scripts/rolling_news_collector.py \
+          # Normal mode may retain the fetched reservoir if a best-effort refresh
+          # fails. Deep recovery is deliberately different: it discards the old
+          # reservoir and requires a wholly fresh discovery snapshot before the
+          # primary-source producer is allowed to run.
+          if [ "${{ steps.mode.outputs.mode }}" = "deep" ]; then
+            rm -f /tmp/search-staging-current.json
+            if timeout 180s python scripts/rolling_news_collector.py \
+              --output /tmp/search-staging-current.json; then
+              mv /tmp/search-staging-current.json /tmp/search-staging.json
+              echo "STOCK_DEEP_DISCOVERY_REFRESH_PASS"
+            else
+              rc=$?
+              rm -f /tmp/search-staging-current.json
+              echo "STOCK_DEEP_DISCOVERY_REFRESH_FAILED rc=${rc}" >&2
+              exit "${rc}"
+            fi
+          elif timeout 120s python scripts/rolling_news_collector.py \
             --existing /tmp/search-staging.json \
             --output /tmp/search-staging-current.json; then
             mv /tmp/search-staging-current.json /tmp/search-staging.json
@@ -120,14 +156,14 @@ jobs:
           fi
 
       - name: Record truthful hourly Stock News check
-        if: steps.inputs.outputs.staging_available == 'true'
+        if: steps.inputs.outputs.staging_available == 'true' || steps.mode.outputs.mode == 'deep'
         shell: bash
         run: |
           set -euo pipefail
           python scripts/stock_news_heartbeat.py /tmp/search-staging.json --min-interval-minutes 45
 
       - name: Build primary-source verified Stock draft
-        if: steps.inputs.outputs.staging_available == 'true'
+        if: steps.inputs.outputs.staging_available == 'true' || steps.mode.outputs.mode == 'deep'
         shell: bash
         run: |
           set -euo pipefail
@@ -139,7 +175,7 @@ jobs:
           PY
 
       - name: Promote primary-source verified tracked-stock material
-        if: steps.inputs.outputs.staging_available == 'true'
+        if: steps.inputs.outputs.staging_available == 'true' || steps.mode.outputs.mode == 'deep'
         shell: bash
         run: |
           set -uo pipefail
