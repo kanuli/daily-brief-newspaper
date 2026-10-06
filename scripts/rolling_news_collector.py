@@ -153,6 +153,46 @@ QUERY_PLAN: dict[str, list[str]] = {
     ],
 }
 
+DEEP_QUERY_PLAN: dict[str, list[str]] = {
+    "world": [
+        'global politics diplomacy security economy society climate when:12h',
+        '(Europe OR Africa OR Americas OR Oceania) breaking news government court disaster when:12h',
+        'international affairs election protest conflict public safety when:12h',
+    ],
+    "asia": [
+        'Asia breaking news politics economy society diplomacy security when:12h',
+        '(East Asia OR Southeast Asia OR South Asia OR Middle East) government court disaster when:12h',
+    ],
+    "hong-kong": [
+        '香港 即時 新聞 政府 社會 交通 法院 經濟 when:12h',
+        '"Hong Kong" breaking news government society court economy transport when:12h',
+    ],
+    "japan": [
+        '日本 速報 政治 社会 経済 事件 災害 when:12h',
+        'Japan breaking news government society economy court disaster when:12h',
+    ],
+    "finance": [
+        'global markets economy companies earnings central banks commodities when:12h',
+        'Wall Street Asia Europe markets company news when:12h',
+    ],
+    "stock-news": [
+        '(GOOG GLDM ICE MCD EMXC GBTC DBA AAPL EWY META MSFT NVDA TSM PLTR VT) market company ETF news when:24h',
+    ],
+    "ai-tech": [
+        'technology AI semiconductor cybersecurity software breaking news when:12h',
+    ],
+    "manga-anime": [
+        'アニメ 漫画 最新 ニュース 制作 公開 連載 when:72h',
+    ],
+    "manchester-united": [
+        '"Manchester United" latest news team transfer injury match manager when:48h',
+    ],
+    "football": [
+        'football soccer latest news match transfer injury manager tournament when:12h',
+        'world football league club national team news when:12h',
+    ],
+}
+
 LOCALES = {
     "hong-kong": ("zh-HK", "HK", "HK:zh-Hant"),
     "japan": ("ja", "JP", "JP:ja"),
@@ -376,16 +416,24 @@ def merge_items(
         merged[desk][item["id"]] = item
 
 
-def collect(existing: dict[str, Any]) -> dict[str, Any]:
+def collect(existing: dict[str, Any], mode: str = "normal") -> dict[str, Any]:
+    if mode not in {"normal", "deep"}:
+        raise ValueError(f"unsupported collection mode: {mode}")
     started = now_utc()
     merged = retained_candidates(existing, started)
     errors: list[dict[str, str]] = []
     query_audit: dict[str, dict[str, int]] = {}
 
-    for desk, queries in QUERY_PLAN.items():
+    for desk, base_queries in QUERY_PLAN.items():
+        queries = list(base_queries)
+        if mode == "deep":
+            for q in DEEP_QUERY_PLAN.get(desk, []):
+                if q not in queries:
+                    queries.append(q)
         discovered_this_run: set[str] = set()
         floor = MIN_DISCOVERY_PER_DESK[desk]
         query_audit[desk] = {
+            "mode": mode,
             "queries": len(queries),
             "googleItems": 0,
             "bingFallbackQueries": 0,
@@ -440,6 +488,7 @@ def collect(existing: dict[str, Any]) -> dict[str, Any]:
     return {
         "version": 2,
         "mode": "ROLLING_NEWS_DISCOVERY_STAGING",
+        "collectionMode": mode,
         "discoveryOnly": True,
         "verificationRequiredBeforePublish": True,
         "searchCadenceMinutes": 15,
@@ -460,6 +509,7 @@ def collect(existing: dict[str, Any]) -> dict[str, Any]:
             "Staging is discovery only; candidates are not published without independent verification.",
             "Discovery floors are breadth-health thresholds, never publication quotas or caps.",
             "All ten Cantonese desks use multi-angle queries; shallow primary discovery triggers multiple free fallback queries until the desk floor is reached or queries are exhausted.",
+            "Deep mode adds broader desk-specific discovery queries and is reserved for Editor-in-Chief recovery after normal collection underfills or stalls.",
             "A short Live edition or homepage topFive must never reduce the depth of collection staging or public topic desks.",
             "Football is researched as the full worldwide football news desk; results are one normal candidate type among transfers, injuries, fixtures, club, league and international developments.",
             "Football staging requires positive football relevance and filters American-football/baseball/F1 noise; Manchester United and Stock News use desk-specific relevance filters.",
@@ -472,16 +522,17 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--existing", type=Path, default=None)
     parser.add_argument("--output", type=Path, default=Path("data/search-staging.json"))
+    parser.add_argument("--mode", choices=("normal", "deep"), default="normal")
     args = parser.parse_args()
 
     existing = load_existing(args.existing)
-    data = collect(existing)
+    data = collect(existing, mode=args.mode)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     total = sum(data["candidateCounts"].values())
     print(
-        f"ROLLING_NEWS_SEARCH_PASS total_candidates={total} "
+        f"ROLLING_NEWS_SEARCH_PASS mode={args.mode} total_candidates={total} "
         f"underfilled_desks={len(data['underfilledDesks'])} errors={len(data['errors'])}"
     )
     for desk, count in data["candidateCounts"].items():
