@@ -3,7 +3,7 @@ import json
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -131,6 +131,25 @@ assert registry["controlPlane"]["leafRobotsManualDispatchOnly"] is True
 r = run_case()
 assert r["assignments"] == [], r
 assert r["healthy"] is True, r
+
+def collector_duty_due(d):
+    due=(NOW - timedelta(minutes=13)).isoformat().replace("+00:00", "Z")
+    d["staging"]["lastSearchAt"] = due
+
+r = run_case(mutate=collector_duty_due)
+collector = next(x for x in r["assignments"] if x["robot"] == "collector")
+assert collector["faultClass"] == "collection-duty", r
+assert collector["mode"] == "normal", r
+
+def stock_duty_due(d):
+    due=(NOW - timedelta(minutes=55)).isoformat().replace("+00:00", "Z")
+    d["stocks"]["generatedAt"] = due
+    d["stocks"]["lastCheckedAt"] = due
+
+r = run_case(mutate=stock_duty_due)
+stock = next(x for x in r["assignments"] if x["robot"] == "stock")
+assert stock["faultClass"] == "stock-duty", r
+assert stock["mode"] == "normal", r
 
 def underfill(d):
     d["staging"]["underfilledDesks"] = {"world": {"count": 5, "floor": 24}}
