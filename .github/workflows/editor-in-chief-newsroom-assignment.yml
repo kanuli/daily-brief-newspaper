@@ -8,6 +8,7 @@ on:
       - "config/newsroom-robots.json"
       - "scripts/newsroom_control_plane.py"
       - ".github/workflows/daily-japanese-vocab.yml"
+      - ".github/workflows/daily-today-recovery.yml"
       - "scripts/generate_daily_vocab.py"
       - "scripts/rolling_news_collector.py"
       - "scripts/general_news_verified_producer.py"
@@ -20,6 +21,7 @@ on:
       - "data/desk-latest.json"
       - "data/stocks-latest.json"
       - "data/vocab/**"
+      - "data/tts-manifest.json"
   workflow_run:
     workflows:
       - "Rolling News Search 15m"
@@ -28,27 +30,28 @@ on:
       - "Merge Live into Rolling Desk"
       - "Stock News Hourly Maintenance"
       - "Daily Japanese vocab"
+      - "Today Daily Recovery"
       - "Deploy Daily Brief to GitHub Pages"
       - "Publish Canto Nano Female Cantonese News Voice"
     types: [completed]
   schedule:
-    # Schedule is the safety net. Robot completion events trigger immediate
-    # outcome re-evaluation, so recovery does not wait for the next timer slot.
+    # Safety net only. Normal continuation is event-driven from robot completion.
     - cron: "8,23,38,53 * * * *"
   workflow_dispatch:
 
 permissions:
   actions: write
-  contents: read
+  contents: write
 
 concurrency:
   group: "editor-in-chief-newsroom-assignment"
-  cancel-in-progress: true
+  # Never cancel an assignment cycle halfway through robot dispatch/telemetry.
+  cancel-in-progress: false
 
 jobs:
   assign:
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 8
     steps:
       - name: Checkout current main
         uses: actions/checkout@v4
@@ -56,20 +59,31 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Collect independent newsroom evidence
+      - name: Collect independent newsroom evidence and prior assignment outcome
         shell: bash
         run: |
           set -euo pipefail
-          rm -f /tmp/search-staging.json /tmp/page-news-sentinel.json /tmp/editor-status.json
+          rm -f \
+            /tmp/search-staging.json \
+            /tmp/prepublish.json \
+            /tmp/page-news-sentinel.json \
+            /tmp/editor-status.json \
+            /tmp/previous-assignments.json
 
-          git fetch -q --depth=1 origin news-staging || true
-          git show FETCH_HEAD:data/search-staging.json > /tmp/search-staging.json 2>/dev/null || echo '{}' > /tmp/search-staging.json
+          git fetch -q origin news-staging:refs/remotes/origin/news-staging || true
+          git show origin/news-staging:data/search-staging.json > /tmp/search-staging.json 2>/dev/null || echo '{}' > /tmp/search-staging.json
 
-          git fetch -q --depth=1 origin page-sentinel-status || true
-          git show FETCH_HEAD:data/page-news-sentinel-status.json > /tmp/page-news-sentinel.json 2>/dev/null || echo '{}' > /tmp/page-news-sentinel.json
+          git fetch -q origin prepublish-news:refs/remotes/origin/prepublish-news || true
+          git show origin/prepublish-news:data/prepublish.json > /tmp/prepublish.json 2>/dev/null || echo '{}' > /tmp/prepublish.json
 
-          git fetch -q --depth=1 origin editor-status || true
-          git show FETCH_HEAD:data/editor-in-chief-status.json > /tmp/editor-status.json 2>/dev/null || echo '{}' > /tmp/editor-status.json
+          git fetch -q origin page-sentinel-status:refs/remotes/origin/page-sentinel-status || true
+          git show origin/page-sentinel-status:data/page-news-sentinel-status.json > /tmp/page-news-sentinel.json 2>/dev/null || echo '{}' > /tmp/page-news-sentinel.json
+
+          git fetch -q origin editor-status:refs/remotes/origin/editor-status || true
+          git show origin/editor-status:data/editor-in-chief-status.json > /tmp/editor-status.json 2>/dev/null || echo '{}' > /tmp/editor-status.json
+
+          git fetch -q origin editor-assignments:refs/remotes/origin/editor-assignments || true
+          git show origin/editor-assignments:data/newsroom-assignments.json > /tmp/previous-assignments.json 2>/dev/null || echo '{}' > /tmp/previous-assignments.json
 
       - name: Run current newsroom checks
         shell: bash
@@ -77,15 +91,19 @@ jobs:
           set +e
           python scripts/validate_desk_freshness.py --report /tmp/desk-freshness.json
           echo $? > /tmp/desk-rc
+
           python scripts/validate_stock_news.py
           echo $? > /tmp/stock-rc
+
           python scripts/validate_publication_current.py
           echo $? > /tmp/publication-rc
+
           python - <<'PY'
           import json
           from datetime import datetime
           from pathlib import Path
           from zoneinfo import ZoneInfo
+
           today=datetime.now(ZoneInfo("Asia/Hong_Kong")).date().isoformat()
           dated=Path("data/vocab") / f"{today}.json"
           latest=Path("data/vocab/latest.json")
@@ -103,85 +121,123 @@ jobs:
           echo $? > /tmp/vocab-rc
           set -e
 
-      - name: Editor-in-Chief classifies faults and assigns Robots
+      - name: Editor-in-Chief classifies faults, dependencies and prior outcomes
+        env:
+          TRIGGER_WORKFLOW: ${{ github.event.workflow_run.name }}
+          TRIGGER_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         shell: bash
         run: |
           set -euo pipefail
           python -m py_compile scripts/newsroom_control_plane.py
           python scripts/newsroom_control_plane.py \
+            --registry config/newsroom-robots.json \
             --staging /tmp/search-staging.json \
+            --prepublish /tmp/prepublish.json \
             --freshness /tmp/desk-freshness.json \
             --editor-status /tmp/editor-status.json \
             --sentinel /tmp/page-news-sentinel.json \
+            --previous-assignments /tmp/previous-assignments.json \
+            --latest data/latest.json \
+            --live data/live.json \
+            --desk data/desk-latest.json \
+            --stocks data/stocks-latest.json \
+            --tts data/tts-manifest.json \
             --stock-rc "$(cat /tmp/stock-rc)" \
             --publication-rc "$(cat /tmp/publication-rc)" \
             --vocab-rc "$(cat /tmp/vocab-rc)" \
+            --trigger-workflow "${TRIGGER_WORKFLOW:-}" \
+            --trigger-conclusion "${TRIGGER_CONCLUSION:-}" \
             --output /tmp/editor-news-assignments.json
-          python - <<'PY' > /tmp/editor-news-workflows.txt
-          import json
+
+          python - <<'PY' > /tmp/editor-news-queue.b64
+          import base64, json
           d=json.load(open('/tmp/editor-news-assignments.json',encoding='utf-8'))
           for row in d.get('assignments') or []:
-              wf=str(row.get('workflow') or '').strip()
-              if wf:
-                  print(wf)
+              raw=json.dumps(row,separators=(',',':'),ensure_ascii=False).encode()
+              print(base64.b64encode(raw).decode())
           PY
 
-      - name: Dispatch assigned Robots without duplicate work
+      - name: Dispatch only Editor-in-Chief-assigned Robots
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           : > /tmp/editor-news-execution.jsonl
-          while IFS= read -r wf; do
-            [ -n "$wf" ] || continue
 
-            assignment=$(WF="$wf" python - <<'PY'
-          import json, os
-          d=json.load(open('/tmp/editor-news-assignments.json',encoding='utf-8'))
-          row=next((x for x in (d.get('assignments') or []) if x.get('workflow')==os.environ['WF']),{})
-          print(json.dumps(row,separators=(',',':')))
-          PY
-            )
-            mode=$(ASSIGNMENT="$assignment" python - <<'PY'
-          import json,os
-          print(json.loads(os.environ['ASSIGNMENT']).get('mode','normal'))
-          PY
-            )
-            fault=$(ASSIGNMENT="$assignment" python - <<'PY'
-          import json,os
-          print(json.loads(os.environ['ASSIGNMENT']).get('faultClass','unknown'))
-          PY
-            )
+          while IFS= read -r encoded; do
+            [ -n "$encoded" ] || continue
+            assignment="$(printf '%s' "$encoded" | base64 -d)"
 
-            gh run list --repo "${GITHUB_REPOSITORY}" --workflow "$wf" --limit 10 \
-              --json databaseId,status,createdAt > /tmp/assignment-active.json 2>/dev/null || printf '[]' > /tmp/assignment-active.json
-            active=$(python - <<'PY'
-          import json
-          rows=json.load(open('/tmp/assignment-active.json',encoding='utf-8'))
-          print(sum(1 for r in rows if r.get('status') != 'completed'))
-          PY
-            )
-            if [ "${active:-0}" -gt 0 ]; then
-              printf '{"workflow":"%s","mode":"%s","faultClass":"%s","dispatched":false,"reason":"already-active","outcomeVerification":"required-next-cycle"}\n' "$wf" "$mode" "$fault" >> /tmp/editor-news-execution.jsonl
+            robot="$(jq -r '.robot' <<<"$assignment")"
+            wf="$(jq -r '.workflow' <<<"$assignment")"
+            mode="$(jq -r '.mode // "normal"' <<<"$assignment")"
+            fault="$(jq -r '.faultClass // "unknown"' <<<"$assignment")"
+            status="$(jq -r '.status // "assigned"' <<<"$assignment")"
+            dispatchable="$(jq -r '.dispatchable // false' <<<"$assignment")"
+            max_runtime="$(jq -r '.maxRuntimeMinutes // 30' <<<"$assignment")"
+            assignment_id="$(jq -r '.assignmentId // ""' <<<"$assignment")"
+
+            if [ "$dispatchable" != "true" ]; then
+              blocked_by="$(jq -c '.blockedBy // []' <<<"$assignment")"
+              printf '{"assignmentId":"%s","robot":"%s","workflow":"%s","mode":"%s","faultClass":"%s","dispatched":false,"reason":"%s","blockedBy":%s,"outcomeVerification":"required-next-cycle"}\n' \
+                "$assignment_id" "$robot" "$wf" "$mode" "$fault" "$status" "$blocked_by" >> /tmp/editor-news-execution.jsonl
               continue
             fi
 
-            ok=false
-            if [ "$wf" = "rolling-news-search.yml" ]; then
-              if gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main -f mode="$mode"; then ok=true; fi
-            elif [ "$wf" = "stock-publication-maintenance.yml" ]; then
-              if gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main -f recovery_mode="$mode"; then ok=true; fi
-            else
-              if gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main; then ok=true; fi
+            gh run list --repo "${GITHUB_REPOSITORY}" --workflow "$wf" --limit 20 \
+              --json databaseId,status,createdAt > /tmp/assignment-active.json 2>/dev/null || printf '[]' > /tmp/assignment-active.json
+
+            stale_ids="$(MAX_RUNTIME="$max_runtime" python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          rows=json.load(open('/tmp/assignment-active.json',encoding='utf-8'))
+          now=datetime.now(timezone.utc)
+          limit=float(os.environ['MAX_RUNTIME']) + 5.0
+          out=[]
+          for row in rows:
+              if row.get('status') == 'completed':
+                  continue
+              try:
+                  created=datetime.fromisoformat(str(row.get('createdAt')).replace('Z','+00:00')).astimezone(timezone.utc)
+                  age=(now-created).total_seconds()/60.0
+              except Exception:
+                  continue
+              if age > limit:
+                  out.append(str(row.get('databaseId')))
+          print(' '.join(out))
+          PY
+            )"
+
+            if [ -n "$stale_ids" ]; then
+              for run_id in $stale_ids; do
+                echo "EDITOR_ROBOT_STUCK_CANCEL robot=$robot workflow=$wf run=$run_id maxRuntime=${max_runtime}m"
+                gh run cancel "$run_id" --repo "${GITHUB_REPOSITORY}" || true
+              done
+              sleep 3
             fi
 
-            if [ "$ok" = "true" ]; then
-              printf '{"workflow":"%s","mode":"%s","faultClass":"%s","dispatched":true,"reason":"assigned-by-editor-in-chief","outcomeVerification":"required-next-cycle"}\n' "$wf" "$mode" "$fault" >> /tmp/editor-news-execution.jsonl
-            else
-              printf '{"workflow":"%s","mode":"%s","faultClass":"%s","dispatched":false,"reason":"dispatch-failed"}\n' "$wf" "$mode" "$fault" >> /tmp/editor-news-execution.jsonl
+            active="$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow "$wf" --limit 10 --json status --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)"
+            if [ "${active:-0}" -gt 0 ]; then
+              printf '{"assignmentId":"%s","robot":"%s","workflow":"%s","mode":"%s","faultClass":"%s","dispatched":false,"reason":"already-active","outcomeVerification":"required-next-cycle"}\n' \
+                "$assignment_id" "$robot" "$wf" "$mode" "$fault" >> /tmp/editor-news-execution.jsonl
+              continue
             fi
-          done < /tmp/editor-news-workflows.txt
+
+            args=(workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main)
+            while IFS=$'\t' read -r key value; do
+              [ -n "$key" ] || continue
+              args+=(-f "$key=$value")
+            done < <(jq -r '.dispatchInputs // {} | to_entries[] | [.key,(.value|tostring)] | @tsv' <<<"$assignment")
+
+            if gh "${args[@]}"; then
+              printf '{"assignmentId":"%s","robot":"%s","workflow":"%s","mode":"%s","faultClass":"%s","dispatched":true,"reason":"assigned-by-editor-in-chief","outcomeVerification":"required-next-cycle"}\n' \
+                "$assignment_id" "$robot" "$wf" "$mode" "$fault" >> /tmp/editor-news-execution.jsonl
+            else
+              printf '{"assignmentId":"%s","robot":"%s","workflow":"%s","mode":"%s","faultClass":"%s","dispatched":false,"reason":"dispatch-failed"}\n' \
+                "$assignment_id" "$robot" "$wf" "$mode" "$fault" >> /tmp/editor-news-execution.jsonl
+            fi
+          done < /tmp/editor-news-queue.b64
 
           echo "EDITOR_IN_CHIEF_ROBOT_EXECUTION"
           cat /tmp/editor-news-execution.jsonl || true
@@ -194,9 +250,11 @@ jobs:
         run: |
           set -euo pipefail
           test -s /tmp/editor-news-assignments.json
+
           python - <<'PY'
           import json
           from pathlib import Path
+
           a=json.load(open('/tmp/editor-news-assignments.json',encoding='utf-8'))
           execution=[]
           p=Path('/tmp/editor-news-execution.jsonl')
@@ -206,7 +264,12 @@ jobs:
           a['dispatchedCount']=sum(1 for x in execution if x.get('dispatched'))
           a['alreadyActiveCount']=sum(1 for x in execution if x.get('reason')=='already-active')
           a['dispatchFailureCount']=sum(1 for x in execution if x.get('reason')=='dispatch-failed')
-          Path('/tmp/editor-news-assignments-final.json').write_text(json.dumps(a,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          a['blockedExecutionCount']=sum(1 for x in execution if x.get('reason')=='blocked')
+          a['stuckExecutionCount']=sum(1 for x in execution if x.get('reason')=='stuck')
+          Path('/tmp/editor-news-assignments-final.json').write_text(
+              json.dumps(a,ensure_ascii=False,indent=2)+'\n',
+              encoding='utf-8',
+          )
           PY
 
           rm -rf /tmp/editor-assignments-publish
@@ -222,12 +285,17 @@ jobs:
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push -q --force origin editor-assignments
 
-      - name: Fail if an assignment could not be dispatched
+      - name: Final control-plane verdict
         shell: bash
         run: |
           set -euo pipefail
           if grep -q '"reason":"dispatch-failed"' /tmp/editor-news-execution.jsonl 2>/dev/null; then
             echo "Editor-in-Chief could not dispatch one or more assigned Robots." >&2
+            exit 1
+          fi
+          stuck="$(python -c 'import json; print(int(json.load(open("/tmp/editor-news-assignments.json",encoding="utf-8")).get("stuckCount") or 0))')"
+          if [ "$stuck" -gt 0 ]; then
+            echo "EDITOR_ASSIGNMENT_STUCK count=$stuck; identical retry blocked and Editor-in-Chief replanning required." >&2
             exit 1
           fi
           echo "EDITOR_IN_CHIEF_NEWSROOM_ASSIGNMENT_PASS"
