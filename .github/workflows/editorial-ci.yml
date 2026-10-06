@@ -49,6 +49,7 @@ jobs:
           python -m py_compile scripts/test_editor_in_chief.py
           python -m py_compile scripts/newsroom_control_plane.py
           python -m py_compile scripts/test_newsroom_control_plane.py
+          python -m py_compile scripts/test_newsroom_orchestration_contract.py
           python -m py_compile scripts/build_today_daily_from_desk.py
           python -m py_compile scripts/sync_daily_archive.py
           python -m py_compile scripts/test_daily_archive_recovery.py
@@ -69,6 +70,9 @@ jobs:
 
       - name: Newsroom control-plane regression tests
         run: python scripts/test_newsroom_control_plane.py
+
+      - name: Newsroom hierarchy contract tests
+        run: python scripts/test_newsroom_orchestration_contract.py
 
       - name: Daily and archive recovery regression tests
         run: python scripts/test_daily_archive_recovery.py
