@@ -715,6 +715,41 @@ def main() -> int:
             f"repository Daily date={latest.get('date')!r} but required HKT date={required_daily_date}",
         )
 
+    # If the strict repository publication validator still fails after the
+    # specific Daily/Live/Desk classifications above, route it to a newsroom
+    # repair path rather than mislabelling it as Daily currentness.
+    upstream_repair_ids = {
+        row["robot"]
+        for row in plan
+        if row["robot"] in {"collector", "general-producer", "live-publisher", "desk-merge", "daily-recovery"}
+    }
+    if args.publication_rc != 0 and not upstream_repair_ids:
+        if pending_draft:
+            add_assignment(
+                plan,
+                robots,
+                "live-publisher",
+                "pending-live-draft",
+                "strict publication validator failed and a verified Live draft is available",
+            )
+        elif any((staging.get("desks") or {}).values()):
+            add_assignment(
+                plan,
+                robots,
+                "general-producer",
+                "verification-gap",
+                "strict publication validator failed; rebuild verified publishable material from current staging",
+            )
+        else:
+            add_assignment(
+                plan,
+                robots,
+                "collector",
+                "verification-exhausted",
+                "strict publication validator failed with no usable verified/staging recovery reservoir",
+                mode="deep",
+            )
+
     # 8) Pages/public propagation. This robot deploys; it does not rebuild newsroom data.
     page_fault = any(
         isinstance(f, dict)
