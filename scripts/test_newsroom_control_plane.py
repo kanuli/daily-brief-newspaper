@@ -160,6 +160,18 @@ collector = next(x for x in r["assignments"] if x["robot"] == "collector")
 assert collector["mode"] == "deep", r
 assert collector["dispatchInputs"] == {"mode": "deep"}, r
 
+
+def stale_and_underfill(d):
+    due=(NOW - timedelta(minutes=30)).isoformat().replace("+00:00", "Z")
+    d["staging"]["lastSearchAt"] = due
+    d["staging"]["underfilledDesks"] = {"world": {"count": 5, "floor": 24}}
+    d["staging"]["queryAudit"]["world"]["floorMetThisRun"] = 0
+
+r = run_case(mutate=stale_and_underfill)
+collector = next(x for x in r["assignments"] if x["robot"] == "collector")
+assert collector["mode"] == "deep", r
+assert collector["dispatchInputs"] == {"mode": "deep"}, r
+
 def stale_with_candidates(d):
     d["freshness"]["desks"] = {
         "japan": {"fresh": False, "dailySynced": True, "newestAgeHours": 136},
@@ -186,6 +198,19 @@ r = run_case(mutate=pending)
 robots = {x["robot"] for x in r["assignments"]}
 assert "live-publisher" in robots, r
 assert "general-producer" not in robots, r
+
+
+def consumed_pending(d):
+    pending(d)
+    d["live"] = {
+        "lastUpdated": NOW_ISO,
+        "coverage": {"verifiedDraftId": "draft-1"},
+    }
+
+r = run_case(mutate=consumed_pending)
+robots = {x["robot"] for x in r["assignments"]}
+assert "live-publisher" not in robots, r
+assert "general-producer" in robots, r
 
 r = run_case(
     mutate=stale_with_candidates,
@@ -291,5 +316,21 @@ r = run_case(
 collector = next(x for x in r["assignments"] if x["robot"] == "collector")
 assert collector["mode"] == "deep", r
 assert collector["faultClass"] == "producer-exhausted", r
+
+
+
+def stock_and_public_fault(d):
+    stock_deep(d)
+    d["sentinel"] = {
+        "checkedAt": NOW_ISO,
+        "persistentFailedPages": ["live.html", "stocks.html"],
+    }
+
+r = run_case(mutate=stock_and_public_fault, stock_rc=1)
+pages = next(x for x in r["assignments"] if x["robot"] == "pages")
+stock = next(x for x in r["assignments"] if x["robot"] == "stock")
+assert stock["dispatchable"] is True, r
+assert pages["dispatchable"] is True, r
+assert "stock" not in pages.get("blockedBy", []), r
 
 print("NEWSROOM_CONTROL_PLANE_V2_TESTS_OK")
