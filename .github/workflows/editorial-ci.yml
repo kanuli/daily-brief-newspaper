@@ -47,6 +47,8 @@ jobs:
           python -m py_compile scripts/promote_verified_stock_draft.py
           python -m py_compile scripts/editor_in_chief.py
           python -m py_compile scripts/test_editor_in_chief.py
+          python -m py_compile scripts/newsroom_control_plane.py
+          python -m py_compile scripts/test_newsroom_control_plane.py
           python -m py_compile scripts/build_today_daily_from_desk.py
           python -m py_compile scripts/sync_daily_archive.py
           python -m py_compile scripts/test_daily_archive_recovery.py
@@ -64,6 +66,9 @@ jobs:
 
       - name: Editor-in-Chief regression tests
         run: python scripts/test_editor_in_chief.py
+
+      - name: Newsroom control-plane regression tests
+        run: python scripts/test_newsroom_control_plane.py
 
       - name: Daily and archive recovery regression tests
         run: python scripts/test_daily_archive_recovery.py
