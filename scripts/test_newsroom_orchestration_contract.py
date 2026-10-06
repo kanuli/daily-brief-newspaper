@@ -37,6 +37,11 @@ assert registry.get("principles", {}).get("outcomeVerificationRequired") is True
 assert registry.get("controlPlane", {}).get("leafRobotsManualDispatchOnly") is True
 
 robots = registry.get("robots") or []
+by_id = {str(r.get("id")): r for r in robots if isinstance(r, dict)}
+assert int(by_id["collector"]["standingDuty"]["cadenceMinutes"]) == 15
+assert int(by_id["collector"]["standingDuty"]["dueAfterMinutes"]) <= 15
+assert int(by_id["stock"]["standingDuty"]["cadenceMinutes"]) == 60
+assert isinstance(by_id["stock"]["standingDuty"]["activeHoursHKT"], list)
 assert robots, "robot registry is empty"
 workflow_to_robot = {}
 for robot in robots:
