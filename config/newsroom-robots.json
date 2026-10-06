@@ -30,6 +30,7 @@
       "priority": 10,
       "maxRuntimeMinutes": 12,
       "faultClasses": [
+        "collection-duty",
         "collection-stale",
         "discovery-underfilled",
         "discovery-missing-for-stale-desk",
@@ -46,7 +47,13 @@
         "news-staging:lastSearchAt advanced",
         "queryAudit floorMetThisRun improved",
         "underfilledDesks reduced"
-      ]
+      ],
+      "standingDuty": {
+        "cadenceMinutes": 15,
+        "dueAfterMinutes": 12,
+        "timezone": "Asia/Hong_Kong",
+        "activeHoursHKT": "24x7"
+      }
     },
     {
       "id": "general-producer",
@@ -118,6 +125,7 @@
       "priority": 20,
       "maxRuntimeMinutes": 12,
       "faultClasses": [
+        "stock-duty",
         "stock-stale",
         "stock-no-progress"
       ],
@@ -130,7 +138,33 @@
         "generatedAt or lastCheckedAt advanced",
         "stock validator passes",
         "public Stock probe matches"
-      ]
+      ],
+      "standingDuty": {
+        "cadenceMinutes": 60,
+        "dueAfterMinutes": 50,
+        "timezone": "Asia/Hong_Kong",
+        "activeHoursHKT": [
+          0,
+          6,
+          7,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ],
+        "skipReason": "Keep legacy 01:00-05:59 and 08:00 HKT quiet windows"
+      }
     },
     {
       "id": "vocab",
