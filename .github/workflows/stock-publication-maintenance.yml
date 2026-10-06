@@ -1,6 +1,9 @@
 name: Stock News Hourly Maintenance
 
 on:
+  schedule:
+    # Refresh tracked-stock check state every hour at :05; Japanese translation follows downstream.
+    - cron: "5 * * * *"
   workflow_dispatch:
     inputs:
       recovery_mode:
@@ -39,6 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           mode="${REQUESTED_MODE:-normal}"
+          if [ "${{ github.event_name }}" = "schedule" ]; then mode="normal"; fi
           case "$mode" in
             normal|deep) ;;
             *) echo "Unsupported recovery_mode=$mode" >&2; exit 2 ;;
