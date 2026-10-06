@@ -124,6 +124,19 @@ The 48-hour substantive freshness and 3-hour review gates remain production
 hard gates. A workflow start, completion timestamp or fresh review label never
 makes old market news current.
 
+### Daily currentness vs Pages
+
+Daily Recovery owns only the required repository Daily edition date:
+`data/latest.json.date` must equal the current HKT Daily target (today at/after
+08:00 HKT, otherwise yesterday). A failing Live/Desk publication validator or a
+stale public page is **not** by itself a Daily Recovery fault.
+
+Pages may wait for in-flight Daily/General/Live/Desk writers that are about to
+change the same core publication state. It does not wait for independent Stock
+or Vocab work; those robots trigger another deployment after their own
+successful completion. This prevents an unrelated Stock repair from freezing
+otherwise healthy public news deployment.
+
 ### Daily vocabulary
 
 Vocab is **TODAY-FIRST** in Asia/Hong_Kong. Historical missing dates do not
