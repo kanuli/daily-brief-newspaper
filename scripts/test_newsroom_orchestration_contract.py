@@ -2,8 +2,9 @@
 """Static contract tests for the Editor-in-Chief newsroom hierarchy.
 
 These tests intentionally fail if a leaf robot regains its own schedule/push
-trigger, dispatches another leaf robot directly, or if Pages mutates newsroom
-data instead of deploying the exact repository state.
+trigger, dispatches another leaf robot directly, loses its callback to the
+Editor-in-Chief, or if Pages mutates newsroom data instead of deploying the
+exact repository state.
 """
 from __future__ import annotations
 
@@ -62,6 +63,11 @@ for workflow, robot_id in workflow_to_robot.items():
     assert re.search(r"(?m)^\s*schedule:", block) is None, f"{robot_id}: autonomous schedule forbidden"
     assert re.search(r"(?m)^\s*push:", block) is None, f"{robot_id}: autonomous push trigger forbidden"
     assert re.search(r"(?m)^\s*workflow_run:", block) is None, f"{robot_id}: leaf workflow_run trigger forbidden"
+    assert re.search(r"(?ms)^permissions:\n.*?actions:\s*write", text), f"{robot_id}: callback requires actions: write"
+    assert "editor-in-chief-newsroom-assignment.yml" in text, f"{robot_id}: outcome callback to Editor-in-Chief missing"
+    assert "trigger_workflow=" in text, f"{robot_id}: callback workflow identity missing"
+    assert "trigger_conclusion=" in text, f"{robot_id}: callback conclusion missing"
+    assert "trigger_run_id=" in text, f"{robot_id}: callback run id missing"
 
 # Leaf robots may not dispatch any other registered leaf robot.
 registered_workflows = sorted(workflow_to_robot)
@@ -99,13 +105,18 @@ assert "while [[ \"$NEXT\"" not in vocab
 # The sole dispatcher must be writable, durable, and outcome-aware.
 assignment = read(ASSIGNMENT_PATH)
 assignment_on = on_block(assignment)
-assert "workflow_run:" in assignment_on, "dispatcher must re-evaluate after robot outcomes"
+assert "workflow_run:" not in assignment_on, "normal callbacks must use explicit workflow_dispatch, not workflow_run chaining"
 assert "schedule:" in assignment_on, "dispatcher safety-net schedule missing"
+assert "workflow_dispatch:" in assignment_on, "dispatcher callback endpoint missing"
+assert "trigger_workflow:" in assignment_on, "dispatcher callback workflow input missing"
+assert "trigger_conclusion:" in assignment_on, "dispatcher callback conclusion input missing"
+assert "trigger_run_id:" in assignment_on, "dispatcher callback run-id input missing"
 assert re.search(r"(?ms)^permissions:\n.*?contents:\s*write", assignment), "assignment telemetry requires contents: write"
 assert "cancel-in-progress: false" in assignment
 assert "editor-assignments" in assignment
 assert "--previous-assignments" in assignment
 assert "--trigger-workflow" in assignment
+assert "--trigger-run-id" in assignment
 assert "dispatchInputs" in assignment
 assert "maxRuntimeMinutes" in assignment
 
