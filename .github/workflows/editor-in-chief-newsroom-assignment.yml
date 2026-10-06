@@ -5,6 +5,8 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/editor-in-chief-newsroom-assignment.yml"
+      - ".github/workflows/daily-japanese-vocab.yml"
+      - "scripts/generate_daily_vocab.py"
       - "scripts/rolling_news_collector.py"
       - "scripts/general_news_verified_producer.py"
       - "scripts/general_news_verification_robot.py"
@@ -15,6 +17,7 @@ on:
       - "data/live.json"
       - "data/desk-latest.json"
       - "data/stocks-latest.json"
+      - "data/vocab/**"
   schedule:
     # Collector normally runs at :00/:15/:30/:45. Inspect after it has had time
     # to finish, then assign the next Robot from evidence rather than by timer.
@@ -62,6 +65,26 @@ jobs:
           echo $? > /tmp/stock-rc
           python scripts/validate_publication_current.py
           echo $? > /tmp/publication-rc
+          python - <<'PY'
+          import json
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+          today=datetime.now(ZoneInfo("Asia/Hong_Kong")).date().isoformat()
+          dated=Path("data/vocab") / f"{today}.json"
+          latest=Path("data/vocab/latest.json")
+          ok=dated.is_file() and latest.is_file()
+          if ok:
+              try:
+                  d=json.loads(dated.read_text(encoding="utf-8"))
+                  l=json.loads(latest.read_text(encoding="utf-8"))
+                  ok=(d.get("date")==today and l.get("date")==today)
+              except Exception:
+                  ok=False
+          print(f"VOCAB_CURRENTNESS today={today} dated={dated.is_file()} ok={ok}")
+          raise SystemExit(0 if ok else 1)
+          PY
+          echo $? > /tmp/vocab-rc
           set -e
 
       - name: Editor-in-Chief assigns Robot work
@@ -140,6 +163,9 @@ jobs:
           if rc('/tmp/stock-rc') != 0 or 'stocks.html' in failed_pages:
               add('stock-publication-maintenance.yml', 'Stock page requires its dedicated market/ticker-aware maintenance')
 
+          if rc('/tmp/vocab-rc') != 0:
+              add('daily-japanese-vocab.yml', "today's dated vocab file or latest.json date is not current HKT date")
+
           if rc('/tmp/publication-rc') != 0 or 'index.html' in failed_pages:
               add('daily-today-recovery.yml', 'Daily current-publication gate is stale or incomplete')
 
@@ -154,6 +180,7 @@ jobs:
               'collectorEvidenceCurrent':not collector_stale,
               'deskRefreshNeeded':refresh,
               'generalNewsProductionNeeded':general_news_needed,
+              'vocabCurrent':rc('/tmp/vocab-rc') == 0,
               'publicFailedPages':sorted(failed_pages),
               'assignments':plan,
           }
@@ -171,10 +198,38 @@ jobs:
           : > /tmp/editor-news-execution.jsonl
           while IFS= read -r wf; do
             [ -n "$wf" ] || continue
-            active=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow "$wf" --limit 10 --json status --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
+            gh run list --repo "${GITHUB_REPOSITORY}" --workflow "$wf" --limit 10               --json databaseId,status,createdAt > /tmp/assignment-active.json 2>/dev/null || printf '[]' > /tmp/assignment-active.json
+            read -r active stale_ids <<< "$(WF="$wf" python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          wf=os.environ['WF']
+          rows=json.load(open('/tmp/assignment-active.json',encoding='utf-8'))
+          active=[r for r in rows if r.get('status') != 'completed']
+          stale=[]
+          if wf == 'daily-japanese-vocab.yml':
+              now=datetime.now(timezone.utc)
+              for r in active:
+                  try:
+                      created=datetime.fromisoformat(str(r.get('createdAt')).replace('Z','+00:00')).astimezone(timezone.utc)
+                      if (now-created).total_seconds()/60.0 > 18:
+                          stale.append(str(r.get('databaseId')))
+                  except Exception:
+                      pass
+          print(len(active), ','.join(stale))
+          PY
+            )"
             if [ "${active:-0}" -gt 0 ]; then
-              printf '{"workflow":"%s","dispatched":false,"reason":"already-active"}\n' "$wf" >> /tmp/editor-news-execution.jsonl
-              continue
+              if [ "$wf" = "daily-japanese-vocab.yml" ] && [ -n "${stale_ids:-}" ]; then
+                IFS=',' read -ra ids <<< "$stale_ids"
+                for run_id in "${ids[@]}"; do
+                  [ -n "$run_id" ] || continue
+                  gh run cancel "$run_id" --repo "${GITHUB_REPOSITORY}" || true
+                done
+                sleep 3
+              else
+                printf '{"workflow":"%s","dispatched":false,"reason":"already-active"}\n' "$wf" >> /tmp/editor-news-execution.jsonl
+                continue
+              fi
             fi
             if gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main; then
               printf '{"workflow":"%s","dispatched":true,"reason":"assigned-by-editor-in-chief"}\n' "$wf" >> /tmp/editor-news-execution.jsonl
