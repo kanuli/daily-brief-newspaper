@@ -41,13 +41,15 @@ REPAIR_WORKFLOWS = {
     "live": "live-publication-maintenance.yml",
     "desk": "merge-live-into-desk.yml",
     "stock": "stock-publication-maintenance.yml",
+    "stock-deep": "stock-publication-maintenance.yml",
+    "vocab": "daily-japanese-vocab.yml",
     "pages": "pages.yml",
     "voice": "canto-nano-production.yml",
 }
 # Some recovery owners are not GitHub workflows. The Daily publisher is an
 # external scheduled production owner supervised by the ChatGPT watchdog.
 RECOVERY_OWNERS = {
-    "daily": "automation:Daily Priority Briefing",
+    "daily": "automation:Newsroom Publisher",
     **{key: f"workflow:{value}" for key, value in REPAIR_WORKFLOWS.items()},
 }
 
@@ -103,6 +105,8 @@ def audit(
     latest: dict[str, Any], live: dict[str, Any], desk: dict[str, Any], stocks: dict[str, Any],
     tts: dict[str, Any], pages: dict[str, Any] | None, staging: dict[str, Any] | None,
     now: datetime, previous: dict[str, Any] | None = None,
+    vocab_latest: dict[str, Any] | None = None,
+    vocab_today: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     findings: list[Finding] = []
     now_hkt = now.astimezone(HKT)
@@ -128,6 +132,33 @@ def audit(
         add(findings, "DAILY_STALE", "critical", "daily",
             f"daily edition date is {latest.get('date')}, expected {today}; publish TODAY directly without historical backfill",
             "daily")
+
+    # Daily Japanese vocabulary is a production-currentness invariant, not an
+    # optional homepage extra. Missing today's dated file OR a latest.json date
+    # that is not today's HKT date is an immediate repairable production fault.
+    vocab_audit_enabled = vocab_latest is not None or vocab_today is not None
+    vocab_latest_date = str((vocab_latest or {}).get("date") or "")
+    vocab_today_date = str((vocab_today or {}).get("date") or "") if vocab_today is not None else ""
+    vocab_today_present = vocab_today is not None
+    vocab_current = True
+    if vocab_audit_enabled:
+        vocab_current = (
+            vocab_today_present
+            and vocab_today_date == today
+            and vocab_latest_date == today
+        )
+        if not vocab_today_present:
+            add(findings, "VOCAB_DATED_FILE_MISSING", "critical", "vocab",
+                f"data/vocab/{today}.json is missing; today's 10 Japanese words are not published",
+                "vocab")
+        elif vocab_today_date != today:
+            add(findings, "VOCAB_DATED_FILE_WRONG_DATE", "critical", "vocab",
+                f"today's dated vocab payload reports {vocab_today_date or 'no date'}, expected {today}",
+                "vocab")
+        if vocab_latest_date != today:
+            add(findings, "VOCAB_LATEST_STALE", "critical", "vocab",
+                f"data/vocab/latest.json date is {vocab_latest_date or 'missing'}, expected {today}",
+                "vocab")
 
     live_age = age_minutes(live.get("lastUpdated"), now)
     live_active = hour == 0 or 6 <= hour <= 7 or 9 <= hour <= 23
@@ -311,10 +342,43 @@ def audit(
                 f"{f.code} remains unresolved after the previous cycle; verify actual progress and treat an over-age active repair as STUCK",
                 f.repair)
 
+        # Stock recovery is outcome-based. A dispatch is not progress. If the
+        # same Stock fault survives and neither the check timestamp nor verified
+        # content timestamp advanced, switch to the deep recovery path instead
+        # of dispatching the identical normal repair again.
+        prev_stock = ((previous.get("outcomeEvidence") or {}).get("stock") or {})
+        current_stock = {
+            "lastCheckedAt": str(stocks.get("lastCheckedAt") or ""),
+            "generatedAt": str(stocks.get("generatedAt") or ""),
+            "collectionStatus": str(stocks.get("collectionStatus") or ""),
+        }
+        stock_fault_now = any(
+            f.severity == "critical" and f.area == "stock"
+            and f.code in {"STOCK_CHECK_STALE", "STOCK_VERIFIED_POOL_STALE"}
+            for f in findings
+        )
+        stock_fault_before = any(
+            isinstance(f, dict) and f.get("severity") == "critical" and f.get("area") == "stock"
+            and f.get("code") in {"STOCK_CHECK_STALE", "STOCK_VERIFIED_POOL_STALE",
+                                  "PERSISTENT_STOCK_CHECK_STALE", "PERSISTENT_STOCK_VERIFIED_POOL_STALE",
+                                  "STOCK_RECOVERY_NO_PROGRESS"}
+            for f in (previous.get("findings") or [])
+        )
+        stock_progress = (
+            current_stock["lastCheckedAt"] != str(prev_stock.get("lastCheckedAt") or "")
+            or current_stock["generatedAt"] != str(prev_stock.get("generatedAt") or "")
+        )
+        if stock_fault_now and stock_fault_before and not stock_progress:
+            add(findings, "STOCK_RECOVERY_NO_PROGRESS", "critical", "stock",
+                "Stock repair was dispatched previously but generatedAt/lastCheckedAt did not improve; switch to deep recovery with forced fresh discovery plus primary-source rebuild",
+                "stock-deep")
+
     repair_keys: list[str] = []
     for f in findings:
         if f.repair and f.repair not in repair_keys:
             repair_keys.append(f.repair)
+    if "stock-deep" in repair_keys and "stock" in repair_keys:
+        repair_keys.remove("stock")
 
     repair_plan = []
     for key in repair_keys:
@@ -362,10 +426,16 @@ def audit(
             "stuckActiveRunEscalation": True,
             "discordAlertIsNotPublicationProof": True,
             "stockFailureMustNotMasqueradeAsWholeSiteSuccess": True,
+            "vocabCurrentnessRequired": True,
+            "stockRecoveryRequiresMeasuredProgress": True,
+            "stockPersistentFaultUsesDeepRecovery": True,
         },
         "currentDay": {
             "expectedDate": today,
             "dailyCurrent": current_daily,
+            "vocabCurrent": vocab_current if vocab_audit_enabled else None,
+            "vocabDatedFilePresent": vocab_today_present if vocab_audit_enabled else None,
+            "vocabLatestDate": vocab_latest_date if vocab_audit_enabled else None,
             "recoveryMode": "TODAY_FIRST_NO_BACKFILL",
         },
         "summary": {
@@ -386,6 +456,19 @@ def audit(
             "pagesProbeAgeMinutes": pages_age,
             "voiceAgeMinutes": voice_age,
         },
+        "outcomeEvidence": {
+            "stock": {
+                "lastCheckedAt": str(stocks.get("lastCheckedAt") or ""),
+                "generatedAt": str(stocks.get("generatedAt") or ""),
+                "collectionStatus": str(stocks.get("collectionStatus") or ""),
+            },
+            "vocab": {
+                "expectedDate": today,
+                "datedFilePresent": vocab_today_present if vocab_audit_enabled else None,
+                "datedFileDate": vocab_today_date if vocab_audit_enabled else None,
+                "latestDate": vocab_latest_date if vocab_audit_enabled else None,
+            },
+        },
         "repairPlan": repair_plan,
         "findings": [asdict(f) for f in findings],
     }
@@ -398,6 +481,8 @@ def main() -> int:
     ap.add_argument("--desk", default="data/desk-latest.json")
     ap.add_argument("--stocks", default="data/stocks-latest.json")
     ap.add_argument("--tts", default="data/tts-manifest.json")
+    ap.add_argument("--vocab-latest", default="data/vocab/latest.json")
+    ap.add_argument("--vocab-dir", default="data/vocab")
     ap.add_argument("--pages-status")
     ap.add_argument("--staging")
     ap.add_argument("--previous-status")
@@ -407,11 +492,16 @@ def main() -> int:
     now = parse_iso(args.now) if args.now else datetime.now(timezone.utc)
     if now is None:
         raise SystemExit("invalid --now")
+    vocab_latest = load_json(args.vocab_latest, optional=True) or {}
+    vocab_today_path = Path(args.vocab_dir) / f"{now.astimezone(HKT).date().isoformat()}.json"
+    vocab_today = load_json(vocab_today_path, optional=True)
     result = audit(
         load_json(args.latest) or {}, load_json(args.live) or {}, load_json(args.desk) or {},
         load_json(args.stocks) or {}, load_json(args.tts) or {},
         load_json(args.pages_status, optional=True), load_json(args.staging, optional=True), now,
         load_json(args.previous_status, optional=True),
+        vocab_latest,
+        vocab_today,
     )
     Path(args.output).write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False))
