@@ -45,6 +45,10 @@ jobs:
               data=json.load(open('/tmp/current-prepublish.json',encoding='utf-8'))
           except Exception:
               data={}
+          try:
+              live=json.load(open('data/live.json',encoding='utf-8'))
+          except Exception:
+              live={}
           created=str(data.get('createdAt') or '')
           age=999999.0
           if created:
@@ -53,15 +57,21 @@ jobs:
                   age=max(0.0,(datetime.now(timezone.utc)-dt).total_seconds()/60.0)
               except Exception:
                   pass
+          draft_id=str(data.get('draftId') or '')
+          published_draft_id=str(((live.get('coverage') or {}).get('verifiedDraftId') or ''))
+          already_published=bool(draft_id and published_draft_id == draft_id)
           pending=(
               data.get('status') == 'VERIFIED_DRAFT'
               and data.get('publicationType') == 'LIVE'
               and bool(data.get('articles'))
               and age <= 120
+              and not already_published
           )
           print('pending=' + ('true' if pending else 'false'))
-          print('pending_draft=' + str(data.get('draftId') or ''))
+          print('pending_draft=' + draft_id)
           print('pending_age_minutes=' + f'{age:.1f}')
+          print('already_published=' + ('true' if already_published else 'false'))
+          print('published_draft=' + published_draft_id)
           PY
 
       - name: Prepare bounded source-verification work
