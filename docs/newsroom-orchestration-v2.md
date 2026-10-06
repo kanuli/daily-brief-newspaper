@@ -29,8 +29,15 @@ Editor-in-Chief Newsroom Assignment
                     +------> immediate Editor-in-Chief re-evaluation
 ```
 
-The fixed assignment schedule is only a safety net. Normal continuation is
-event-driven from robot completion.
+The fixed assignment schedule is the Editor-in-Chief's roster clock and safety
+net. Normal pipeline continuation is event-driven from robot completion.
+
+Standing duties are also assigned centrally:
+
+- Collector: 15-minute discovery duty, 24x7.
+- Stock: hourly review duty during the configured HKT market/news windows.
+
+The leaf workflows themselves still have no autonomous timer.
 
 ## Authority boundaries
 
