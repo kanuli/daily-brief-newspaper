@@ -460,6 +460,8 @@ def main() -> int:
         if isinstance(row, dict) and int(row.get("floorMetThisRun") or 0) != 1
     )
     discovery_bad = sorted(set(underfilled) | set(floor_failed))
+    collector_duty = robots["collector"].get("standingDuty") or {}
+    collector_due = float(collector_duty.get("dueAfterMinutes") or 12)
     if age > 25:
         add_assignment(
             plan,
@@ -467,6 +469,15 @@ def main() -> int:
             "collector",
             "collection-stale",
             f"discovery staging is {age:.1f} minutes old",
+            evidence=["lastSearchAt advances", "collector run completes"],
+        )
+    elif age >= collector_due:
+        add_assignment(
+            plan,
+            robots,
+            "collector",
+            "collection-duty",
+            f"standing 15-minute discovery duty is due; staging age is {age:.1f} minutes",
             evidence=["lastSearchAt advances", "collector run completes"],
         )
     if discovery_bad:
@@ -632,7 +643,28 @@ def main() -> int:
             "repository Live snapshot is newer than canonical Rolling Desk",
         )
 
-    # 5) Stock normal/deep based on actual measured outcome.
+    # 5) Stock has an Editor-in-Chief-owned hourly standing duty. Its legacy
+    # quiet windows remain 01:00-05:59 HKT plus the 08:00 Daily handover hour.
+    stock_duty = robots["stock"].get("standingDuty") or {}
+    active_hours = stock_duty.get("activeHoursHKT") or []
+    stock_check = parse_iso(stocks.get("lastCheckedAt") or stocks.get("generatedAt"))
+    stock_age = 999999.0 if stock_check is None else max(0.0, (now - stock_check).total_seconds() / 60.0)
+    stock_due = float(stock_duty.get("dueAfterMinutes") or 50)
+    if (
+        args.stock_rc == 0
+        and isinstance(active_hours, list)
+        and now.astimezone(HKT).hour in {int(x) for x in active_hours}
+        and stock_age >= stock_due
+    ):
+        add_assignment(
+            plan,
+            robots,
+            "stock",
+            "stock-duty",
+            f"standing hourly Stock review duty is due; last check age is {stock_age:.1f} minutes",
+        )
+
+    # Validator failures override a routine duty and may escalate to deep mode.
     deep_stock = any(
         isinstance(x, dict) and x.get("area") == "stock-deep"
         for x in (editor.get("repairPlan") or [])
@@ -730,6 +762,15 @@ def main() -> int:
         },
         "evidenceSnapshot": snapshot,
         "collectorAgeMinutes": round(age, 1),
+        "stockCheckAgeMinutes": round(stock_age, 1),
+        "standingDuty": {
+            "collectorDueAfterMinutes": collector_due,
+            "stockDueAfterMinutes": stock_due,
+            "stockActiveThisHourHKT": bool(
+                isinstance(active_hours, list)
+                and now.astimezone(HKT).hour in {int(x) for x in active_hours}
+            ),
+        },
         "discoveryUnderfilledDesks": discovery_bad,
         "publishedStaleDesks": sorted(stale_desks),
         "staleDesksWithCandidates": sorted(stale_with_candidates),
