@@ -1,15 +1,7 @@
 name: Daily Japanese vocab
 
 on:
-  schedule:
-    # 00:10 Hong Kong time every day (UTC+8).
-    - cron: "10 16 * * *"
   workflow_dispatch:
-  push:
-    paths:
-      - ".daily-vocab-refresh-trigger"
-      - "scripts/generate_daily_vocab.py"
-      - ".github/workflows/daily-japanese-vocab.yml"
 
 permissions:
   contents: write
@@ -34,32 +26,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Generate and backfill daily words through today
+      - name: Generate TODAY HKT vocabulary only
         shell: bash
         run: |
           set -euo pipefail
           TODAY="$(TZ=Asia/Hong_Kong date +%F)"
-          LAST="$(find data/vocab -maxdepth 1 -type f -name '20??-??-??.json' -printf '%f\n' | sed 's/\.json$//' | sort | tail -1 || true)"
-
-          if [[ -z "$LAST" ]]; then
-            echo "No dated vocab file exists; generating today: $TODAY"
-            python scripts/generate_daily_vocab.py --date "$TODAY"
-          elif [[ "$LAST" > "$TODAY" ]]; then
-            echo "Latest dated vocab $LAST is later than Hong Kong today $TODAY; refusing unsafe generation."
-            exit 1
-          elif [[ "$LAST" == "$TODAY" ]]; then
-            echo "Today's vocab already exists; regenerating and validating $TODAY"
-            python scripts/generate_daily_vocab.py --date "$TODAY"
-          else
-            NEXT="$(date -u -d "$LAST + 1 day" +%F)"
-            echo "Backfilling daily vocab from $NEXT through $TODAY (last existing: $LAST)"
-            while [[ "$NEXT" < "$TODAY" || "$NEXT" == "$TODAY" ]]; do
-              echo "Generating $NEXT"
-              python scripts/generate_daily_vocab.py --date "$NEXT"
-              NEXT="$(date -u -d "$NEXT + 1 day" +%F)"
-            done
-          fi
-
+          echo "TODAY_FIRST_VOCAB date=$TODAY historical_backfill=disabled"
+          python scripts/generate_daily_vocab.py --date "$TODAY"
       - name: Validate output and teaching-quality metadata
         run: |
           python - <<'PY'
@@ -122,11 +95,3 @@ jobs:
           echo "Daily vocab could not push after retries" >&2
           exit 1
 
-      - name: Dispatch Pages after vocab publication
-        if: steps.publish.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh workflow run pages.yml --repo "${GITHUB_REPOSITORY}" --ref main
-          echo "DAILY_VOCAB_PAGES_DISPATCHED"
