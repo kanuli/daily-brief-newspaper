@@ -280,3 +280,31 @@ jobs:
           done
 
           echo "Worker ${SLOT} reached cycle safety limit; scheduled maintenance will continue any backlog."
+
+  report-to-editor-in-chief:
+    needs: [initialize, worker]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Report voice outcome to Editor-in-Chief
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INITIALIZE_RESULT: ${{ needs.initialize.result }}
+          WORKER_RESULT: ${{ needs.worker.result }}
+          REPORT_WORKFLOW: ${{ github.workflow }}
+          REPORT_RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          conclusion="success"
+          if [ "${INITIALIZE_RESULT}" != "success" ] || [ "${WORKER_RESULT}" != "success" ]; then
+            conclusion="failure"
+          fi
+          gh workflow run editor-in-chief-newsroom-assignment.yml \
+            --repo "${GITHUB_REPOSITORY}" \
+            --ref main \
+            -f trigger_workflow="${REPORT_WORKFLOW}" \
+            -f trigger_conclusion="${conclusion}" \
+            -f trigger_run_id="${REPORT_RUN_ID}"
+          echo "EDITOR_CALLBACK_SENT workflow=${REPORT_WORKFLOW} conclusion=${conclusion} run_id=${REPORT_RUN_ID} initialize=${INITIALIZE_RESULT} worker=${WORKER_RESULT}"
