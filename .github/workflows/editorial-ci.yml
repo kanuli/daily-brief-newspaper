@@ -19,11 +19,63 @@ jobs:
     steps:
       - name: Checkout proposed newsroom code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Classify PR live-data/currentness changes
+        id: live_contract
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Manual CI run: strict production-currentness validators enabled."
+            exit 0
+          fi
+
+          # pull_request checkout is GitHub's synthetic merge commit:
+          # HEAD^1 = current base, HEAD = base + this PR. This gives the exact
+          # effective PR change set without downloading the full repository history.
+          git diff --name-only HEAD^1 HEAD > /tmp/pr-changed-files.txt
+          cat /tmp/pr-changed-files.txt
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          from pathlib import Path
+
+          changed=Path('/tmp/pr-changed-files.txt').read_text(encoding='utf-8').splitlines()
+          exact={
+              'scripts/validate_stock_news.py',
+              'scripts/validate_publication_current.py',
+              'scripts/stock_news_rules.py',
+              'scripts/stock_news_heartbeat.py',
+              'scripts/desk_freshness_policy.py',
+          }
+          prefixes=(
+              'data/latest.json',
+              'data/live.json',
+              'data/desk-latest.json',
+              'data/stocks-latest.json',
+              'data/topic-more/',
+              'data/vocab/',
+          )
+          strict=any(path in exact or path.startswith(prefixes) for path in changed)
+          print('changed=' + ('true' if strict else 'false'))
+          PY
+
+      - name: Explain runtime-currentness ownership
+        if: steps.live_contract.outputs.changed != 'true'
+        run: |
+          echo "PR does not change live editorial data/currentness validators."
+          echo "Skipping wall-clock freshness gates in PR CI only."
+          echo "Production keeps the same strict validators under Editor-in-Chief runtime supervision."
 
       - name: Apply verification-gated public-desk freshness recovery
         run: PYTHONPATH=scripts python scripts/recover_manga_freshness_watchdog.py
@@ -49,6 +101,7 @@ jobs:
           python -m py_compile scripts/test_editor_in_chief.py
           python -m py_compile scripts/newsroom_control_plane.py
           python -m py_compile scripts/test_newsroom_control_plane.py
+          python -m py_compile scripts/test_newsroom_orchestration_contract.py
           python -m py_compile scripts/build_today_daily_from_desk.py
           python -m py_compile scripts/sync_daily_archive.py
           python -m py_compile scripts/test_daily_archive_recovery.py
@@ -70,6 +123,9 @@ jobs:
       - name: Newsroom control-plane regression tests
         run: python scripts/test_newsroom_control_plane.py
 
+      - name: Newsroom hierarchy contract tests
+        run: python scripts/test_newsroom_orchestration_contract.py
+
       - name: Daily and archive recovery regression tests
         run: python scripts/test_daily_archive_recovery.py
 
@@ -89,13 +145,17 @@ jobs:
           node --check assets/js/site-tts-canto-nano.js
           node --check assets/js/page-updated-time.js
 
-      - name: Editorial data validation
+      - name: Structural editorial data validation
         run: |
           python scripts/validate_daily_v3.py
-          python scripts/validate_stock_news.py
-          python scripts/validate_publication_current.py
           python scripts/validate_editorial_v2.py
           python scripts/audit_tts_language.py
+
+      - name: Strict live currentness validation when PR changes the live contract
+        if: steps.live_contract.outputs.changed == 'true'
+        run: |
+          python scripts/validate_stock_news.py
+          python scripts/validate_publication_current.py
 
       - name: Build static no-JS newspaper
         run: python scripts/build_static_news_fallback.py

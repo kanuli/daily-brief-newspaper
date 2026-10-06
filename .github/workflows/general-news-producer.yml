@@ -1,13 +1,6 @@
 name: General News Verified Producer
 
 on:
-  push:
-    branches: ["main"]
-    paths:
-      - ".github/workflows/general-news-producer.yml"
-      - "scripts/general_news_verified_producer.py"
-      - "scripts/general_news_verification_robot.py"
-      - "scripts/promote_verified_live_draft.py"
   workflow_dispatch:
 
 permissions:
@@ -70,21 +63,6 @@ jobs:
           print('pending_draft=' + str(data.get('draftId') or ''))
           print('pending_age_minutes=' + f'{age:.1f}')
           PY
-
-      - name: Dispatch Live publisher for pending verified draft
-        if: steps.pending.outputs.pending == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          active=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow live-publication-maintenance.yml --limit 10 --json status --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
-          if [ "${active:-0}" -eq 0 ]; then
-            gh workflow run live-publication-maintenance.yml --repo "${GITHUB_REPOSITORY}" --ref main
-            echo "GENERAL_NEWS_PENDING_LIVE_DISPATCHED draft=${{ steps.pending.outputs.pending_draft }}"
-          else
-            echo "GENERAL_NEWS_PENDING_LIVE_ALREADY_ACTIVE draft=${{ steps.pending.outputs.pending_draft }}"
-          fi
 
       - name: Prepare bounded source-verification work
         if: steps.pending.outputs.pending != 'true'
@@ -275,36 +253,6 @@ jobs:
           done
           echo "Could not persist general-news draft" >&2
           exit 1
-
-      - name: Dispatch the Live publisher for the new verified draft
-        if: steps.pending.outputs.pending != 'true' && steps.producer.outputs.publishable == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          active=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow live-publication-maintenance.yml --limit 10 --json status --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
-          if [ "${active:-0}" -eq 0 ]; then
-            gh workflow run live-publication-maintenance.yml --repo "${GITHUB_REPOSITORY}" --ref main
-            echo "GENERAL_NEWS_LIVE_PUBLISHER_DISPATCHED draft=${{ steps.producer.outputs.draft_id }} articles=${{ steps.producer.outputs.article_count }}"
-          else
-            echo "GENERAL_NEWS_LIVE_PUBLISHER_ALREADY_ACTIVE draft=${{ steps.producer.outputs.draft_id }}"
-          fi
-
-      - name: Reassign discovery when stale desks remain unresolved
-        if: steps.pending.outputs.pending != 'true' && steps.producer.outputs.unresolved == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          active=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow rolling-news-search.yml --limit 10 --json status --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
-          if [ "${active:-0}" -eq 0 ]; then
-            gh workflow run rolling-news-search.yml --repo "${GITHUB_REPOSITORY}" --ref main
-            echo "GENERAL_NEWS_DISCOVERY_REASSIGNED desks=${{ steps.producer.outputs.stale_desks }}"
-          else
-            echo "GENERAL_NEWS_DISCOVERY_ALREADY_ACTIVE desks=${{ steps.producer.outputs.stale_desks }}"
-          fi
 
       - name: Report healthy no-op
         if: steps.pending.outputs.pending != 'true' && steps.prepare.outputs.stale_count == '0'

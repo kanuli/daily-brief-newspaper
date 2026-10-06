@@ -1,11 +1,6 @@
 name: Deploy Daily Brief to GitHub Pages
 
 on:
-  push:
-    branches: ["main"]
-  workflow_run:
-    workflows: ["Publish Canto Nano Female Cantonese News Voice"]
-    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -29,9 +24,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
-
-      - name: Rebuild Rolling Desk from the exact Live snapshot being deployed
-        run: python scripts/merge_live_into_desk.py
 
       - name: Build shared Hong Kong Traditional Chinese localization map
         run: python scripts/export_hktrad_localization.py

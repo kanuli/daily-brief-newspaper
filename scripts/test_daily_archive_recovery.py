@@ -46,8 +46,9 @@ valid, error = daily_candidate(bad)
 assert valid is None, valid
 assert error and "本輪" in error, error
 
-# Before 08:00 HKT, recovery must retain yesterday without even requiring a
-# current desk file. Overnight Live/Desk remains the freshness layer.
+# Before 08:00 HKT, yesterday is the required Daily target. If latest.json is
+# already yesterday, recovery must NOOP without requiring a current desk file.
+# Overnight Live/Desk remains the freshness layer.
 with tempfile.TemporaryDirectory() as td:
     root = Path(td)
     data = root / "data"
@@ -57,7 +58,7 @@ with tempfile.TemporaryDirectory() as td:
     daily_builder.DATA = data
     try:
         _daily, meta = daily_builder.build(datetime(2026, 9, 20, 21, 0, tzinfo=timezone.utc))  # 05:00 HKT Sep 21
-        assert meta["changed"] is False and meta["reason"] == "before-daily-window", meta
+        assert meta["changed"] is False and meta["reason"] == "daily-already-current", meta
     finally:
         daily_builder.DATA = old_data
 

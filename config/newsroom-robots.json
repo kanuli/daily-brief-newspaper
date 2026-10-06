@@ -1,45 +1,77 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "role": "Editor-in-Chief Robot Registry",
+  "controlPlane": {
+    "auditorWorkflow": "editor-in-chief-maintenance.yml",
+    "dispatcherWorkflow": "editor-in-chief-newsroom-assignment.yml",
+    "telemetryBranch": "editor-assignments",
+    "telemetryPath": "data/newsroom-assignments.json",
+    "leafRobotsManualDispatchOnly": true
+  },
   "principles": {
     "assignByFaultClass": true,
+    "registryIsRuntimeSourceOfTruth": true,
+    "singleNormalDispatcher": true,
     "dispatchIsNotSuccess": true,
     "outcomeVerificationRequired": true,
+    "eventDrivenReaudit": true,
     "normalThenDeepEscalation": true,
-    "doNotFabricateNews": true
+    "noIdenticalInfiniteRetry": true,
+    "todayFirst": true,
+    "doNotFabricateNews": true,
+    "doNotFakeFreshness": true
   },
   "robots": [
     {
       "id": "collector",
       "workflow": "rolling-news-search.yml",
-      "job": "discover current candidates for all desks",
+      "workflowName": "Rolling News Search 15m",
+      "job": "discover current candidates for every newsroom desk",
+      "priority": 10,
+      "maxRuntimeMinutes": 12,
       "faultClasses": [
+        "collection-duty",
         "collection-stale",
-        "discovery-underfilled"
+        "discovery-underfilled",
+        "discovery-missing-for-stale-desk",
+        "producer-exhausted",
+        "live-stale-no-draft",
+        "verification-exhausted"
       ],
       "modes": [
         "normal",
         "deep"
       ],
+      "modeInput": "mode",
       "successEvidence": [
         "news-staging:lastSearchAt advanced",
-        "queryAudit floorMetThisRun",
+        "queryAudit floorMetThisRun improved",
         "underfilledDesks reduced"
-      ]
+      ],
+      "standingDuty": {
+        "cadenceMinutes": 15,
+        "dueAfterMinutes": 12,
+        "timezone": "Asia/Hong_Kong",
+        "activeHoursHKT": "24x7"
+      }
     },
     {
       "id": "general-producer",
       "workflow": "general-news-producer.yml",
-      "job": "verify candidates and create publishable Cantonese copy",
+      "workflowName": "General News Verified Producer",
+      "job": "verify discovery candidates and create publishable Cantonese newsroom copy",
+      "priority": 20,
+      "maxRuntimeMinutes": 15,
       "faultClasses": [
         "desk-stale-with-candidates",
-        "verification-gap"
+        "verification-gap",
+        "live-stale-with-candidates"
       ],
       "modes": [
         "normal"
       ],
       "successEvidence": [
-        "verified draft created",
+        "prepublish VERIFIED_DRAFT created or advanced",
         "staleDesks reduced",
         "publishable article created"
       ]
@@ -47,7 +79,10 @@
     {
       "id": "live-publisher",
       "workflow": "live-publication-maintenance.yml",
-      "job": "publish verified Live draft",
+      "workflowName": "Live Publication Auto Maintenance",
+      "job": "promote a verified Live draft to data/live.json",
+      "priority": 30,
+      "maxRuntimeMinutes": 10,
       "faultClasses": [
         "live-stale",
         "pending-live-draft"
@@ -63,24 +98,34 @@
     {
       "id": "desk-merge",
       "workflow": "merge-live-into-desk.yml",
-      "job": "merge current Live into canonical Rolling Desk",
+      "workflowName": "Merge Live into Rolling Desk",
+      "job": "merge current verified Daily/Live material into canonical Rolling Desk",
+      "priority": 40,
+      "maxRuntimeMinutes": 8,
       "faultClasses": [
         "desk-merge-gap",
-        "desk-freshness-gap"
+        "desk-freshness-gap",
+        "live-newer-than-desk",
+        "daily-recovery-complete"
       ],
       "modes": [
         "normal"
       ],
       "successEvidence": [
         "data/desk-latest.json generatedAt advanced",
+        "stale desk count reduced",
         "desk freshness improved"
       ]
     },
     {
       "id": "stock",
       "workflow": "stock-publication-maintenance.yml",
+      "workflowName": "Stock News Hourly Maintenance",
       "job": "maintain strict 15-symbol verified Stock News",
+      "priority": 20,
+      "maxRuntimeMinutes": 12,
       "faultClasses": [
+        "stock-duty",
         "stock-stale",
         "stock-no-progress"
       ],
@@ -88,16 +133,46 @@
         "normal",
         "deep"
       ],
+      "modeInput": "recovery_mode",
       "successEvidence": [
         "generatedAt or lastCheckedAt advanced",
         "stock validator passes",
-        "public stock probe matches"
-      ]
+        "public Stock probe matches"
+      ],
+      "standingDuty": {
+        "cadenceMinutes": 60,
+        "dueAfterMinutes": 50,
+        "timezone": "Asia/Hong_Kong",
+        "activeHoursHKT": [
+          0,
+          6,
+          7,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ],
+        "skipReason": "Keep legacy 01:00-05:59 and 08:00 HKT quiet windows"
+      }
     },
     {
       "id": "vocab",
       "workflow": "daily-japanese-vocab.yml",
+      "workflowName": "Daily Japanese vocab",
       "job": "publish current HKT daily Japanese vocabulary",
+      "priority": 20,
+      "maxRuntimeMinutes": 20,
       "faultClasses": [
         "vocab-stale"
       ],
@@ -105,30 +180,55 @@
         "normal"
       ],
       "successEvidence": [
-        "data/vocab/YYYY-MM-DD.json exists",
+        "data/vocab/YYYY-MM-DD.json exists for today",
         "latest.date equals current HKT date"
+      ]
+    },
+    {
+      "id": "daily-recovery",
+      "workflow": "daily-today-recovery.yml",
+      "workflowName": "Today Daily Recovery",
+      "job": "repair only today's Daily edition from current verified newsroom state",
+      "priority": 15,
+      "maxRuntimeMinutes": 8,
+      "faultClasses": [
+        "daily-currentness"
+      ],
+      "modes": [
+        "normal"
+      ],
+      "successEvidence": [
+        "data/latest.json date equals current HKT date",
+        "publication-current validator passes"
       ]
     },
     {
       "id": "pages",
       "workflow": "pages.yml",
-      "job": "deploy repository state to public GitHub Pages",
+      "workflowName": "Deploy Daily Brief to GitHub Pages",
+      "job": "deploy the exact validated repository state without rebuilding newsroom data",
+      "priority": 50,
+      "maxRuntimeMinutes": 15,
       "faultClasses": [
         "pages-stale",
-        "public-mismatch"
+        "public-mismatch",
+        "upstream-publication-complete"
       ],
       "modes": [
         "normal"
       ],
       "successEvidence": [
         "fresh public probe",
-        "repository/public hashes and data match"
+        "repository/public state match"
       ]
     },
     {
       "id": "voice",
       "workflow": "canto-nano-production.yml",
+      "workflowName": "Publish Canto Nano Female Cantonese News Voice",
       "job": "produce asynchronous Cantonese voice assets",
+      "priority": 60,
+      "maxRuntimeMinutes": 110,
       "faultClasses": [
         "voice-backlog"
       ],

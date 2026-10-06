@@ -1,25 +1,6 @@
 name: Publish Canto Nano Female Cantonese News Voice
 
 on:
-  push:
-    branches: ["main"]
-    paths:
-      - "data/latest.json"
-      - "data/desk-latest.json"
-      - "data/live.json"
-      - "data/stocks-latest.json"
-      - "data/topic-more/**"
-      - "data/editorial-overrides/**"
-      - "scripts/canto_nano_prod.py"
-      - "scripts/canto_nano_full_article.py"
-      - "scripts/tts_hktrad.py"
-      - "scripts/tts_hktrad_v2.py"
-      - "scripts/tts_hktrad_v3.py"
-      - "scripts/hk_language_preflight.py"
-      - "scripts/hktrad_units.py"
-      - ".github/workflows/canto-nano-production.yml"
-  schedule:
-    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 permissions:
