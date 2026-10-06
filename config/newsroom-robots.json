@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "role": "Editor-in-Chief Robot Registry",
+  "principles": {
+    "assignByFaultClass": true,
+    "dispatchIsNotSuccess": true,
+    "outcomeVerificationRequired": true,
+    "normalThenDeepEscalation": true,
+    "doNotFabricateNews": true
+  },
+  "robots": [
+    {
+      "id": "collector",
+      "workflow": "rolling-news-search.yml",
+      "job": "discover current candidates for all desks",
+      "faultClasses": [
+        "collection-stale",
+        "discovery-underfilled"
+      ],
+      "modes": [
+        "normal",
+        "deep"
+      ],
+      "successEvidence": [
+        "news-staging:lastSearchAt advanced",
+        "queryAudit floorMetThisRun",
+        "underfilledDesks reduced"
+      ]
+    },
+    {
+      "id": "general-producer",
+      "workflow": "general-news-producer.yml",
+      "job": "verify candidates and create publishable Cantonese copy",
+      "faultClasses": [
+        "desk-stale-with-candidates",
+        "verification-gap"
+      ],
+      "modes": [
+        "normal"
+      ],
+      "successEvidence": [
+        "verified draft created",
+        "staleDesks reduced",
+        "publishable article created"
+      ]
+    },
+    {
+      "id": "live-publisher",
+      "workflow": "live-publication-maintenance.yml",
+      "job": "publish verified Live draft",
+      "faultClasses": [
+        "live-stale",
+        "pending-live-draft"
+      ],
+      "modes": [
+        "normal"
+      ],
+      "successEvidence": [
+        "data/live.json lastUpdated advanced",
+        "publication validator passes"
+      ]
+    },
+    {
+      "id": "desk-merge",
+      "workflow": "merge-live-into-desk.yml",
+      "job": "merge current Live into canonical Rolling Desk",
+      "faultClasses": [
+        "desk-merge-gap",
+        "desk-freshness-gap"
+      ],
+      "modes": [
+        "normal"
+      ],
+      "successEvidence": [
+        "data/desk-latest.json generatedAt advanced",
+        "desk freshness improved"
+      ]
+    },
+    {
+      "id": "stock",
+      "workflow": "stock-publication-maintenance.yml",
+      "job": "maintain strict 15-symbol verified Stock News",
+      "faultClasses": [
+        "stock-stale",
+        "stock-no-progress"
+      ],
+      "modes": [
+        "normal",
+        "deep"
+      ],
+      "successEvidence": [
+        "generatedAt or lastCheckedAt advanced",
+        "stock validator passes",
+        "public stock probe matches"
+      ]
+    },
+    {
+      "id": "vocab",
+      "workflow": "daily-japanese-vocab.yml",
+      "job": "publish current HKT daily Japanese vocabulary",
+      "faultClasses": [
+        "vocab-stale"
+      ],
+      "modes": [
+        "normal"
+      ],
+      "successEvidence": [
+        "data/vocab/YYYY-MM-DD.json exists",
+        "latest.date equals current HKT date"
+      ]
+    },
+    {
+      "id": "pages",
+      "workflow": "pages.yml",
+      "job": "deploy repository state to public GitHub Pages",
+      "faultClasses": [
+        "pages-stale",
+        "public-mismatch"
+      ],
+      "modes": [
+        "normal"
+      ],
+      "successEvidence": [
+        "fresh public probe",
+        "repository/public hashes and data match"
+      ]
+    },
+    {
+      "id": "voice",
+      "workflow": "canto-nano-production.yml",
+      "job": "produce asynchronous Cantonese voice assets",
+      "faultClasses": [
+        "voice-backlog"
+      ],
+      "modes": [
+        "normal"
+      ],
+      "successEvidence": [
+        "pendingArticleCount reduced to zero",
+        "voice manifest current"
+      ]
+    }
+  ]
+}
