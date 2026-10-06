@@ -175,6 +175,42 @@ jobs:
           echo "EDITOR_IN_CHIEF_ROBOT_EXECUTION"
           cat /tmp/editor-news-execution.jsonl || true
 
+      - name: Publish Editor-in-Chief assignment telemetry
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s /tmp/editor-news-assignments.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          a=json.load(open('/tmp/editor-news-assignments.json',encoding='utf-8'))
+          execution=[]
+          p=Path('/tmp/editor-news-execution.jsonl')
+          if p.is_file():
+              execution=[json.loads(x) for x in p.read_text(encoding='utf-8').splitlines() if x.strip()]
+          a['execution']=execution
+          a['dispatchedCount']=sum(1 for x in execution if x.get('dispatched'))
+          a['alreadyActiveCount']=sum(1 for x in execution if x.get('reason')=='already-active')
+          a['dispatchFailureCount']=sum(1 for x in execution if x.get('reason')=='dispatch-failed')
+          Path('/tmp/editor-news-assignments-final.json').write_text(json.dumps(a,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+
+          rm -rf /tmp/editor-assignments-publish
+          mkdir -p /tmp/editor-assignments-publish/data
+          cp /tmp/editor-news-assignments-final.json /tmp/editor-assignments-publish/data/newsroom-assignments.json
+          cd /tmp/editor-assignments-publish
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q -b editor-assignments
+          git add data/newsroom-assignments.json
+          git commit -q -m "Update Editor-in-Chief newsroom assignments"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push -q --force origin editor-assignments
+
       - name: Fail if an assignment could not be dispatched
         shell: bash
         run: |
