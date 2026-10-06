@@ -95,3 +95,21 @@ jobs:
           echo "Daily vocab could not push after retries" >&2
           exit 1
 
+      - name: Report robot outcome to Editor-in-Chief
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_WORKFLOW: ${{ github.workflow }}
+          REPORT_CONCLUSION: ${{ job.status }}
+          REPORT_RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run editor-in-chief-newsroom-assignment.yml \
+            --repo "${GITHUB_REPOSITORY}" \
+            --ref main \
+            -f trigger_workflow="${REPORT_WORKFLOW}" \
+            -f trigger_conclusion="${REPORT_CONCLUSION}" \
+            -f trigger_run_id="${REPORT_RUN_ID}"
+          echo "EDITOR_CALLBACK_SENT workflow=${REPORT_WORKFLOW} conclusion=${REPORT_CONCLUSION} run_id=${REPORT_RUN_ID}"
+
