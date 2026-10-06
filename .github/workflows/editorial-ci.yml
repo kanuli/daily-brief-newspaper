@@ -42,7 +42,7 @@ jobs:
             exit 0
           fi
 
-          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > /tmp/pr-changed-files.txt
+          git diff --name-only "$BASE_SHA...$HEAD_SHA" > /tmp/pr-changed-files.txt
           cat /tmp/pr-changed-files.txt
           python - <<'PY' >> "$GITHUB_OUTPUT"
           from pathlib import Path
