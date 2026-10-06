@@ -192,6 +192,7 @@ assert stock["dispatchInputs"] == {"recovery_mode": "deep"}, r
 def previous_stock_normal_no_progress(d):
     d["previous"] = {
         "cycleId": "old",
+        "checkedAt": NOW_ISO,
         "assignments": [{
             "robot": "stock",
             "workflow": "stock-publication-maintenance.yml",
@@ -212,6 +213,17 @@ def previous_stock_normal_no_progress(d):
 
 r = run_case(mutate=previous_stock_normal_no_progress, stock_rc=1)
 stock = next(x for x in r["assignments"] if x["robot"] == "stock")
+assert stock["mode"] == "normal", r
+assert stock["attempt"] == 1, r
+assert stock["previousOutcome"]["evaluation"] == "deferred-in-flight", r
+
+r = run_case(
+    mutate=previous_stock_normal_no_progress,
+    stock_rc=1,
+    trigger_workflow="Stock News Hourly Maintenance",
+    trigger_conclusion="success",
+)
+stock = next(x for x in r["assignments"] if x["robot"] == "stock")
 assert stock["mode"] == "deep", r
 assert stock["attempt"] == 2, r
 assert stock["status"] == "escalated", r
@@ -219,6 +231,7 @@ assert stock["status"] == "escalated", r
 def previous_stock_deep_stuck(d):
     d["previous"] = {
         "cycleId": "old",
+        "checkedAt": NOW_ISO,
         "assignments": [{
             "robot": "stock",
             "workflow": "stock-publication-maintenance.yml",
@@ -237,7 +250,12 @@ def previous_stock_deep_stuck(d):
         }],
     }
 
-r = run_case(mutate=previous_stock_deep_stuck, stock_rc=1)
+r = run_case(
+    mutate=previous_stock_deep_stuck,
+    stock_rc=1,
+    trigger_workflow="Stock News Hourly Maintenance",
+    trigger_conclusion="failure",
+)
 stock = next(x for x in r["assignments"] if x["robot"] == "stock")
 assert stock["status"] == "stuck", r
 assert stock["dispatchable"] is False, r
