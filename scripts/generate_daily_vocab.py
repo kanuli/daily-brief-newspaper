@@ -27,6 +27,12 @@ from zoneinfo import ZoneInfo
 CORE_URL = "https://raw.githubusercontent.com/kanuli/japanese-vocab-game/26efc977c5fb8e234f1f0b141b9f9308249a9c8f/data/vocab_core_verified.js"
 AUDIT_URL = "https://raw.githubusercontent.com/kanuli/japanese-vocab-game/main/data/jlpt_teacher_audit.tsv"
 ADVANCED_URL = "https://raw.githubusercontent.com/kanuli/japanese-vocab-game/main/data/advanced_vocab.js"
+# Last known compatible upstream snapshot before the 2026-10-03 teacher-data rebuild.
+# Current main is always tried first; this snapshot is a safety fallback so a source
+# schema regression cannot stop the newspaper's daily vocabulary production.
+FALLBACK_SOURCE_SHA = "d8efd80951bbe7dde0831ae1a7a82f911a9ca7c4"
+FALLBACK_AUDIT_URL = f"https://raw.githubusercontent.com/kanuli/japanese-vocab-game/{FALLBACK_SOURCE_SHA}/data/jlpt_teacher_audit.tsv"
+FALLBACK_ADVANCED_URL = f"https://raw.githubusercontent.com/kanuli/japanese-vocab-game/{FALLBACK_SOURCE_SHA}/data/advanced_vocab.js"
 SOURCE_REPO_URL = "https://github.com/kanuli/japanese-vocab-game"
 LEVELS = ("N1", "N2", "N3", "N4", "N5")
 ROOT = Path(__file__).resolve().parents[1]
@@ -255,6 +261,35 @@ def normalize_core(entries, audit, pos_lookup):
     return rows
 
 
+def load_teacher_pool():
+    """Load current teacher data, with a pinned compatibility fallback.
+
+    The daily newspaper must remain current even if the upstream vocabulary repo
+    changes a generated-file schema. We still prefer current main; fallback is
+    used only when parsing/quality validation of current sources fails.
+    """
+    core_entries = parse_js_array(download_text(CORE_URL), "vocab_core_verified.js")
+    attempts = (
+        ("current-main", AUDIT_URL, ADVANCED_URL),
+        ("compatibility-snapshot", FALLBACK_AUDIT_URL, FALLBACK_ADVANCED_URL),
+    )
+    errors = []
+    for label, audit_url, advanced_url in attempts:
+        try:
+            audit = parse_audit(download_text(audit_url))
+            advanced_entries = parse_named_js_array(
+                download_text(advanced_url), "window.ADVANCED_WORDS", f"advanced_vocab.js ({label})"
+            )
+            pos_lookup = build_pos_lookup(advanced_entries)
+            rows = normalize_core(core_entries, audit, pos_lookup)
+            print(f"VOCAB_SOURCE_OK source={label} rows={len(rows)}")
+            return rows
+        except Exception as exc:
+            errors.append(f"{label}: {exc}")
+            print(f"VOCAB_SOURCE_FAILED source={label} error={exc}")
+    raise RuntimeError("All teacher-data source paths failed: " + " | ".join(errors))
+
+
 def load_used_pairs(target: str):
     used = set()
     if not VOCAB_DIR.exists():
@@ -347,13 +382,7 @@ def build_payload(date: str, words):
 def main():
     args = parse_args()
     date = target_date(args.date)
-    core_entries = parse_js_array(download_text(CORE_URL), "vocab_core_verified.js")
-    audit = parse_audit(download_text(AUDIT_URL))
-    advanced_entries = parse_named_js_array(
-        download_text(ADVANCED_URL), "window.ADVANCED_WORDS", "advanced_vocab.js"
-    )
-    pos_lookup = build_pos_lookup(advanced_entries)
-    rows = normalize_core(core_entries, audit, pos_lookup)
+    rows = load_teacher_pool()
     words = choose_words(rows, date)
     counts = validate_selected(words)
     payload = build_payload(date, words)
