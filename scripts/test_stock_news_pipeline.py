@@ -49,13 +49,15 @@ def main() -> int:
     }
     refresh_coverage_freshness(quiet_stocks, quiet_now, set(TRACKED))
     assert quiet_stocks["staleSymbols"] == []
-    assert quiet_stocks["staleContentSymbols"] == TRACKED
+    assert quiet_stocks["staleContentSymbols"] == []
+    assert quiet_stocks["noRecentCatalystSymbols"] == TRACKED
     assert quiet_stocks["qualityGates"]["freshnessGateMet"] is True
-    assert quiet_stocks["qualityGates"]["substantiveFreshnessGateMet"] is False
+    assert quiet_stocks["qualityGates"]["substantiveFreshnessGateMet"] is True
     assert quiet_stocks["qualityGates"]["truthfulNoCatalystGateMet"] is True
     for ticker in TRACKED:
         row = quiet_stocks["coverageFreshness"][ticker]
         assert row["contentStatus"] == "NO_RECENT_VERIFIED_CATALYST"
+        assert row["substantiveCurrent"] is False
         assert row["coverageStale"] is False
         assert row["stale"] is False
 
