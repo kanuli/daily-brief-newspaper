@@ -32,6 +32,16 @@ Editor-in-Chief Newsroom Assignment
 The fixed assignment schedule is the Editor-in-Chief's roster clock and safety
 net. Normal pipeline continuation is event-driven from robot completion.
 
+Every leaf robot has exactly one allowed downstream dispatch: an explicit
+`workflow_dispatch` callback to `editor-in-chief-newsroom-assignment.yml`
+with its workflow name, conclusion and run ID. The leaf never selects or calls
+the next leaf robot. The Editor-in-Chief re-audits production evidence and
+decides the next assignment.
+
+This explicit callback is used instead of relying on chained
+`workflow_run` events, so a robot launched by the controller can reliably
+report its outcome back to the controller.
+
 Standing duties are also assigned centrally:
 
 - Collector: 15-minute discovery duty, 24x7.
@@ -162,6 +172,7 @@ that stale state.
 `scripts/test_newsroom_orchestration_contract.py` rejects changes that:
 
 - add autonomous schedule/push/workflow-run triggers back to leaf robots;
+- remove a leaf robot's explicit outcome callback to the Editor-in-Chief;
 - allow one leaf robot to dispatch another;
 - make Pages mutate newsroom content;
 - restore historical Vocab backfill ahead of TODAY;
