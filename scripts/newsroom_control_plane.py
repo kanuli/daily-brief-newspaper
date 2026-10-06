@@ -406,6 +406,7 @@ def main() -> int:
     ap.add_argument("--vocab-rc", type=int, required=True)
     ap.add_argument("--trigger-workflow", default="")
     ap.add_argument("--trigger-conclusion", default="")
+    ap.add_argument("--trigger-run-id", default="")
     ap.add_argument("--now", help="ISO timestamp, test-only")
     ap.add_argument("--output", required=True)
     args = ap.parse_args()
@@ -804,6 +805,7 @@ def main() -> int:
             "workflow": args.trigger_workflow or None,
             "robot": trigger_robot,
             "conclusion": args.trigger_conclusion or None,
+            "runId": args.trigger_run_id or None,
         },
         "evidenceSnapshot": snapshot,
         "collectorAgeMinutes": round(age, 1),
