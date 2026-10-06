@@ -146,4 +146,52 @@ normal["summary"] = "美股主要指數上升，投資者等待最新通脹數�
 normal["body"] = "美國股市上升，道瓊斯工業平均指數錄得升幅，市場關注利率前景。" * 8
 assert semantic_copy_errors(normal) == [], semantic_copy_errors(normal)
 
+
+
+# Vocab currentness is a production invariant when vocab evidence is supplied.
+args = list(base())
+current_vocab = {"date": "2026-08-27", "words": [{"level": "N1"}]}
+result = audit(*args, NOW, None, current_vocab, current_vocab)
+assert result["currentDay"]["vocabCurrent"] is True, result
+assert not any(f["area"] == "vocab" and f["severity"] == "critical" for f in result["findings"]), result
+
+args = list(base())
+result = audit(*args, NOW, None, {"date": "2026-08-27"}, None)
+assert result["currentDay"]["vocabCurrent"] is False, result
+assert any(f["code"] == "VOCAB_DATED_FILE_MISSING" for f in result["findings"]), result
+assert any(x["workflow"] == "daily-japanese-vocab.yml" for x in result["repairPlan"]), result
+
+args = list(base())
+result = audit(*args, NOW, None, {"date": "2026-08-26"}, {"date": "2026-08-27"})
+assert result["currentDay"]["vocabCurrent"] is False, result
+assert any(f["code"] == "VOCAB_LATEST_STALE" for f in result["findings"]), result
+
+# Stock recovery must switch paths when the previous repair produced no measurable
+# timestamp progress. The deep path supersedes the normal stock repair.
+stock_now = datetime(2026, 8, 27, 3, 35, tzinfo=UTC)  # 11:35 HKT, Stock active
+args = list(base())
+args[3] = {
+    "generatedAt": "2026-08-24T00:00:00+00:00",
+    "lastCheckedAt": "2026-08-24T00:00:00+00:00",
+    "collectionStatus": "COMPLETE",
+}
+previous = {
+    "findings": [
+        {"code": "STOCK_CHECK_STALE", "severity": "critical", "area": "stock"},
+        {"code": "STOCK_VERIFIED_POOL_STALE", "severity": "critical", "area": "stock"},
+    ],
+    "outcomeEvidence": {
+        "stock": {
+            "generatedAt": "2026-08-24T00:00:00+00:00",
+            "lastCheckedAt": "2026-08-24T00:00:00+00:00",
+            "collectionStatus": "COMPLETE",
+        }
+    },
+}
+result = audit(*args, stock_now, previous)
+assert any(f["code"] == "STOCK_RECOVERY_NO_PROGRESS" for f in result["findings"]), result
+deep = [x for x in result["repairPlan"] if x["area"] == "stock-deep"]
+assert deep and deep[0]["workflow"] == "stock-publication-maintenance.yml", result
+assert not any(x["area"] == "stock" for x in result["repairPlan"]), result
+
 print("EDITOR_IN_CHIEF_TESTS_OK")
