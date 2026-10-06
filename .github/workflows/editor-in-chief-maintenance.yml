@@ -6,7 +6,9 @@ on:
     paths:
       - ".github/workflows/editor-in-chief-maintenance.yml"
       - ".github/workflows/canto-nano-watchdog.yml"
+      - ".github/workflows/daily-japanese-vocab.yml"
       - "scripts/editor_in_chief.py"
+      - "scripts/generate_daily_vocab.py"
       - "scripts/semantic_copy_guard.py"
       - "scripts/test_editor_in_chief.py"
       - "scripts/desk_freshness_policy.py"
@@ -16,9 +18,12 @@ on:
       - "data/live.json"
       - "data/desk-latest.json"
       - "data/stocks-latest.json"
+      - "data/vocab/**"
       - "data/tts-manifest.json"
   schedule:
-    - cron: "35 * * * *"
+    # Continuous supervisory loop without creating another scheduled task.
+    # Every run re-checks actual outcomes; healthy state causes no repair dispatch.
+    - cron: "5,20,35,50 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -290,9 +295,12 @@ jobs:
           wf=os.environ['WF']
           active=[r for r in runs if r.get('status') != 'completed']
           plan_areas={str(x.get('area')) for x in (d.get('repairPlan') or []) if x.get('workflow')==wf}
-          persistent=any(
-              isinstance(f,dict) and str(f.get('code','')).startswith('PERSISTENT_') and str(f.get('repair')) in plan_areas
-              for f in (d.get('findings') or [])
+          persistent=(
+              'stock-deep' in plan_areas
+              or any(
+                  isinstance(f,dict) and str(f.get('code','')).startswith('PERSISTENT_') and str(f.get('repair')) in plan_areas
+                  for f in (d.get('findings') or [])
+              )
           )
           grace={
               'pages.yml':20,
@@ -301,6 +309,7 @@ jobs:
               'stock-publication-maintenance.yml':30,
               'rolling-news-search.yml':35,
               'canto-nano-production.yml':110,
+              'daily-japanese-vocab.yml':18,
           }.get(wf,45)
           now=datetime.now(timezone.utc)
           stale=[]
@@ -333,11 +342,35 @@ jobs:
               fi
             fi
 
-            if gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main; then
-              if [ -n "${stale_ids:-}" ] && [ "${persistent:-0}" = "1" ]; then
-                printf '{"workflow":"%s","dispatched":true,"reason":"stuck-active-restarted","previousMaxAgeMinutes":%s}\n' "$wf" "${max_age:-0}" >> /tmp/editor-repairs.jsonl
+            deep_stock=$(WF="$wf" python - <<'PY'
+          import json, os
+          d=json.load(open('/tmp/editor-in-chief-status.json',encoding='utf-8'))
+          wf=os.environ['WF']
+          print('1' if wf == 'stock-publication-maintenance.yml' and any(
+              isinstance(x,dict) and x.get('area') == 'stock-deep' and x.get('workflow') == wf
+              for x in (d.get('repairPlan') or [])
+          ) else '0')
+          PY
+            )
+
+            if [ "$deep_stock" = "1" ]; then
+              # Different recovery path: refresh discovery first, then run the
+              # Stock maintainer in forced deep mode. This is used only when the
+              # prior repair produced no measurable timestamp/content progress.
+              active_discovery=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow rolling-news-search.yml --limit 5 --json status --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
+              if [ "${active_discovery:-0}" -eq 0 ]; then
+                gh workflow run rolling-news-search.yml --repo "${GITHUB_REPOSITORY}" --ref main || true
+              fi
+              if gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main -f recovery_mode=deep; then
+                printf '{"workflow":"%s","dispatched":true,"reason":"stock-deep-recovery","outcomeVerification":"required-next-cycle"}\n' "$wf" >> /tmp/editor-repairs.jsonl
               else
-                printf '{"workflow":"%s","dispatched":true,"reason":"editor-in-chief-safe-repair"}\n' "$wf" >> /tmp/editor-repairs.jsonl
+                printf '{"workflow":"%s","dispatched":false,"reason":"dispatch-failed","mode":"deep"}\n' "$wf" >> /tmp/editor-repairs.jsonl
+              fi
+            elif gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main; then
+              if [ -n "${stale_ids:-}" ] && [ "${persistent:-0}" = "1" ]; then
+                printf '{"workflow":"%s","dispatched":true,"reason":"stuck-active-restarted","previousMaxAgeMinutes":%s,"outcomeVerification":"required-next-cycle"}\n' "$wf" "${max_age:-0}" >> /tmp/editor-repairs.jsonl
+              else
+                printf '{"workflow":"%s","dispatched":true,"reason":"editor-in-chief-safe-repair","outcomeVerification":"required-next-cycle"}\n' "$wf" >> /tmp/editor-repairs.jsonl
               fi
             else
               printf '{"workflow":"%s","dispatched":false,"reason":"dispatch-failed"}\n' "$wf" >> /tmp/editor-repairs.jsonl
