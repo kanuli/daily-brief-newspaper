@@ -376,7 +376,7 @@ def block_downstream_races(plan: list[dict[str, Any]]) -> None:
     if "pages" in by_id:
         blockers = [
             x
-            for x in ("daily-recovery", "general-producer", "live-publisher", "desk-merge", "stock", "vocab")
+            for x in ("daily-recovery", "general-producer", "live-publisher", "desk-merge")
             if x in by_id and by_id[x].get("dispatchable")
         ]
         if blockers:
@@ -427,7 +427,14 @@ def main() -> int:
     stocks = load(args.stocks, {})
     tts = load(args.tts, {})
 
-    today_hkt = now.astimezone(HKT).date().isoformat()
+    now_hkt = now.astimezone(HKT)
+    today_hkt = now_hkt.date().isoformat()
+    required_daily_date = (
+        now_hkt.date()
+        if now_hkt.hour >= 8
+        else now_hkt.date() - timedelta(days=1)
+    ).isoformat()
+    daily_repo_current = str(latest.get("date") or "") == required_daily_date
     vocab_ok = args.vocab_rc == 0
     snapshot = evidence_snapshot(
         now=now,
@@ -694,15 +701,18 @@ def main() -> int:
             f"today's HKT vocab contract failed for {today_hkt}",
         )
 
-    # 7) Daily/current publication.
+    # 7) Daily recovery owns repository Daily currentness only. A failing
+    # publication-current validator can mean Live/Desk freshness and must not
+    # create a circular Daily -> Pages dependency when latest.json is already
+    # the required HKT edition.
     failed_pages = set(sentinel.get("persistentFailedPages") or [])
-    if args.publication_rc != 0 or "index.html" in failed_pages:
+    if not daily_repo_current:
         add_assignment(
             plan,
             robots,
             "daily-recovery",
             "daily-currentness",
-            "Daily/current publication validator or public index failed",
+            f"repository Daily date={latest.get('date')!r} but required HKT date={required_daily_date}",
         )
 
     # 8) Pages/public propagation. This robot deploys; it does not rebuild newsroom data.
@@ -763,6 +773,9 @@ def main() -> int:
         "evidenceSnapshot": snapshot,
         "collectorAgeMinutes": round(age, 1),
         "stockCheckAgeMinutes": round(stock_age, 1),
+        "requiredDailyDateHKT": required_daily_date,
+        "dailyRepositoryCurrent": daily_repo_current,
+        "publicationValidatorOk": args.publication_rc == 0,
         "standingDuty": {
             "collectorDueAfterMinutes": collector_due,
             "stockDueAfterMinutes": stock_due,
