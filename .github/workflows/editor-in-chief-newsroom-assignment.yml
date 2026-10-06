@@ -47,13 +47,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -f /tmp/search-staging.json /tmp/page-news-sentinel.json
+          rm -f /tmp/search-staging.json /tmp/page-news-sentinel.json /tmp/editor-status.json
 
           git fetch -q --depth=1 origin news-staging || true
           git show FETCH_HEAD:data/search-staging.json > /tmp/search-staging.json 2>/dev/null || echo '{}' > /tmp/search-staging.json
 
           git fetch -q --depth=1 origin page-sentinel-status || true
           git show FETCH_HEAD:data/page-news-sentinel-status.json > /tmp/page-news-sentinel.json 2>/dev/null || echo '{}' > /tmp/page-news-sentinel.json
+
+          git fetch -q --depth=1 origin editor-status || true
+          git show FETCH_HEAD:data/editor-in-chief-status.json > /tmp/editor-status.json 2>/dev/null || echo '{}' > /tmp/editor-status.json
 
       - name: Run current newsroom checks
         shell: bash
@@ -159,9 +162,19 @@ jobs:
 
           sentinel=load('/tmp/page-news-sentinel.json',{})
           failed_pages=set(sentinel.get('persistentFailedPages') or [])
+          editor_status=load('/tmp/editor-status.json',{})
+          deep_stock_required=any(
+              isinstance(row,dict)
+              and row.get('area') == 'stock-deep'
+              and row.get('workflow') == 'stock-publication-maintenance.yml'
+              for row in (editor_status.get('repairPlan') or [])
+          )
 
           if rc('/tmp/stock-rc') != 0 or 'stocks.html' in failed_pages:
-              add('stock-publication-maintenance.yml', 'Stock page requires its dedicated market/ticker-aware maintenance')
+              if deep_stock_required:
+                  add('stock-publication-maintenance.yml', 'DEEP: prior Stock repair made no measurable progress; force fresh discovery then primary-source rebuild')
+              else:
+                  add('stock-publication-maintenance.yml', 'Stock page requires its dedicated market/ticker-aware maintenance')
 
           if rc('/tmp/vocab-rc') != 0:
               add('daily-japanese-vocab.yml', "today's dated vocab file or latest.json date is not current HKT date")
@@ -180,6 +193,7 @@ jobs:
               'collectorEvidenceCurrent':not collector_stale,
               'deskRefreshNeeded':refresh,
               'generalNewsProductionNeeded':general_news_needed,
+              'stockDeepRecoveryRequired':deep_stock_required,
               'vocabCurrent':rc('/tmp/vocab-rc') == 0,
               'publicFailedPages':sorted(failed_pages),
               'assignments':plan,
@@ -231,7 +245,24 @@ jobs:
                 continue
               fi
             fi
-            if gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main; then
+            deep_stock=$(WF="$wf" python - <<'PY'
+          import json, os
+          wf=os.environ['WF']
+          d=json.load(open('/tmp/editor-news-assignments.json',encoding='utf-8'))
+          deep=wf == 'stock-publication-maintenance.yml' and any(
+              isinstance(row,dict) and row.get('workflow') == wf and str(row.get('reason','')).startswith('DEEP:')
+              for row in (d.get('assignments') or [])
+          )
+          print('1' if deep else '0')
+          PY
+            )
+            if [ "$deep_stock" = "1" ]; then
+              if gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main -f recovery_mode=deep; then
+                printf '{"workflow":"%s","dispatched":true,"reason":"assigned-deep-stock-recovery"}\n' "$wf" >> /tmp/editor-news-execution.jsonl
+              else
+                printf '{"workflow":"%s","dispatched":false,"reason":"dispatch-failed","mode":"deep"}\n' "$wf" >> /tmp/editor-news-execution.jsonl
+              fi
+            elif gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main; then
               printf '{"workflow":"%s","dispatched":true,"reason":"assigned-by-editor-in-chief"}\n' "$wf" >> /tmp/editor-news-execution.jsonl
             else
               printf '{"workflow":"%s","dispatched":false,"reason":"dispatch-failed"}\n' "$wf" >> /tmp/editor-news-execution.jsonl
