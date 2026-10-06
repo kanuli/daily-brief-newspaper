@@ -106,10 +106,21 @@ def current_candidate(item: Any, now: datetime, desk: str) -> bool:
     return 0 <= (now - dt).total_seconds() <= max_age * 3600
 
 
-def pending_live_draft(prepublish: dict[str, Any], now: datetime) -> bool:
+def pending_live_draft(
+    prepublish: dict[str, Any],
+    now: datetime,
+    live: dict[str, Any] | None = None,
+) -> bool:
     if prepublish.get("status") != "VERIFIED_DRAFT" or prepublish.get("publicationType") != "LIVE":
         return False
     if not prepublish.get("articles"):
+        return False
+    draft_id = str(prepublish.get("draftId") or "").strip()
+    published_draft_id = str(((live or {}).get("coverage") or {}).get("verifiedDraftId") or "").strip()
+    # A verified draft that already produced the current Live snapshot is consumed.
+    # Treating it as pending causes the Editor-in-Chief to redispatch the same
+    # publisher forever and prevents the producer from making the next edition.
+    if draft_id and published_draft_id == draft_id:
         return False
     created = parse_iso(prepublish.get("createdAt"))
     return bool(created and 0 <= (now - created).total_seconds() <= 120 * 60)
@@ -147,6 +158,8 @@ def add_assignment(
                 row["mode"] = "deep"
                 row["faultClass"] = fault
                 row["reason"] = reason
+                mode_input = str(spec.get("modeInput") or "").strip()
+                row["dispatchInputs"] = {mode_input: "deep"} if mode_input else {}
             if desks:
                 row["desks"] = sorted(set((row.get("desks") or []) + desks))
             if evidence:
@@ -216,7 +229,7 @@ def evidence_snapshot(
         "underfilledDesks": sorted((staging.get("underfilledDesks") or {}).keys())
         if isinstance(staging.get("underfilledDesks"), dict)
         else [],
-        "pendingLiveDraft": pending_live_draft(prepublish, now),
+        "pendingLiveDraft": pending_live_draft(prepublish, now, live),
         "prepublishDraftId": prepublish.get("draftId"),
         "prepublishCreatedAt": prepublish.get("createdAt"),
         "latestDate": latest.get("date"),
@@ -373,18 +386,11 @@ def block_downstream_races(plan: list[dict[str, Any]]) -> None:
             if row.get("status") != "stuck":
                 row["status"] = "blocked"
 
-    if "pages" in by_id:
-        blockers = [
-            x
-            for x in ("daily-recovery", "general-producer", "live-publisher", "desk-merge", "stock", "vocab")
-            if x in by_id and by_id[x].get("dispatchable")
-        ]
-        if blockers:
-            row = by_id["pages"]
-            row["blockedBy"] = blockers
-            row["dispatchable"] = False
-            if row.get("status") != "stuck":
-                row["status"] = "blocked"
+    # Pages is deliberately NOT blocked by Stock/Vocab/newsroom repair jobs.
+    # A stale Stock subsystem must never freeze deployment of a valid new Live,
+    # Daily or Desk snapshot. Any later main-branch repair will trigger another
+    # Pages deployment, so allowing Pages to publish the current repository
+    # state is safer than coupling unrelated subsystems behind one global gate.
 
 
 def main() -> int:
@@ -526,7 +532,7 @@ def main() -> int:
             evidence=["affected desks gain current candidates", "query floor satisfied"],
         )
 
-    pending_draft = pending_live_draft(prepublish, now)
+    pending_draft = pending_live_draft(prepublish, now, live)
     if stale_with_candidates:
         if trigger_success and trigger_robot in {"live-publisher", "daily-recovery"}:
             add_assignment(
