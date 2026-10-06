@@ -270,18 +270,19 @@ def main():
         if ticker not in promoted_tickers
     ]
     stocks["staleSymbols"] = stale_symbols
-    stale_content_symbols = [
-        ticker for ticker in (stocks.get("staleContentSymbols") or [])
+    no_recent = [
+        ticker for ticker in (stocks.get("noRecentCatalystSymbols") or [])
         if ticker not in promoted_tickers
     ]
-    stale_content_symbols.extend(
+    no_recent.extend(
         ticker for ticker in TRACKED
-        if ticker in promoted_stale and ticker not in stale_content_symbols
+        if ticker in promoted_stale and ticker not in no_recent
     )
-    stocks["staleContentSymbols"] = stale_content_symbols
+    stocks["staleContentSymbols"] = []
+    stocks["noRecentCatalystSymbols"] = no_recent
     quality = stocks.get("qualityGates") if isinstance(stocks.get("qualityGates"), dict) else {}
     quality["freshnessGateMet"] = not stale_symbols
-    quality["substantiveFreshnessGateMet"] = not stale_content_symbols
+    quality["substantiveFreshnessGateMet"] = not stale_symbols
     quality["truthfulNoCatalystGateMet"] = not stale_symbols
     stocks["qualityGates"] = quality
 
