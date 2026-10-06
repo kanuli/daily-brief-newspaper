@@ -2,18 +2,6 @@
 name: Today Daily Recovery
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - data/live.json
-      - data/desk-latest.json
-      - data/latest.json
-      - scripts/build_today_daily_from_desk.py
-      - scripts/sync_daily_archive.py
-      - .github/workflows/daily-today-recovery.yml
-  schedule:
-    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -143,15 +131,6 @@ jobs:
           done
           echo "Daily/archive recovery push failed after retries" >&2
           exit 1
-
-      - name: Force Pages publication safety net
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh workflow run pages.yml --repo "${GITHUB_REPOSITORY}" --ref main
-          echo "TODAY_DAILY_RECOVERY_PAGES_DISPATCHED"
 
       - name: Recovery status
         if: always()
