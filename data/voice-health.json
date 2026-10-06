@@ -1,23 +1,33 @@
 {
-  "checkedAt": "2026-10-06T01:58:41.318304+00:00",
+  "checkedAt": "2026-10-06T07:14:52.060183+00:00",
   "engine": "typangaa/canto-tts-nano",
   "engineVersion": "canto-tts-nano-v1",
   "voice": "verified-female-reference",
   "assetNamespace": "cnf4",
   "speakerMode": "runtime-ref-audio-voice-clone-verified",
-  "latestRunId": 37401590793,
+  "latestRunId": 37412175209,
   "latestStatus": "completed",
   "latestConclusion": "success",
-  "latestHeadSha": "c5f24c554494533d65b8328b46c17f8e4c921446",
-  "availableArticleCount": 1240,
-  "collectedStoryCount": 1240,
+  "latestHeadSha": "2f3ea4aa541add0262f8c89e8277a60feb56b01d",
+  "availableArticleCount": 1241,
+  "collectedStoryCount": 1241,
   "pendingArticleCount": 0,
   "coverageComplete": true,
-  "lastVoicePublishedAt": "2026-10-06T01:10:13.800789+00:00",
-  "progressAgeSeconds": 2907,
+  "lastVoicePublishedAt": "2026-10-06T04:16:36.364518+00:00",
+  "progressAgeSeconds": 10695,
   "prosodyPolicy": "canto-nano-female-hk-news-anchor-v1",
   "pacingPolicy": "hk-tv-news-semantic-pauses-v1",
   "runs": [
+    {
+      "conclusion": "success",
+      "createdAt": "2026-10-06T04:07:08Z",
+      "databaseId": 37412175209,
+      "event": "workflow_dispatch",
+      "headSha": "2f3ea4aa541add0262f8c89e8277a60feb56b01d",
+      "status": "completed",
+      "updatedAt": "2026-10-06T04:17:31Z",
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37412175209"
+    },
     {
       "conclusion": "success",
       "createdAt": "2026-10-06T01:55:18Z",
@@ -87,1019 +97,1009 @@
       "status": "completed",
       "updatedAt": "2026-10-05T06:10:04Z",
       "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37270860535"
-    },
-    {
-      "conclusion": "success",
-      "createdAt": "2026-10-05T00:29:27Z",
-      "databaseId": 37247717869,
-      "event": "schedule",
-      "headSha": "d4e2df1b9c6fc2c4e636639d2fee03b25e2b7a24",
-      "status": "completed",
-      "updatedAt": "2026-10-05T00:31:54Z",
-      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37247717869"
     }
   ],
   "jobs": [
     {
-      "completedAt": "2026-10-06T01:56:33Z",
+      "completedAt": "2026-10-06T04:08:24Z",
       "conclusion": "success",
-      "databaseId": 112069768659,
+      "databaseId": 112102829166,
       "name": "initialize",
-      "startedAt": "2026-10-06T01:55:20Z",
+      "startedAt": "2026-10-06T04:07:15Z",
       "status": "completed",
       "steps": [
         {
-          "completedAt": "2026-10-06T01:55:21Z",
+          "completedAt": "2026-10-06T04:07:16Z",
           "conclusion": "success",
           "name": "Set up job",
           "number": 1,
-          "startedAt": "2026-10-06T01:55:21Z",
+          "startedAt": "2026-10-06T04:07:16Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:55:45Z",
+          "completedAt": "2026-10-06T04:07:36Z",
           "conclusion": "success",
           "name": "Checkout latest main",
           "number": 2,
-          "startedAt": "2026-10-06T01:55:22Z",
+          "startedAt": "2026-10-06T04:07:17Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:56:16Z",
+          "completedAt": "2026-10-06T04:08:03Z",
           "conclusion": "success",
           "name": "Validate Hong Kong mixed-language newsroom policy",
           "number": 3,
-          "startedAt": "2026-10-06T01:55:45Z",
+          "startedAt": "2026-10-06T04:07:36Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:56:28Z",
+          "completedAt": "2026-10-06T04:08:19Z",
           "conclusion": "success",
           "name": "Stop and disable every old voice generator",
           "number": 4,
-          "startedAt": "2026-10-06T01:56:16Z",
+          "startedAt": "2026-10-06T04:08:03Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:56:28Z",
+          "completedAt": "2026-10-06T04:08:20Z",
           "conclusion": "success",
           "name": "Delete old CosyVoice/F01 generated audio if still present",
           "number": 5,
-          "startedAt": "2026-10-06T01:56:28Z",
+          "startedAt": "2026-10-06T04:08:19Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:56:30Z",
+          "completedAt": "2026-10-06T04:08:21Z",
           "conclusion": "success",
           "name": "Preserve legacy Canto Nano female release namespace",
           "number": 6,
-          "startedAt": "2026-10-06T01:56:28Z",
+          "startedAt": "2026-10-06T04:08:20Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:56:30Z",
+          "completedAt": "2026-10-06T04:08:21Z",
           "conclusion": "success",
           "name": "Reset manifest only when old engine is still active",
           "number": 7,
-          "startedAt": "2026-10-06T01:56:30Z",
+          "startedAt": "2026-10-06T04:08:21Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:56:30Z",
+          "completedAt": "2026-10-06T04:08:21Z",
           "conclusion": "success",
           "name": "Publish cleanup state without resetting new coverage",
           "number": 8,
-          "startedAt": "2026-10-06T01:56:30Z",
+          "startedAt": "2026-10-06T04:08:21Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:56:30Z",
+          "completedAt": "2026-10-06T04:08:21Z",
           "conclusion": "success",
           "name": "Post Checkout latest main",
           "number": 16,
-          "startedAt": "2026-10-06T01:56:30Z",
+          "startedAt": "2026-10-06T04:08:21Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:56:30Z",
+          "completedAt": "2026-10-06T04:08:21Z",
           "conclusion": "success",
           "name": "Complete job",
           "number": 17,
-          "startedAt": "2026-10-06T01:56:30Z",
+          "startedAt": "2026-10-06T04:08:21Z",
           "status": "completed"
         }
       ],
-      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37401590793/job/112069768659"
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37412175209/job/112102829166"
     },
     {
-      "completedAt": "2026-10-06T01:57:27Z",
+      "completedAt": "2026-10-06T04:09:20Z",
       "conclusion": "success",
-      "databaseId": 112070086189,
-      "name": "worker (0)",
-      "startedAt": "2026-10-06T01:56:35Z",
-      "status": "completed",
-      "steps": [
-        {
-          "completedAt": "2026-10-06T01:56:36Z",
-          "conclusion": "success",
-          "name": "Set up job",
-          "number": 1,
-          "startedAt": "2026-10-06T01:56:35Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:49Z",
-          "conclusion": "success",
-          "name": "Checkout latest main",
-          "number": 2,
-          "startedAt": "2026-10-06T01:56:36Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:49Z",
-          "conclusion": "success",
-          "name": "Set up Python 3.11",
-          "number": 3,
-          "startedAt": "2026-10-06T01:56:49Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:55Z",
-          "conclusion": "success",
-          "name": "Cache Canto Nano model files",
-          "number": 4,
-          "startedAt": "2026-10-06T01:56:49Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:05Z",
-          "conclusion": "success",
-          "name": "Install canto-tts-nano ONNX runtime",
-          "number": 5,
-          "startedAt": "2026-10-06T01:56:55Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:24Z",
-          "conclusion": "success",
-          "name": "Generate and progressively publish verified female Cantonese news",
-          "number": 6,
-          "startedAt": "2026-10-06T01:57:05Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:24Z",
-          "conclusion": "success",
-          "name": "Post Cache Canto Nano model files",
-          "number": 10,
-          "startedAt": "2026-10-06T01:57:24Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:24Z",
-          "conclusion": "success",
-          "name": "Post Set up Python 3.11",
-          "number": 11,
-          "startedAt": "2026-10-06T01:57:24Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:24Z",
-          "conclusion": "success",
-          "name": "Post Checkout latest main",
-          "number": 12,
-          "startedAt": "2026-10-06T01:57:24Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:24Z",
-          "conclusion": "success",
-          "name": "Complete job",
-          "number": 13,
-          "startedAt": "2026-10-06T01:57:24Z",
-          "status": "completed"
-        }
-      ],
-      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37401590793/job/112070086189"
-    },
-    {
-      "completedAt": "2026-10-06T01:57:28Z",
-      "conclusion": "success",
-      "databaseId": 112070086198,
-      "name": "worker (6)",
-      "startedAt": "2026-10-06T01:56:35Z",
-      "status": "completed",
-      "steps": [
-        {
-          "completedAt": "2026-10-06T01:56:36Z",
-          "conclusion": "success",
-          "name": "Set up job",
-          "number": 1,
-          "startedAt": "2026-10-06T01:56:35Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:50Z",
-          "conclusion": "success",
-          "name": "Checkout latest main",
-          "number": 2,
-          "startedAt": "2026-10-06T01:56:36Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:51Z",
-          "conclusion": "success",
-          "name": "Set up Python 3.11",
-          "number": 3,
-          "startedAt": "2026-10-06T01:56:50Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:54Z",
-          "conclusion": "success",
-          "name": "Cache Canto Nano model files",
-          "number": 4,
-          "startedAt": "2026-10-06T01:56:51Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:05Z",
-          "conclusion": "success",
-          "name": "Install canto-tts-nano ONNX runtime",
-          "number": 5,
-          "startedAt": "2026-10-06T01:56:54Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:25Z",
-          "conclusion": "success",
-          "name": "Generate and progressively publish verified female Cantonese news",
-          "number": 6,
-          "startedAt": "2026-10-06T01:57:05Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:25Z",
-          "conclusion": "success",
-          "name": "Post Cache Canto Nano model files",
-          "number": 10,
-          "startedAt": "2026-10-06T01:57:25Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:25Z",
-          "conclusion": "success",
-          "name": "Post Set up Python 3.11",
-          "number": 11,
-          "startedAt": "2026-10-06T01:57:25Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:25Z",
-          "conclusion": "success",
-          "name": "Post Checkout latest main",
-          "number": 12,
-          "startedAt": "2026-10-06T01:57:25Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:25Z",
-          "conclusion": "success",
-          "name": "Complete job",
-          "number": 13,
-          "startedAt": "2026-10-06T01:57:25Z",
-          "status": "completed"
-        }
-      ],
-      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37401590793/job/112070086198"
-    },
-    {
-      "completedAt": "2026-10-06T01:57:53Z",
-      "conclusion": "success",
-      "databaseId": 112070086213,
-      "name": "worker (1)",
-      "startedAt": "2026-10-06T01:56:35Z",
-      "status": "completed",
-      "steps": [
-        {
-          "completedAt": "2026-10-06T01:56:36Z",
-          "conclusion": "success",
-          "name": "Set up job",
-          "number": 1,
-          "startedAt": "2026-10-06T01:56:35Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:56Z",
-          "conclusion": "success",
-          "name": "Checkout latest main",
-          "number": 2,
-          "startedAt": "2026-10-06T01:56:36Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:56Z",
-          "conclusion": "success",
-          "name": "Set up Python 3.11",
-          "number": 3,
-          "startedAt": "2026-10-06T01:56:56Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:59Z",
-          "conclusion": "success",
-          "name": "Cache Canto Nano model files",
-          "number": 4,
-          "startedAt": "2026-10-06T01:56:56Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:13Z",
-          "conclusion": "success",
-          "name": "Install canto-tts-nano ONNX runtime",
-          "number": 5,
-          "startedAt": "2026-10-06T01:56:59Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:51Z",
-          "conclusion": "success",
-          "name": "Generate and progressively publish verified female Cantonese news",
-          "number": 6,
-          "startedAt": "2026-10-06T01:57:13Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:51Z",
-          "conclusion": "success",
-          "name": "Post Cache Canto Nano model files",
-          "number": 10,
-          "startedAt": "2026-10-06T01:57:51Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:52Z",
-          "conclusion": "success",
-          "name": "Post Set up Python 3.11",
-          "number": 11,
-          "startedAt": "2026-10-06T01:57:51Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:52Z",
-          "conclusion": "success",
-          "name": "Post Checkout latest main",
-          "number": 12,
-          "startedAt": "2026-10-06T01:57:52Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:52Z",
-          "conclusion": "success",
-          "name": "Complete job",
-          "number": 13,
-          "startedAt": "2026-10-06T01:57:52Z",
-          "status": "completed"
-        }
-      ],
-      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37401590793/job/112070086213"
-    },
-    {
-      "completedAt": "2026-10-06T01:58:03Z",
-      "conclusion": "success",
-      "databaseId": 112070086247,
-      "name": "worker (4)",
-      "startedAt": "2026-10-06T01:56:35Z",
-      "status": "completed",
-      "steps": [
-        {
-          "completedAt": "2026-10-06T01:56:37Z",
-          "conclusion": "success",
-          "name": "Set up job",
-          "number": 1,
-          "startedAt": "2026-10-06T01:56:36Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:59Z",
-          "conclusion": "success",
-          "name": "Checkout latest main",
-          "number": 2,
-          "startedAt": "2026-10-06T01:56:37Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:00Z",
-          "conclusion": "success",
-          "name": "Set up Python 3.11",
-          "number": 3,
-          "startedAt": "2026-10-06T01:56:59Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:05Z",
-          "conclusion": "success",
-          "name": "Cache Canto Nano model files",
-          "number": 4,
-          "startedAt": "2026-10-06T01:57:00Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:21Z",
-          "conclusion": "success",
-          "name": "Install canto-tts-nano ONNX runtime",
-          "number": 5,
-          "startedAt": "2026-10-06T01:57:05Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:58:00Z",
-          "conclusion": "success",
-          "name": "Generate and progressively publish verified female Cantonese news",
-          "number": 6,
-          "startedAt": "2026-10-06T01:57:21Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:58:00Z",
-          "conclusion": "success",
-          "name": "Post Cache Canto Nano model files",
-          "number": 10,
-          "startedAt": "2026-10-06T01:58:00Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:58:00Z",
-          "conclusion": "success",
-          "name": "Post Set up Python 3.11",
-          "number": 11,
-          "startedAt": "2026-10-06T01:58:00Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:58:00Z",
-          "conclusion": "success",
-          "name": "Post Checkout latest main",
-          "number": 12,
-          "startedAt": "2026-10-06T01:58:00Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:58:00Z",
-          "conclusion": "success",
-          "name": "Complete job",
-          "number": 13,
-          "startedAt": "2026-10-06T01:58:00Z",
-          "status": "completed"
-        }
-      ],
-      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37401590793/job/112070086247"
-    },
-    {
-      "completedAt": "2026-10-06T01:57:33Z",
-      "conclusion": "success",
-      "databaseId": 112070086254,
-      "name": "worker (3)",
-      "startedAt": "2026-10-06T01:56:35Z",
-      "status": "completed",
-      "steps": [
-        {
-          "completedAt": "2026-10-06T01:56:36Z",
-          "conclusion": "success",
-          "name": "Set up job",
-          "number": 1,
-          "startedAt": "2026-10-06T01:56:35Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:50Z",
-          "conclusion": "success",
-          "name": "Checkout latest main",
-          "number": 2,
-          "startedAt": "2026-10-06T01:56:36Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:50Z",
-          "conclusion": "success",
-          "name": "Set up Python 3.11",
-          "number": 3,
-          "startedAt": "2026-10-06T01:56:50Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:54Z",
-          "conclusion": "success",
-          "name": "Cache Canto Nano model files",
-          "number": 4,
-          "startedAt": "2026-10-06T01:56:50Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:10Z",
-          "conclusion": "success",
-          "name": "Install canto-tts-nano ONNX runtime",
-          "number": 5,
-          "startedAt": "2026-10-06T01:56:54Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:31Z",
-          "conclusion": "success",
-          "name": "Generate and progressively publish verified female Cantonese news",
-          "number": 6,
-          "startedAt": "2026-10-06T01:57:10Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:31Z",
-          "conclusion": "success",
-          "name": "Post Cache Canto Nano model files",
-          "number": 10,
-          "startedAt": "2026-10-06T01:57:31Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:31Z",
-          "conclusion": "success",
-          "name": "Post Set up Python 3.11",
-          "number": 11,
-          "startedAt": "2026-10-06T01:57:31Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:31Z",
-          "conclusion": "success",
-          "name": "Post Checkout latest main",
-          "number": 12,
-          "startedAt": "2026-10-06T01:57:31Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:31Z",
-          "conclusion": "success",
-          "name": "Complete job",
-          "number": 13,
-          "startedAt": "2026-10-06T01:57:31Z",
-          "status": "completed"
-        }
-      ],
-      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37401590793/job/112070086254"
-    },
-    {
-      "completedAt": "2026-10-06T01:57:40Z",
-      "conclusion": "success",
-      "databaseId": 112070086255,
-      "name": "worker (5)",
-      "startedAt": "2026-10-06T01:56:35Z",
-      "status": "completed",
-      "steps": [
-        {
-          "completedAt": "2026-10-06T01:56:36Z",
-          "conclusion": "success",
-          "name": "Set up job",
-          "number": 1,
-          "startedAt": "2026-10-06T01:56:35Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:53Z",
-          "conclusion": "success",
-          "name": "Checkout latest main",
-          "number": 2,
-          "startedAt": "2026-10-06T01:56:36Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:53Z",
-          "conclusion": "success",
-          "name": "Set up Python 3.11",
-          "number": 3,
-          "startedAt": "2026-10-06T01:56:53Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:56Z",
-          "conclusion": "success",
-          "name": "Cache Canto Nano model files",
-          "number": 4,
-          "startedAt": "2026-10-06T01:56:53Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:08Z",
-          "conclusion": "success",
-          "name": "Install canto-tts-nano ONNX runtime",
-          "number": 5,
-          "startedAt": "2026-10-06T01:56:56Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:38Z",
-          "conclusion": "success",
-          "name": "Generate and progressively publish verified female Cantonese news",
-          "number": 6,
-          "startedAt": "2026-10-06T01:57:08Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:38Z",
-          "conclusion": "success",
-          "name": "Post Cache Canto Nano model files",
-          "number": 10,
-          "startedAt": "2026-10-06T01:57:38Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:38Z",
-          "conclusion": "success",
-          "name": "Post Set up Python 3.11",
-          "number": 11,
-          "startedAt": "2026-10-06T01:57:38Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:38Z",
-          "conclusion": "success",
-          "name": "Post Checkout latest main",
-          "number": 12,
-          "startedAt": "2026-10-06T01:57:38Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:38Z",
-          "conclusion": "success",
-          "name": "Complete job",
-          "number": 13,
-          "startedAt": "2026-10-06T01:57:38Z",
-          "status": "completed"
-        }
-      ],
-      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37401590793/job/112070086255"
-    },
-    {
-      "completedAt": "2026-10-06T01:58:10Z",
-      "conclusion": "success",
-      "databaseId": 112070086290,
-      "name": "worker (8)",
-      "startedAt": "2026-10-06T01:56:42Z",
-      "status": "completed",
-      "steps": [
-        {
-          "completedAt": "2026-10-06T01:56:44Z",
-          "conclusion": "success",
-          "name": "Set up job",
-          "number": 1,
-          "startedAt": "2026-10-06T01:56:43Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:04Z",
-          "conclusion": "success",
-          "name": "Checkout latest main",
-          "number": 2,
-          "startedAt": "2026-10-06T01:56:44Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:05Z",
-          "conclusion": "success",
-          "name": "Set up Python 3.11",
-          "number": 3,
-          "startedAt": "2026-10-06T01:57:04Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:09Z",
-          "conclusion": "success",
-          "name": "Cache Canto Nano model files",
-          "number": 4,
-          "startedAt": "2026-10-06T01:57:05Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:29Z",
-          "conclusion": "success",
-          "name": "Install canto-tts-nano ONNX runtime",
-          "number": 5,
-          "startedAt": "2026-10-06T01:57:09Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:58:07Z",
-          "conclusion": "success",
-          "name": "Generate and progressively publish verified female Cantonese news",
-          "number": 6,
-          "startedAt": "2026-10-06T01:57:29Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:58:07Z",
-          "conclusion": "success",
-          "name": "Post Cache Canto Nano model files",
-          "number": 10,
-          "startedAt": "2026-10-06T01:58:07Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:58:07Z",
-          "conclusion": "success",
-          "name": "Post Set up Python 3.11",
-          "number": 11,
-          "startedAt": "2026-10-06T01:58:07Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:58:07Z",
-          "conclusion": "success",
-          "name": "Post Checkout latest main",
-          "number": 12,
-          "startedAt": "2026-10-06T01:58:07Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:58:07Z",
-          "conclusion": "success",
-          "name": "Complete job",
-          "number": 13,
-          "startedAt": "2026-10-06T01:58:07Z",
-          "status": "completed"
-        }
-      ],
-      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37401590793/job/112070086290"
-    },
-    {
-      "completedAt": "2026-10-06T01:57:32Z",
-      "conclusion": "success",
-      "databaseId": 112070086297,
-      "name": "worker (9)",
-      "startedAt": "2026-10-06T01:56:35Z",
-      "status": "completed",
-      "steps": [
-        {
-          "completedAt": "2026-10-06T01:56:36Z",
-          "conclusion": "success",
-          "name": "Set up job",
-          "number": 1,
-          "startedAt": "2026-10-06T01:56:36Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:50Z",
-          "conclusion": "success",
-          "name": "Checkout latest main",
-          "number": 2,
-          "startedAt": "2026-10-06T01:56:36Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:50Z",
-          "conclusion": "success",
-          "name": "Set up Python 3.11",
-          "number": 3,
-          "startedAt": "2026-10-06T01:56:50Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:54Z",
-          "conclusion": "success",
-          "name": "Cache Canto Nano model files",
-          "number": 4,
-          "startedAt": "2026-10-06T01:56:50Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:09Z",
-          "conclusion": "success",
-          "name": "Install canto-tts-nano ONNX runtime",
-          "number": 5,
-          "startedAt": "2026-10-06T01:56:54Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:29Z",
-          "conclusion": "success",
-          "name": "Generate and progressively publish verified female Cantonese news",
-          "number": 6,
-          "startedAt": "2026-10-06T01:57:09Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:29Z",
-          "conclusion": "success",
-          "name": "Post Cache Canto Nano model files",
-          "number": 10,
-          "startedAt": "2026-10-06T01:57:29Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:29Z",
-          "conclusion": "success",
-          "name": "Post Set up Python 3.11",
-          "number": 11,
-          "startedAt": "2026-10-06T01:57:29Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:29Z",
-          "conclusion": "success",
-          "name": "Post Checkout latest main",
-          "number": 12,
-          "startedAt": "2026-10-06T01:57:29Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:29Z",
-          "conclusion": "success",
-          "name": "Complete job",
-          "number": 13,
-          "startedAt": "2026-10-06T01:57:29Z",
-          "status": "completed"
-        }
-      ],
-      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37401590793/job/112070086297"
-    },
-    {
-      "completedAt": "2026-10-06T01:58:00Z",
-      "conclusion": "success",
-      "databaseId": 112070086307,
-      "name": "worker (2)",
-      "startedAt": "2026-10-06T01:56:35Z",
-      "status": "completed",
-      "steps": [
-        {
-          "completedAt": "2026-10-06T01:56:37Z",
-          "conclusion": "success",
-          "name": "Set up job",
-          "number": 1,
-          "startedAt": "2026-10-06T01:56:36Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:57Z",
-          "conclusion": "success",
-          "name": "Checkout latest main",
-          "number": 2,
-          "startedAt": "2026-10-06T01:56:37Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:56:58Z",
-          "conclusion": "success",
-          "name": "Set up Python 3.11",
-          "number": 3,
-          "startedAt": "2026-10-06T01:56:57Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:03Z",
-          "conclusion": "success",
-          "name": "Cache Canto Nano model files",
-          "number": 4,
-          "startedAt": "2026-10-06T01:56:58Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:19Z",
-          "conclusion": "success",
-          "name": "Install canto-tts-nano ONNX runtime",
-          "number": 5,
-          "startedAt": "2026-10-06T01:57:03Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:57Z",
-          "conclusion": "success",
-          "name": "Generate and progressively publish verified female Cantonese news",
-          "number": 6,
-          "startedAt": "2026-10-06T01:57:19Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:57Z",
-          "conclusion": "success",
-          "name": "Post Cache Canto Nano model files",
-          "number": 10,
-          "startedAt": "2026-10-06T01:57:57Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:57Z",
-          "conclusion": "success",
-          "name": "Post Set up Python 3.11",
-          "number": 11,
-          "startedAt": "2026-10-06T01:57:57Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:58Z",
-          "conclusion": "success",
-          "name": "Post Checkout latest main",
-          "number": 12,
-          "startedAt": "2026-10-06T01:57:57Z",
-          "status": "completed"
-        },
-        {
-          "completedAt": "2026-10-06T01:57:58Z",
-          "conclusion": "success",
-          "name": "Complete job",
-          "number": 13,
-          "startedAt": "2026-10-06T01:57:58Z",
-          "status": "completed"
-        }
-      ],
-      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37401590793/job/112070086307"
-    },
-    {
-      "completedAt": "2026-10-06T01:57:55Z",
-      "conclusion": "success",
-      "databaseId": 112070086310,
+      "databaseId": 112103122256,
       "name": "worker (7)",
-      "startedAt": "2026-10-06T01:56:35Z",
+      "startedAt": "2026-10-06T04:08:27Z",
       "status": "completed",
       "steps": [
         {
-          "completedAt": "2026-10-06T01:56:36Z",
+          "completedAt": "2026-10-06T04:08:29Z",
           "conclusion": "success",
           "name": "Set up job",
           "number": 1,
-          "startedAt": "2026-10-06T01:56:35Z",
+          "startedAt": "2026-10-06T04:08:27Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:56:55Z",
+          "completedAt": "2026-10-06T04:08:43Z",
           "conclusion": "success",
           "name": "Checkout latest main",
           "number": 2,
-          "startedAt": "2026-10-06T01:56:36Z",
+          "startedAt": "2026-10-06T04:08:29Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:56:55Z",
+          "completedAt": "2026-10-06T04:08:43Z",
           "conclusion": "success",
           "name": "Set up Python 3.11",
           "number": 3,
-          "startedAt": "2026-10-06T01:56:55Z",
+          "startedAt": "2026-10-06T04:08:43Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:56:58Z",
+          "completedAt": "2026-10-06T04:08:46Z",
           "conclusion": "success",
           "name": "Cache Canto Nano model files",
           "number": 4,
-          "startedAt": "2026-10-06T01:56:55Z",
+          "startedAt": "2026-10-06T04:08:43Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:57:14Z",
+          "completedAt": "2026-10-06T04:08:58Z",
           "conclusion": "success",
           "name": "Install canto-tts-nano ONNX runtime",
           "number": 5,
-          "startedAt": "2026-10-06T01:56:58Z",
+          "startedAt": "2026-10-06T04:08:46Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:57:52Z",
+          "completedAt": "2026-10-06T04:09:18Z",
           "conclusion": "success",
           "name": "Generate and progressively publish verified female Cantonese news",
           "number": 6,
-          "startedAt": "2026-10-06T01:57:14Z",
+          "startedAt": "2026-10-06T04:08:58Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:57:53Z",
+          "completedAt": "2026-10-06T04:09:19Z",
           "conclusion": "success",
           "name": "Post Cache Canto Nano model files",
           "number": 10,
-          "startedAt": "2026-10-06T01:57:52Z",
+          "startedAt": "2026-10-06T04:09:18Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:57:53Z",
+          "completedAt": "2026-10-06T04:09:19Z",
           "conclusion": "success",
           "name": "Post Set up Python 3.11",
           "number": 11,
-          "startedAt": "2026-10-06T01:57:53Z",
+          "startedAt": "2026-10-06T04:09:19Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:57:53Z",
+          "completedAt": "2026-10-06T04:09:19Z",
           "conclusion": "success",
           "name": "Post Checkout latest main",
           "number": 12,
-          "startedAt": "2026-10-06T01:57:53Z",
+          "startedAt": "2026-10-06T04:09:19Z",
           "status": "completed"
         },
         {
-          "completedAt": "2026-10-06T01:57:53Z",
+          "completedAt": "2026-10-06T04:09:19Z",
           "conclusion": "success",
           "name": "Complete job",
           "number": 13,
-          "startedAt": "2026-10-06T01:57:53Z",
+          "startedAt": "2026-10-06T04:09:19Z",
           "status": "completed"
         }
       ],
-      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37401590793/job/112070086310"
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37412175209/job/112103122256"
+    },
+    {
+      "completedAt": "2026-10-06T04:09:22Z",
+      "conclusion": "success",
+      "databaseId": 112103122273,
+      "name": "worker (4)",
+      "startedAt": "2026-10-06T04:08:26Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-06T04:08:27Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-06T04:08:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:41Z",
+          "conclusion": "success",
+          "name": "Checkout latest main",
+          "number": 2,
+          "startedAt": "2026-10-06T04:08:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:41Z",
+          "conclusion": "success",
+          "name": "Set up Python 3.11",
+          "number": 3,
+          "startedAt": "2026-10-06T04:08:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:44Z",
+          "conclusion": "success",
+          "name": "Cache Canto Nano model files",
+          "number": 4,
+          "startedAt": "2026-10-06T04:08:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:58Z",
+          "conclusion": "success",
+          "name": "Install canto-tts-nano ONNX runtime",
+          "number": 5,
+          "startedAt": "2026-10-06T04:08:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:19Z",
+          "conclusion": "success",
+          "name": "Generate and progressively publish verified female Cantonese news",
+          "number": 6,
+          "startedAt": "2026-10-06T04:08:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:19Z",
+          "conclusion": "success",
+          "name": "Post Cache Canto Nano model files",
+          "number": 10,
+          "startedAt": "2026-10-06T04:09:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:19Z",
+          "conclusion": "success",
+          "name": "Post Set up Python 3.11",
+          "number": 11,
+          "startedAt": "2026-10-06T04:09:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:20Z",
+          "conclusion": "success",
+          "name": "Post Checkout latest main",
+          "number": 12,
+          "startedAt": "2026-10-06T04:09:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:20Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 13,
+          "startedAt": "2026-10-06T04:09:20Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37412175209/job/112103122273"
+    },
+    {
+      "completedAt": "2026-10-06T04:17:30Z",
+      "conclusion": "success",
+      "databaseId": 112103122303,
+      "name": "worker (8)",
+      "startedAt": "2026-10-06T04:08:27Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-06T04:08:30Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-06T04:08:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:52Z",
+          "conclusion": "success",
+          "name": "Checkout latest main",
+          "number": 2,
+          "startedAt": "2026-10-06T04:08:30Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:53Z",
+          "conclusion": "success",
+          "name": "Set up Python 3.11",
+          "number": 3,
+          "startedAt": "2026-10-06T04:08:52Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:59Z",
+          "conclusion": "success",
+          "name": "Cache Canto Nano model files",
+          "number": 4,
+          "startedAt": "2026-10-06T04:08:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:19Z",
+          "conclusion": "success",
+          "name": "Install canto-tts-nano ONNX runtime",
+          "number": 5,
+          "startedAt": "2026-10-06T04:08:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:17:26Z",
+          "conclusion": "success",
+          "name": "Generate and progressively publish verified female Cantonese news",
+          "number": 6,
+          "startedAt": "2026-10-06T04:09:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:17:27Z",
+          "conclusion": "success",
+          "name": "Post Cache Canto Nano model files",
+          "number": 10,
+          "startedAt": "2026-10-06T04:17:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:17:27Z",
+          "conclusion": "success",
+          "name": "Post Set up Python 3.11",
+          "number": 11,
+          "startedAt": "2026-10-06T04:17:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:17:27Z",
+          "conclusion": "success",
+          "name": "Post Checkout latest main",
+          "number": 12,
+          "startedAt": "2026-10-06T04:17:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:17:27Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 13,
+          "startedAt": "2026-10-06T04:17:27Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37412175209/job/112103122303"
+    },
+    {
+      "completedAt": "2026-10-06T04:09:46Z",
+      "conclusion": "success",
+      "databaseId": 112103122304,
+      "name": "worker (5)",
+      "startedAt": "2026-10-06T04:08:26Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-06T04:08:27Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-06T04:08:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:47Z",
+          "conclusion": "success",
+          "name": "Checkout latest main",
+          "number": 2,
+          "startedAt": "2026-10-06T04:08:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:47Z",
+          "conclusion": "success",
+          "name": "Set up Python 3.11",
+          "number": 3,
+          "startedAt": "2026-10-06T04:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:50Z",
+          "conclusion": "success",
+          "name": "Cache Canto Nano model files",
+          "number": 4,
+          "startedAt": "2026-10-06T04:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:05Z",
+          "conclusion": "success",
+          "name": "Install canto-tts-nano ONNX runtime",
+          "number": 5,
+          "startedAt": "2026-10-06T04:08:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:44Z",
+          "conclusion": "success",
+          "name": "Generate and progressively publish verified female Cantonese news",
+          "number": 6,
+          "startedAt": "2026-10-06T04:09:05Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:44Z",
+          "conclusion": "success",
+          "name": "Post Cache Canto Nano model files",
+          "number": 10,
+          "startedAt": "2026-10-06T04:09:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:44Z",
+          "conclusion": "success",
+          "name": "Post Set up Python 3.11",
+          "number": 11,
+          "startedAt": "2026-10-06T04:09:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:44Z",
+          "conclusion": "success",
+          "name": "Post Checkout latest main",
+          "number": 12,
+          "startedAt": "2026-10-06T04:09:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:44Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 13,
+          "startedAt": "2026-10-06T04:09:44Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37412175209/job/112103122304"
+    },
+    {
+      "completedAt": "2026-10-06T04:09:20Z",
+      "conclusion": "success",
+      "databaseId": 112103122312,
+      "name": "worker (3)",
+      "startedAt": "2026-10-06T04:08:26Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-06T04:08:27Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-06T04:08:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:39Z",
+          "conclusion": "success",
+          "name": "Checkout latest main",
+          "number": 2,
+          "startedAt": "2026-10-06T04:08:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:40Z",
+          "conclusion": "success",
+          "name": "Set up Python 3.11",
+          "number": 3,
+          "startedAt": "2026-10-06T04:08:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:43Z",
+          "conclusion": "success",
+          "name": "Cache Canto Nano model files",
+          "number": 4,
+          "startedAt": "2026-10-06T04:08:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:57Z",
+          "conclusion": "success",
+          "name": "Install canto-tts-nano ONNX runtime",
+          "number": 5,
+          "startedAt": "2026-10-06T04:08:43Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:18Z",
+          "conclusion": "success",
+          "name": "Generate and progressively publish verified female Cantonese news",
+          "number": 6,
+          "startedAt": "2026-10-06T04:08:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:18Z",
+          "conclusion": "success",
+          "name": "Post Cache Canto Nano model files",
+          "number": 10,
+          "startedAt": "2026-10-06T04:09:18Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:18Z",
+          "conclusion": "success",
+          "name": "Post Set up Python 3.11",
+          "number": 11,
+          "startedAt": "2026-10-06T04:09:18Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:18Z",
+          "conclusion": "success",
+          "name": "Post Checkout latest main",
+          "number": 12,
+          "startedAt": "2026-10-06T04:09:18Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:18Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 13,
+          "startedAt": "2026-10-06T04:09:18Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37412175209/job/112103122312"
+    },
+    {
+      "completedAt": "2026-10-06T04:09:16Z",
+      "conclusion": "success",
+      "databaseId": 112103122317,
+      "name": "worker (0)",
+      "startedAt": "2026-10-06T04:08:26Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-06T04:08:27Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-06T04:08:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:40Z",
+          "conclusion": "success",
+          "name": "Checkout latest main",
+          "number": 2,
+          "startedAt": "2026-10-06T04:08:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:40Z",
+          "conclusion": "success",
+          "name": "Set up Python 3.11",
+          "number": 3,
+          "startedAt": "2026-10-06T04:08:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:43Z",
+          "conclusion": "success",
+          "name": "Cache Canto Nano model files",
+          "number": 4,
+          "startedAt": "2026-10-06T04:08:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:54Z",
+          "conclusion": "success",
+          "name": "Install canto-tts-nano ONNX runtime",
+          "number": 5,
+          "startedAt": "2026-10-06T04:08:43Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:13Z",
+          "conclusion": "success",
+          "name": "Generate and progressively publish verified female Cantonese news",
+          "number": 6,
+          "startedAt": "2026-10-06T04:08:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:13Z",
+          "conclusion": "success",
+          "name": "Post Cache Canto Nano model files",
+          "number": 10,
+          "startedAt": "2026-10-06T04:09:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:13Z",
+          "conclusion": "success",
+          "name": "Post Set up Python 3.11",
+          "number": 11,
+          "startedAt": "2026-10-06T04:09:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:13Z",
+          "conclusion": "success",
+          "name": "Post Checkout latest main",
+          "number": 12,
+          "startedAt": "2026-10-06T04:09:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:13Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 13,
+          "startedAt": "2026-10-06T04:09:13Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37412175209/job/112103122317"
+    },
+    {
+      "completedAt": "2026-10-06T04:09:53Z",
+      "conclusion": "success",
+      "databaseId": 112103122325,
+      "name": "worker (1)",
+      "startedAt": "2026-10-06T04:08:26Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-06T04:08:27Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-06T04:08:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:47Z",
+          "conclusion": "success",
+          "name": "Checkout latest main",
+          "number": 2,
+          "startedAt": "2026-10-06T04:08:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:47Z",
+          "conclusion": "success",
+          "name": "Set up Python 3.11",
+          "number": 3,
+          "startedAt": "2026-10-06T04:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:51Z",
+          "conclusion": "success",
+          "name": "Cache Canto Nano model files",
+          "number": 4,
+          "startedAt": "2026-10-06T04:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:10Z",
+          "conclusion": "success",
+          "name": "Install canto-tts-nano ONNX runtime",
+          "number": 5,
+          "startedAt": "2026-10-06T04:08:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:51Z",
+          "conclusion": "success",
+          "name": "Generate and progressively publish verified female Cantonese news",
+          "number": 6,
+          "startedAt": "2026-10-06T04:09:10Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:51Z",
+          "conclusion": "success",
+          "name": "Post Cache Canto Nano model files",
+          "number": 10,
+          "startedAt": "2026-10-06T04:09:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:51Z",
+          "conclusion": "success",
+          "name": "Post Set up Python 3.11",
+          "number": 11,
+          "startedAt": "2026-10-06T04:09:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:51Z",
+          "conclusion": "success",
+          "name": "Post Checkout latest main",
+          "number": 12,
+          "startedAt": "2026-10-06T04:09:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:51Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 13,
+          "startedAt": "2026-10-06T04:09:51Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37412175209/job/112103122325"
+    },
+    {
+      "completedAt": "2026-10-06T04:09:53Z",
+      "conclusion": "success",
+      "databaseId": 112103122363,
+      "name": "worker (2)",
+      "startedAt": "2026-10-06T04:08:26Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-06T04:08:28Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-06T04:08:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:48Z",
+          "conclusion": "success",
+          "name": "Checkout latest main",
+          "number": 2,
+          "startedAt": "2026-10-06T04:08:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:49Z",
+          "conclusion": "success",
+          "name": "Set up Python 3.11",
+          "number": 3,
+          "startedAt": "2026-10-06T04:08:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:54Z",
+          "conclusion": "success",
+          "name": "Cache Canto Nano model files",
+          "number": 4,
+          "startedAt": "2026-10-06T04:08:49Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:10Z",
+          "conclusion": "success",
+          "name": "Install canto-tts-nano ONNX runtime",
+          "number": 5,
+          "startedAt": "2026-10-06T04:08:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:50Z",
+          "conclusion": "success",
+          "name": "Generate and progressively publish verified female Cantonese news",
+          "number": 6,
+          "startedAt": "2026-10-06T04:09:10Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:50Z",
+          "conclusion": "success",
+          "name": "Post Cache Canto Nano model files",
+          "number": 10,
+          "startedAt": "2026-10-06T04:09:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:50Z",
+          "conclusion": "success",
+          "name": "Post Set up Python 3.11",
+          "number": 11,
+          "startedAt": "2026-10-06T04:09:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:50Z",
+          "conclusion": "success",
+          "name": "Post Checkout latest main",
+          "number": 12,
+          "startedAt": "2026-10-06T04:09:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:50Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 13,
+          "startedAt": "2026-10-06T04:09:50Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37412175209/job/112103122363"
+    },
+    {
+      "completedAt": "2026-10-06T04:09:49Z",
+      "conclusion": "success",
+      "databaseId": 112103122366,
+      "name": "worker (6)",
+      "startedAt": "2026-10-06T04:08:27Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-06T04:08:29Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-06T04:08:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:48Z",
+          "conclusion": "success",
+          "name": "Checkout latest main",
+          "number": 2,
+          "startedAt": "2026-10-06T04:08:29Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:49Z",
+          "conclusion": "success",
+          "name": "Set up Python 3.11",
+          "number": 3,
+          "startedAt": "2026-10-06T04:08:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:53Z",
+          "conclusion": "success",
+          "name": "Cache Canto Nano model files",
+          "number": 4,
+          "startedAt": "2026-10-06T04:08:49Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:08Z",
+          "conclusion": "success",
+          "name": "Install canto-tts-nano ONNX runtime",
+          "number": 5,
+          "startedAt": "2026-10-06T04:08:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:47Z",
+          "conclusion": "success",
+          "name": "Generate and progressively publish verified female Cantonese news",
+          "number": 6,
+          "startedAt": "2026-10-06T04:09:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:47Z",
+          "conclusion": "success",
+          "name": "Post Cache Canto Nano model files",
+          "number": 10,
+          "startedAt": "2026-10-06T04:09:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:47Z",
+          "conclusion": "success",
+          "name": "Post Set up Python 3.11",
+          "number": 11,
+          "startedAt": "2026-10-06T04:09:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:47Z",
+          "conclusion": "success",
+          "name": "Post Checkout latest main",
+          "number": 12,
+          "startedAt": "2026-10-06T04:09:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:47Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 13,
+          "startedAt": "2026-10-06T04:09:47Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37412175209/job/112103122366"
+    },
+    {
+      "completedAt": "2026-10-06T04:09:54Z",
+      "conclusion": "success",
+      "databaseId": 112103122409,
+      "name": "worker (9)",
+      "startedAt": "2026-10-06T04:08:26Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-06T04:08:28Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-06T04:08:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:50Z",
+          "conclusion": "success",
+          "name": "Checkout latest main",
+          "number": 2,
+          "startedAt": "2026-10-06T04:08:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:50Z",
+          "conclusion": "success",
+          "name": "Set up Python 3.11",
+          "number": 3,
+          "startedAt": "2026-10-06T04:08:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:08:55Z",
+          "conclusion": "success",
+          "name": "Cache Canto Nano model files",
+          "number": 4,
+          "startedAt": "2026-10-06T04:08:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:10Z",
+          "conclusion": "success",
+          "name": "Install canto-tts-nano ONNX runtime",
+          "number": 5,
+          "startedAt": "2026-10-06T04:08:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:50Z",
+          "conclusion": "success",
+          "name": "Generate and progressively publish verified female Cantonese news",
+          "number": 6,
+          "startedAt": "2026-10-06T04:09:10Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:50Z",
+          "conclusion": "success",
+          "name": "Post Cache Canto Nano model files",
+          "number": 10,
+          "startedAt": "2026-10-06T04:09:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:50Z",
+          "conclusion": "success",
+          "name": "Post Set up Python 3.11",
+          "number": 11,
+          "startedAt": "2026-10-06T04:09:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:51Z",
+          "conclusion": "success",
+          "name": "Post Checkout latest main",
+          "number": 12,
+          "startedAt": "2026-10-06T04:09:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-06T04:09:51Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 13,
+          "startedAt": "2026-10-06T04:09:51Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/kanuli/daily-brief-newspaper/actions/runs/37412175209/job/112103122409"
     }
   ],
   "failedLogTail": []
