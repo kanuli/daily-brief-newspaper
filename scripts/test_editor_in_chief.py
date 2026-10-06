@@ -96,7 +96,7 @@ daily = [f for f in result["findings"] if f["code"] == "DAILY_STALE"]
 assert daily and daily[0]["repair"] == "daily", result
 assert "TODAY" in daily[0]["message"], result
 plan = [x for x in result["repairPlan"] if x["area"] == "daily"]
-assert plan and plan[0]["owner"] == "automation:Daily Priority Briefing", result
+assert plan and plan[0]["owner"] == "automation:Newsroom Publisher", result
 assert plan[0]["workflow"] is None, result
 
 # Public propagation is outcome evidence: fresh repository data with stale public
