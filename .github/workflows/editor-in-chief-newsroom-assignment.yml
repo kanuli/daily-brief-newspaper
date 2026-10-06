@@ -5,6 +5,8 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/editor-in-chief-newsroom-assignment.yml"
+      - "config/newsroom-robots.json"
+      - "scripts/newsroom_control_plane.py"
       - ".github/workflows/daily-japanese-vocab.yml"
       - "scripts/generate_daily_vocab.py"
       - "scripts/rolling_news_collector.py"
@@ -90,117 +92,27 @@ jobs:
           echo $? > /tmp/vocab-rc
           set -e
 
-      - name: Editor-in-Chief assigns Robot work
+      - name: Editor-in-Chief classifies faults and assigns Robots
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
+          python -m py_compile scripts/newsroom_control_plane.py
+          python scripts/newsroom_control_plane.py \
+            --staging /tmp/search-staging.json \
+            --freshness /tmp/desk-freshness.json \
+            --editor-status /tmp/editor-status.json \
+            --sentinel /tmp/page-news-sentinel.json \
+            --stock-rc "$(cat /tmp/stock-rc)" \
+            --publication-rc "$(cat /tmp/publication-rc)" \
+            --vocab-rc "$(cat /tmp/vocab-rc)" \
+            --output /tmp/editor-news-assignments.json
+          python - <<'PY' > /tmp/editor-news-workflows.txt
           import json
-          from datetime import datetime, timezone
-          from pathlib import Path
-
-          def load(path, default):
-              p=Path(path)
-              if not p.is_file():
-                  return default
-              try:
-                  return json.loads(p.read_text(encoding='utf-8'))
-              except Exception:
-                  return default
-
-          def rc(path):
-              try:
-                  return int(Path(path).read_text().strip())
-              except Exception:
-                  return 99
-
-          plan=[]
-          def add(workflow, reason):
-              if not any(row['workflow']==workflow for row in plan):
-                  plan.append({'workflow':workflow,'reason':reason})
-
-          staging=load('/tmp/search-staging.json',{})
-          stamp=staging.get('lastSearchAt') or staging.get('lastSearchStartedAt')
-          staging_age_minutes=999999.0
-          if stamp:
-              try:
-                  dt=datetime.fromisoformat(str(stamp).replace('Z','+00:00')).astimezone(timezone.utc)
-                  staging_age_minutes=max(0.0,(datetime.now(timezone.utc)-dt).total_seconds()/60.0)
-              except Exception:
-                  pass
-          collector_stale=staging_age_minutes > 25
-          if collector_stale:
-              add('rolling-news-search.yml', f'collector staging stale ({staging_age_minutes:.1f}m); refresh evidence before production')
-
-          freshness=load('/tmp/desk-freshness.json',{})
-          # These are proactive refresh targets, not permission to fabricate news.
-          # The normal hard freshness validators remain authoritative gates.
-          soft_targets={
-              'world':3,
-              'asia':3,
-              'hong-kong':6,
-              'japan':6,
-              'market-economy':4,
-              'finance':4,
-              'ai-tech':4,
-              'manga-anime':24,
-              'manchester-united':12,
-              'football':8,
-          }
-          refresh=[]
-          for slug,row in (freshness.get('desks') or {}).items():
-              age=row.get('newestAgeHours')
-              hard_bad=(not row.get('fresh',False)) or (not row.get('dailySynced',True))
-              soft_limit=soft_targets.get(slug,6)
-              soft_bad=isinstance(age,(int,float)) and age > soft_limit
-              if hard_bad or soft_bad:
-                  refresh.append({'desk':slug,'ageHours':age,'targetHours':soft_limit,'hardFailed':hard_bad})
-
-          general_news_needed=(rc('/tmp/desk-rc') != 0 or bool(refresh))
-          if general_news_needed and not collector_stale:
-              add('general-news-producer.yml', 'current discovery evidence must be source-verified and converted into a publishable Cantonese draft')
-
-          sentinel=load('/tmp/page-news-sentinel.json',{})
-          failed_pages=set(sentinel.get('persistentFailedPages') or [])
-          editor_status=load('/tmp/editor-status.json',{})
-          deep_stock_required=any(
-              isinstance(row,dict)
-              and row.get('area') == 'stock-deep'
-              and row.get('workflow') == 'stock-publication-maintenance.yml'
-              for row in (editor_status.get('repairPlan') or [])
-          )
-
-          if rc('/tmp/stock-rc') != 0 or 'stocks.html' in failed_pages:
-              if deep_stock_required:
-                  add('stock-publication-maintenance.yml', 'DEEP: prior Stock repair made no measurable progress; force fresh discovery then primary-source rebuild')
-              else:
-                  add('stock-publication-maintenance.yml', 'Stock page requires its dedicated market/ticker-aware maintenance')
-
-          if rc('/tmp/vocab-rc') != 0:
-              add('daily-japanese-vocab.yml', "today's dated vocab file or latest.json date is not current HKT date")
-
-          if rc('/tmp/publication-rc') != 0 or 'index.html' in failed_pages:
-              add('daily-today-recovery.yml', 'Daily current-publication gate is stale or incomplete')
-
-          # Only redeploy Pages directly when repository publication gates are
-          # already healthy but the public sentinel still sees stale pages.
-          if rc('/tmp/desk-rc') == 0 and rc('/tmp/stock-rc') == 0 and rc('/tmp/publication-rc') == 0 and failed_pages:
-              add('pages.yml', 'repository data is healthy but public Pages remains behind')
-
-          evidence={
-              'checkedAt':datetime.now(timezone.utc).isoformat().replace('+00:00','Z'),
-              'collectorAgeMinutes':round(staging_age_minutes,1),
-              'collectorEvidenceCurrent':not collector_stale,
-              'deskRefreshNeeded':refresh,
-              'generalNewsProductionNeeded':general_news_needed,
-              'stockDeepRecoveryRequired':deep_stock_required,
-              'vocabCurrent':rc('/tmp/vocab-rc') == 0,
-              'publicFailedPages':sorted(failed_pages),
-              'assignments':plan,
-          }
-          Path('/tmp/editor-news-assignments.json').write_text(json.dumps(evidence,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-          Path('/tmp/editor-news-workflows.txt').write_text('\n'.join(row['workflow'] for row in plan)+'\n',encoding='utf-8')
-          print(json.dumps(evidence,ensure_ascii=False,indent=2))
+          d=json.load(open('/tmp/editor-news-assignments.json',encoding='utf-8'))
+          for row in d.get('assignments') or []:
+              wf=str(row.get('workflow') or '').strip()
+              if wf:
+                  print(wf)
           PY
 
       - name: Dispatch assigned Robots without duplicate work
@@ -212,60 +124,51 @@ jobs:
           : > /tmp/editor-news-execution.jsonl
           while IFS= read -r wf; do
             [ -n "$wf" ] || continue
-            gh run list --repo "${GITHUB_REPOSITORY}" --workflow "$wf" --limit 10               --json databaseId,status,createdAt > /tmp/assignment-active.json 2>/dev/null || printf '[]' > /tmp/assignment-active.json
-            read -r active stale_ids <<< "$(WF="$wf" python - <<'PY'
+
+            assignment=$(WF="$wf" python - <<'PY'
           import json, os
-          from datetime import datetime, timezone
-          wf=os.environ['WF']
-          rows=json.load(open('/tmp/assignment-active.json',encoding='utf-8'))
-          active=[r for r in rows if r.get('status') != 'completed']
-          stale=[]
-          if wf == 'daily-japanese-vocab.yml':
-              now=datetime.now(timezone.utc)
-              for r in active:
-                  try:
-                      created=datetime.fromisoformat(str(r.get('createdAt')).replace('Z','+00:00')).astimezone(timezone.utc)
-                      if (now-created).total_seconds()/60.0 > 18:
-                          stale.append(str(r.get('databaseId')))
-                  except Exception:
-                      pass
-          print(len(active), ','.join(stale))
-          PY
-            )"
-            if [ "${active:-0}" -gt 0 ]; then
-              if [ "$wf" = "daily-japanese-vocab.yml" ] && [ -n "${stale_ids:-}" ]; then
-                IFS=',' read -ra ids <<< "$stale_ids"
-                for run_id in "${ids[@]}"; do
-                  [ -n "$run_id" ] || continue
-                  gh run cancel "$run_id" --repo "${GITHUB_REPOSITORY}" || true
-                done
-                sleep 3
-              else
-                printf '{"workflow":"%s","dispatched":false,"reason":"already-active"}\n' "$wf" >> /tmp/editor-news-execution.jsonl
-                continue
-              fi
-            fi
-            deep_stock=$(WF="$wf" python - <<'PY'
-          import json, os
-          wf=os.environ['WF']
           d=json.load(open('/tmp/editor-news-assignments.json',encoding='utf-8'))
-          deep=wf == 'stock-publication-maintenance.yml' and any(
-              isinstance(row,dict) and row.get('workflow') == wf and str(row.get('reason','')).startswith('DEEP:')
-              for row in (d.get('assignments') or [])
-          )
-          print('1' if deep else '0')
+          row=next((x for x in (d.get('assignments') or []) if x.get('workflow')==os.environ['WF']),{})
+          print(json.dumps(row,separators=(',',':')))
           PY
             )
-            if [ "$deep_stock" = "1" ]; then
-              if gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main -f recovery_mode=deep; then
-                printf '{"workflow":"%s","dispatched":true,"reason":"assigned-deep-stock-recovery"}\n' "$wf" >> /tmp/editor-news-execution.jsonl
-              else
-                printf '{"workflow":"%s","dispatched":false,"reason":"dispatch-failed","mode":"deep"}\n' "$wf" >> /tmp/editor-news-execution.jsonl
-              fi
-            elif gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main; then
-              printf '{"workflow":"%s","dispatched":true,"reason":"assigned-by-editor-in-chief"}\n' "$wf" >> /tmp/editor-news-execution.jsonl
+            mode=$(ASSIGNMENT="$assignment" python - <<'PY'
+          import json,os
+          print(json.loads(os.environ['ASSIGNMENT']).get('mode','normal'))
+          PY
+            )
+            fault=$(ASSIGNMENT="$assignment" python - <<'PY'
+          import json,os
+          print(json.loads(os.environ['ASSIGNMENT']).get('faultClass','unknown'))
+          PY
+            )
+
+            gh run list --repo "${GITHUB_REPOSITORY}" --workflow "$wf" --limit 10 \
+              --json databaseId,status,createdAt > /tmp/assignment-active.json 2>/dev/null || printf '[]' > /tmp/assignment-active.json
+            active=$(python - <<'PY'
+          import json
+          rows=json.load(open('/tmp/assignment-active.json',encoding='utf-8'))
+          print(sum(1 for r in rows if r.get('status') != 'completed'))
+          PY
+            )
+            if [ "${active:-0}" -gt 0 ]; then
+              printf '{"workflow":"%s","mode":"%s","faultClass":"%s","dispatched":false,"reason":"already-active","outcomeVerification":"required-next-cycle"}\n' "$wf" "$mode" "$fault" >> /tmp/editor-news-execution.jsonl
+              continue
+            fi
+
+            ok=false
+            if [ "$wf" = "rolling-news-search.yml" ]; then
+              if gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main -f mode="$mode"; then ok=true; fi
+            elif [ "$wf" = "stock-publication-maintenance.yml" ]; then
+              if gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main -f recovery_mode="$mode"; then ok=true; fi
             else
-              printf '{"workflow":"%s","dispatched":false,"reason":"dispatch-failed"}\n' "$wf" >> /tmp/editor-news-execution.jsonl
+              if gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main; then ok=true; fi
+            fi
+
+            if [ "$ok" = "true" ]; then
+              printf '{"workflow":"%s","mode":"%s","faultClass":"%s","dispatched":true,"reason":"assigned-by-editor-in-chief","outcomeVerification":"required-next-cycle"}\n' "$wf" "$mode" "$fault" >> /tmp/editor-news-execution.jsonl
+            else
+              printf '{"workflow":"%s","mode":"%s","faultClass":"%s","dispatched":false,"reason":"dispatch-failed"}\n' "$wf" "$mode" "$fault" >> /tmp/editor-news-execution.jsonl
             fi
           done < /tmp/editor-news-workflows.txt
 
