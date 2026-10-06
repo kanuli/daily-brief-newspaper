@@ -20,7 +20,7 @@ jobs:
       - name: Checkout proposed newsroom code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 2
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -42,7 +42,10 @@ jobs:
             exit 0
           fi
 
-          git diff --name-only "$BASE_SHA...$HEAD_SHA" > /tmp/pr-changed-files.txt
+          # pull_request checkout is GitHub's synthetic merge commit:
+          # HEAD^1 = current base, HEAD = base + this PR. This gives the exact
+          # effective PR change set without downloading the full repository history.
+          git diff --name-only HEAD^1 HEAD > /tmp/pr-changed-files.txt
           cat /tmp/pr-changed-files.txt
           python - <<'PY' >> "$GITHUB_OUTPUT"
           from pathlib import Path
