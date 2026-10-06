@@ -5,6 +5,8 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/editor-in-chief-maintenance.yml"
+      - "config/newsroom-robots.json"
+      - "scripts/newsroom_control_plane.py"
       - ".github/workflows/canto-nano-watchdog.yml"
       - ".github/workflows/daily-japanese-vocab.yml"
       - "scripts/editor_in_chief.py"
@@ -241,168 +243,70 @@ jobs:
           path.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
           PY
 
-      - name: Dispatch targeted safe repairs
+      - name: Delegate repair plan to the Editor-in-Chief assignment control plane
         id: repair
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          : > /tmp/editor-repairs.jsonl
-          python - <<'PY' > /tmp/editor-workflows.txt
-          import json
-          data=json.load(open('/tmp/editor-in-chief-status.json',encoding='utf-8'))
-          workflows=[]
-          for row in data.get('repairPlan') or []:
-              wf=str(row.get('workflow') or '').strip()
-              if wf and wf not in workflows:
-                  workflows.append(wf)
-          if any(isinstance(f,dict) and f.get('code')=='DESK_FRESHNESS_SLA_FAILED' for f in data.get('findings') or []):
-              if 'merge-live-into-desk.yml' not in workflows:
-                  workflows.append('merge-live-into-desk.yml')
-          for wf in workflows:
-              print(wf)
-          PY
-
-          while IFS= read -r wf; do
-            [ -n "$wf" ] || continue
-
-            if [ "$wf" = "canto-nano-production.yml" ]; then
-              stale_ids=$(python - <<'PY'
+          needs_assignment=$(python - <<'PY'
           import json
           d=json.load(open('/tmp/editor-in-chief-status.json',encoding='utf-8'))
-          print(' '.join(str(x) for x in (d.get('voiceWorkflowAudit') or {}).get('staleRunIds') or []))
-          PY
-              )
-              for run_id in $stale_ids; do
-                echo "Editor-in-Chief cancelling stale voice run ${run_id}"
-                gh run cancel "$run_id" --repo "${GITHUB_REPOSITORY}" || true
-              done
-              [ -z "$stale_ids" ] || sleep 5
-            fi
-
-            # Do not let `already-active` become a permanent deadlock. Healthy
-            # active owners are protected; persistent faults with an over-age run
-            # are classified STUCK, cancelled, and restarted once.
-            gh run list --repo "${GITHUB_REPOSITORY}" --workflow "$wf" --limit 10 \
-              --json databaseId,status,createdAt,updatedAt > /tmp/active-runs.json 2>/dev/null || printf '[]' > /tmp/active-runs.json
-
-            read -r active persistent max_age stale_ids <<< "$(WF="$wf" python - <<'PY'
-          import json, os
-          from datetime import datetime, timezone
-          d=json.load(open('/tmp/editor-in-chief-status.json',encoding='utf-8'))
-          runs=json.load(open('/tmp/active-runs.json',encoding='utf-8'))
-          wf=os.environ['WF']
-          active=[r for r in runs if r.get('status') != 'completed']
-          plan_areas={str(x.get('area')) for x in (d.get('repairPlan') or []) if x.get('workflow')==wf}
-          persistent=(
-              'stock-deep' in plan_areas
-              or any(
-                  isinstance(f,dict) and str(f.get('code','')).startswith('PERSISTENT_') and str(f.get('repair')) in plan_areas
-                  for f in (d.get('findings') or [])
-              )
+          critical=any(
+              isinstance(f,dict) and f.get('severity') == 'critical'
+              for f in (d.get('findings') or [])
           )
-          grace={
-              'pages.yml':20,
-              'merge-live-into-desk.yml':20,
-              'live-publication-maintenance.yml':25,
-              'stock-publication-maintenance.yml':30,
-              'rolling-news-search.yml':35,
-              'canto-nano-production.yml':110,
-              'daily-japanese-vocab.yml':18,
-          }.get(wf,45)
-          now=datetime.now(timezone.utc)
-          stale=[]
-          max_age=0.0
-          for r in active:
-              try:
-                  created=datetime.fromisoformat(str(r.get('createdAt')).replace('Z','+00:00')).astimezone(timezone.utc)
-                  age=max(0.0,(now-created).total_seconds()/60.0)
-              except Exception:
-                  age=0.0
-              max_age=max(max_age,age)
-              if age > grace:
-                  stale.append(str(r.get('databaseId')))
-          print(len(active), '1' if persistent else '0', f'{max_age:.1f}', ','.join(stale))
+          print('true' if critical or bool(d.get('repairPlan')) else 'false')
           PY
-            )"
+          )
 
+          result='not-needed'
+          if [ "$needs_assignment" = "true" ]; then
+            wf='editor-in-chief-newsroom-assignment.yml'
+            active=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow "$wf" --limit 10 --json status --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
             if [ "${active:-0}" -gt 0 ]; then
-              if [ "${persistent:-0}" = "1" ] && [ -n "${stale_ids:-}" ]; then
-                IFS=',' read -ra ids <<< "$stale_ids"
-                for run_id in "${ids[@]}"; do
-                  [ -n "$run_id" ] || continue
-                  echo "Editor-in-Chief: persistent fault + stale active ${wf} run ${run_id}; cancelling stuck owner"
-                  gh run cancel "$run_id" --repo "${GITHUB_REPOSITORY}" || true
-                done
-                sleep 5
-              else
-                printf '{"workflow":"%s","dispatched":false,"reason":"already-active-healthy","maxAgeMinutes":%s}\n' "$wf" "${max_age:-0}" >> /tmp/editor-repairs.jsonl
-                continue
-              fi
-            fi
-
-            deep_stock=$(WF="$wf" python - <<'PY'
-          import json, os
-          d=json.load(open('/tmp/editor-in-chief-status.json',encoding='utf-8'))
-          wf=os.environ['WF']
-          print('1' if wf == 'stock-publication-maintenance.yml' and any(
-              isinstance(x,dict) and x.get('area') == 'stock-deep' and x.get('workflow') == wf
-              for x in (d.get('repairPlan') or [])
-          ) else '0')
-          PY
-            )
-
-            if [ "$deep_stock" = "1" ]; then
-              # Different recovery path: refresh discovery first, then run the
-              # Stock maintainer in forced deep mode. This is used only when the
-              # prior repair produced no measurable timestamp/content progress.
-              active_discovery=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow rolling-news-search.yml --limit 5 --json status --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
-              if [ "${active_discovery:-0}" -eq 0 ]; then
-                gh workflow run rolling-news-search.yml --repo "${GITHUB_REPOSITORY}" --ref main || true
-              fi
-              if gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main -f recovery_mode=deep; then
-                printf '{"workflow":"%s","dispatched":true,"reason":"stock-deep-recovery","outcomeVerification":"required-next-cycle"}\n' "$wf" >> /tmp/editor-repairs.jsonl
-              else
-                printf '{"workflow":"%s","dispatched":false,"reason":"dispatch-failed","mode":"deep"}\n' "$wf" >> /tmp/editor-repairs.jsonl
-              fi
+              result='already-active'
             elif gh workflow run "$wf" --repo "${GITHUB_REPOSITORY}" --ref main; then
-              if [ -n "${stale_ids:-}" ] && [ "${persistent:-0}" = "1" ]; then
-                printf '{"workflow":"%s","dispatched":true,"reason":"stuck-active-restarted","previousMaxAgeMinutes":%s,"outcomeVerification":"required-next-cycle"}\n' "$wf" "${max_age:-0}" >> /tmp/editor-repairs.jsonl
-              else
-                printf '{"workflow":"%s","dispatched":true,"reason":"editor-in-chief-safe-repair","outcomeVerification":"required-next-cycle"}\n' "$wf" >> /tmp/editor-repairs.jsonl
-              fi
+              result='delegated'
             else
-              printf '{"workflow":"%s","dispatched":false,"reason":"dispatch-failed"}\n' "$wf" >> /tmp/editor-repairs.jsonl
+              result='dispatch-failed'
             fi
-          done < /tmp/editor-workflows.txt
+          fi
 
-          python - <<'PY'
-          import json
+          RESULT="$result" python - <<'PY'
+          import json, os
           from pathlib import Path
           path=Path('/tmp/editor-in-chief-status.json')
-          data=json.loads(path.read_text(encoding='utf-8'))
-          repair_file=Path('/tmp/editor-repairs.jsonl')
-          rows=[json.loads(x) for x in repair_file.read_text(encoding='utf-8').splitlines() if x.strip()] if repair_file.exists() else []
-          data['repairExecution']=rows
-          data['repairsDispatched']=sum(1 for r in rows if r.get('dispatched'))
-          data['repairsSkipped']=sum(1 for r in rows if not r.get('dispatched'))
-          data['stuckRepairsRestarted']=sum(1 for r in rows if r.get('reason')=='stuck-active-restarted')
-          failed=[r for r in rows if r.get('reason')=='dispatch-failed']
-          if failed:
-              data['findings'].append({
-                  'code':'AUTO_REPAIR_DISPATCH_FAILED',
+          d=json.loads(path.read_text(encoding='utf-8'))
+          result=os.environ['RESULT']
+          d['repairExecution']=[{
+              'workflow':'editor-in-chief-newsroom-assignment.yml',
+              'dispatched':result=='delegated',
+              'reason':result,
+              'role':'single-robot-dispatch-control-plane',
+              'outcomeVerification':'required-next-cycle',
+          }] if result != 'not-needed' else []
+          d['repairsDispatched']=1 if result=='delegated' else 0
+          d['repairsSkipped']=1 if result=='already-active' else 0
+          d['stuckRepairsRestarted']=0
+          if result == 'dispatch-failed':
+              d.setdefault('findings',[]).append({
+                  'code':'EDITOR_ASSIGNMENT_DISPATCH_FAILED',
                   'severity':'critical',
                   'area':'maintenance',
-                  'message':'Editor-in-Chief could not dispatch: ' + ', '.join(r['workflow'] for r in failed),
+                  'message':'Editor-in-Chief audit could not hand its repair plan to the newsroom assignment control plane.',
                   'repair':None,
               })
-              data['summary']['criticalCount']=int(data['summary'].get('criticalCount',0))+1
-              data['summary']['unresolvedCriticalCount']=int(data['summary'].get('unresolvedCriticalCount',0))+1
-              data['summary']['findingCount']=int(data['summary'].get('findingCount',0))+1
-              data['status']='EDITORIAL_ATTENTION_REQUIRED'
-          path.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+              d['summary']['criticalCount']=int(d['summary'].get('criticalCount',0))+1
+              d['summary']['unresolvedCriticalCount']=int(d['summary'].get('unresolvedCriticalCount',0))+1
+              d['summary']['findingCount']=int(d['summary'].get('findingCount',0))+1
+              d['status']='EDITORIAL_ATTENTION_REQUIRED'
+          path.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
           PY
+
+          echo "EDITOR_IN_CHIEF_ASSIGNMENT_DELEGATION=$result"
+          [ "$result" != "dispatch-failed" ]
 
       - name: Publish Editor-in-Chief status snapshot
         if: always()
