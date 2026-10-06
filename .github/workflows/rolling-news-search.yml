@@ -6,10 +6,16 @@ on:
     paths:
       - "scripts/rolling_news_collector.py"
       - ".github/workflows/rolling-news-search.yml"
-  schedule:
-    # 24/7 rolling discovery. Publication has its own separate 06:00-24:00 HKT window.
-    - cron: "*/15 * * * *"
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Collection mode assigned by Editor-in-Chief"
+        required: false
+        default: "normal"
+        type: choice
+        options:
+          - normal
+          - deep
 
 permissions:
   contents: write
@@ -45,12 +51,16 @@ jobs:
           fi
 
       - name: Search all 10 news desks
+        env:
+          ASSIGNED_MODE: ${{ github.event.inputs.mode }}
         shell: bash
         run: |
           set -euo pipefail
+          mode="${ASSIGNED_MODE:-normal}"
           python scripts/rolling_news_collector.py \
             --existing /tmp/search-staging.json \
-            --output data/search-staging.json
+            --output data/search-staging.json \
+            --mode "$mode"
 
       - name: Publish discovery staging only
         shell: bash
