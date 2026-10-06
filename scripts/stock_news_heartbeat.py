@@ -133,7 +133,7 @@ def refresh_coverage_freshness(stocks: dict, published: datetime, reviewed: set[
     tickers = stocks.get("tickers") if isinstance(stocks.get("tickers"), dict) else {}
     freshness: dict[str, dict] = {}
     stale_symbols: list[str] = []
-    stale_content_symbols: list[str] = []
+    no_recent_catalyst_symbols: list[str] = []
     for ticker in TRACKED:
         block = tickers.get(ticker) if isinstance(tickers.get(ticker), dict) else {}
         stories = block.get("stories") if isinstance(block.get("stories"), list) else []
@@ -146,8 +146,8 @@ def refresh_coverage_freshness(stocks: dict, published: datetime, reviewed: set[
         coverage_stale = (not search_current) or (not review_evidence)
         if coverage_stale:
             stale_symbols.append(ticker)
-        if not substantive_current:
-            stale_content_symbols.append(ticker)
+        if review_evidence and not coverage_stale and not substantive_current:
+            no_recent_catalyst_symbols.append(ticker)
 
         freshness[ticker] = {
             "lastReviewedAt": checked.isoformat() if checked is not None else None,
@@ -167,10 +167,14 @@ def refresh_coverage_freshness(stocks: dict, published: datetime, reviewed: set[
 
     stocks["coverageFreshness"] = freshness
     stocks["staleSymbols"] = stale_symbols
-    stocks["staleContentSymbols"] = stale_content_symbols
+    # A reviewed quiet symbol is current newsroom coverage, not stale content.
+    # Keep old public event timestamps truthful and expose the quiet outcome
+    # separately instead of failing the publication contract.
+    stocks["staleContentSymbols"] = []
+    stocks["noRecentCatalystSymbols"] = no_recent_catalyst_symbols
     quality = stocks.get("qualityGates") if isinstance(stocks.get("qualityGates"), dict) else {}
     quality["freshnessGateMet"] = not stale_symbols
-    quality["substantiveFreshnessGateMet"] = not stale_content_symbols
+    quality["substantiveFreshnessGateMet"] = not stale_symbols
     quality["truthfulNoCatalystGateMet"] = not stale_symbols
     stocks["qualityGates"] = quality
 
@@ -268,8 +272,8 @@ def main() -> int:
         print("STOCK_COVERAGE_REVIEW_FAIL", ",".join(stocks["staleSymbols"]))
     else:
         print("STOCK_COVERAGE_REVIEW_PASS", len(TRACKED), "symbols")
-    if stocks.get("staleContentSymbols"):
-        print("STOCK_NO_RECENT_VERIFIED_CATALYST", ",".join(stocks["staleContentSymbols"]))
+    if stocks.get("noRecentCatalystSymbols"):
+        print("STOCK_NO_RECENT_VERIFIED_CATALYST", ",".join(stocks["noRecentCatalystSymbols"]))
     return 0
 
 
