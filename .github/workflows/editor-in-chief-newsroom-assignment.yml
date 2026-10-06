@@ -20,9 +20,20 @@ on:
       - "data/desk-latest.json"
       - "data/stocks-latest.json"
       - "data/vocab/**"
+  workflow_run:
+    workflows:
+      - "Rolling News Search 15m"
+      - "General News Verified Producer"
+      - "Live Publication Auto Maintenance"
+      - "Merge Live into Rolling Desk"
+      - "Stock News Hourly Maintenance"
+      - "Daily Japanese vocab"
+      - "Deploy Daily Brief to GitHub Pages"
+      - "Publish Canto Nano Female Cantonese News Voice"
+    types: [completed]
   schedule:
-    # Collector normally runs at :00/:15/:30/:45. Inspect after it has had time
-    # to finish, then assign the next Robot from evidence rather than by timer.
+    # Schedule is the safety net. Robot completion events trigger immediate
+    # outcome re-evaluation, so recovery does not wait for the next timer slot.
     - cron: "8,23,38,53 * * * *"
   workflow_dispatch:
 
