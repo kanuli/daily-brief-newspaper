@@ -6,9 +6,14 @@ on:
     paths:
       - "data/latest.json"
       - "data/live.json"
+  schedule:
+    # Safety check 12 minutes after each hour. The script skips inactive HKT slots.
+    - cron: "12 * * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   notify:
@@ -17,16 +22,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Send Daily / material Live update to Discord
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then
-            echo "DISCORD_WEBHOOK_URL is not configured; skipping Discord notification."
-            exit 0
+            echo "::error::DISCORD_WEBHOOK_URL is not configured; Discord delivery cannot be verified."
+            exit 1
           fi
 
           python - <<'PY'
@@ -76,6 +82,7 @@ jobs:
               with urllib.request.urlopen(req, timeout=20) as response:
                   if response.status not in (200, 204):
                       raise RuntimeError(f"Discord webhook returned HTTP {response.status}")
+                  print(f"DISCORD_WEBHOOK_ACCEPTED http={response.status}")
 
           def daily_fingerprint(data):
               articles = []
@@ -88,6 +95,127 @@ jobs:
                   data.get("date"), data.get("leadId"), tuple(data.get("topFive", [])),
                   tuple(articles)
               )
+
+          event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+          if event_name in {"schedule", "workflow_dispatch"}:
+              from datetime import datetime, timezone
+              from zoneinfo import ZoneInfo
+
+              hkt = ZoneInfo("Asia/Hong_Kong")
+              now_hkt = datetime.now(timezone.utc).astimezone(hkt)
+              hour = now_hkt.hour
+              active_live = hour in (0, 6, 7) or 9 <= hour <= 23
+              daily_slot = hour == 8
+
+              if not active_live and not daily_slot:
+                  print(f"DISCORD_FALLBACK_IDLE_SKIP hkt={now_hkt.isoformat()}")
+                  raise SystemExit(0)
+
+              path = "data/latest.json" if daily_slot else "data/live.json"
+              data = load(path)
+              last_commit = subprocess.check_output(
+                  ["git", "log", "-1", "--format=%H", "--", path], text=True
+              ).strip()
+
+              try:
+                  runs_raw = subprocess.check_output(
+                      [
+                          "gh", "run", "list",
+                          "--workflow", "discord-notify.yml",
+                          "--event", "push",
+                          "--limit", "50",
+                          "--json", "headSha,conclusion"
+                      ],
+                      text=True,
+                  )
+                  push_runs = json.loads(runs_raw)
+              except Exception as exc:
+                  print(f"DISCORD_FALLBACK_RUN_AUDIT_WARNING {exc}")
+                  push_runs = []
+
+              already_sent = any(
+                  row.get("headSha") == last_commit and row.get("conclusion") == "success"
+                  for row in push_runs
+              )
+
+              if daily_slot:
+                  current = str(data.get("date") or "") == now_hkt.date().isoformat()
+                  if already_sent and current:
+                      print("DISCORD_FALLBACK_DAILY_ALREADY_SENT")
+                      raise SystemExit(0)
+                  if not current:
+                      post(
+                          "⚠️ **Daily publication alert**\n"
+                          f"{now_hkt.strftime('%Y-%m-%d %H:%M')} HKT：今日 Daily 尚未完成發布或 Discord 未有可驗證的新版本。\n"
+                          f"🔗 網站：{site}"
+                      )
+                      print("DISCORD_FALLBACK_DAILY_STALE_ALERT_SENT")
+                      raise SystemExit(0)
+
+                  articles = {a.get("id"): a for a in data.get("articles", [])}
+                  top = [
+                      articles[x]["title"] for x in data.get("topFive", [])[:3]
+                      if x in articles and articles[x].get("title")
+                  ]
+                  lines = [
+                      f"🗞️ **每日晨報 Daily Brief｜{data.get('dateLabel') or data.get('date')}**",
+                      "",
+                      *[f"{i}. {title}" for i, title in enumerate(top, 1)],
+                      "",
+                      f"🔗 今日晨報：{site}",
+                      f"🔴 Live：{site}live.html",
+                  ]
+                  post("\n".join(lines))
+                  print("DISCORD_FALLBACK_DAILY_RESEND_PASS")
+                  raise SystemExit(0)
+
+              try:
+                  live_dt = datetime.fromisoformat(
+                      str(data.get("lastUpdated") or "").replace("Z", "+00:00")
+                  ).astimezone(hkt)
+                  current = (
+                      live_dt.date() == now_hkt.date()
+                      and live_dt.hour == hour
+                  )
+              except Exception:
+                  live_dt = None
+                  current = False
+
+              if already_sent and current:
+                  print("DISCORD_FALLBACK_LIVE_ALREADY_SENT")
+                  raise SystemExit(0)
+
+              if not current:
+                  expected = f"{hour:02d}:00 HKT"
+                  actual = data.get("lastUpdatedLabel") or data.get("lastUpdated") or "unknown"
+                  post(
+                      "⚠️ **Live publication alert**\n"
+                      f"{expected} 時段未有完成的新 Live publication。\n"
+                      f"目前 Live：{actual}\n"
+                      "Closed-loop recovery remains active.\n"
+                      f"🔗 網站 Live：{site}live.html"
+                  )
+                  print("DISCORD_FALLBACK_LIVE_STALE_ALERT_SENT")
+                  raise SystemExit(0)
+
+              coverage = data.get("coverage") or {}
+              orgs = coverage.get("sourceOrganizationCount", "N/V")
+              searches = coverage.get("freshSearchCount", "N/V")
+              raw_fresh = coverage.get("rawFreshCandidateCount", coverage.get("freshCandidatesFound", "N/V"))
+              verified = coverage.get("verifiedCandidateCount", coverage.get("candidateCount", "N/V"))
+              incremental = coverage.get("incrementalCandidateCount", coverage.get("publishedCount", "N/V"))
+              lines = [
+                  f"🔴 **Hourly Live Update｜{data.get('lastUpdatedLabel', '最新更新')}**",
+                  f"掃描：{orgs} organizations / {searches} fresh searches",
+                  f"Raw fresh：{raw_fresh} · Verified：{verified} · Incremental：{incremental}",
+                  "",
+              ]
+              for item in (data.get("items") or [])[:4]:
+                  lines.append(f"**{item.get('status', 'UPDATED')}** · {item.get('title', '更新')}")
+              lines += ["", f"🔗 完整 Live：{site}live.html"]
+              post("\n".join(lines))
+              print("DISCORD_FALLBACK_LIVE_RESEND_PASS")
+              raise SystemExit(0)
 
           if "data/latest.json" in changed:
               data = load("data/latest.json")
