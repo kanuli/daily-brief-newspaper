@@ -328,14 +328,27 @@ def apply_previous_outcomes(
         prior = previous_rows.get(row["robot"])
         row["attempt"] = 1
         row["outcomeBefore"] = snapshot
-        if row.get("status") == "external-failover":
-            if prior:
-                row["attempt"] = int(prior.get("attempt") or 1)
+        if str(row.get("status") or "").startswith("external-failover"):
+            prior_attempt = int((prior or {}).get("attempt") or 1)
+            before_live = ((prior or {}).get("outcomeBefore") or {}).get("liveLastUpdated")
+            current_live = snapshot.get("liveLastUpdated")
+            progress = bool(before_live and current_live and current_live != before_live)
+            if row.get("status") == "external-failover-stuck":
+                row["attempt"] = prior_attempt + 1 if prior else 1
                 row["previousOutcome"] = {
                     "cycleId": previous.get("cycleId"),
-                    "progress": None,
+                    "progress": progress,
+                    "mode": (prior or {}).get("mode"),
+                    "attempt": prior_attempt,
+                    "evaluation": "external-publisher-no-progress" if not progress else "external-capacity-failover",
+                }
+            elif prior:
+                row["attempt"] = prior_attempt
+                row["previousOutcome"] = {
+                    "cycleId": previous.get("cycleId"),
+                    "progress": progress if before_live else None,
                     "mode": prior.get("mode"),
-                    "attempt": prior.get("attempt", 1),
+                    "attempt": prior_attempt,
                     "evaluation": "external-capacity-failover",
                 }
             continue
@@ -772,6 +785,28 @@ def main() -> int:
     snapshot["staleDesks"] = sorted(stale_desks)
 
     if producer_blocked:
+        hkt_now = now.astimezone(HKT)
+        active_live_hour = hkt_now.hour in {0, 6, 7} or 9 <= hkt_now.hour <= 23
+        live_stamp = parse_iso(snapshot.get("liveLastUpdated"))
+        live_hkt = live_stamp.astimezone(HKT) if live_stamp else None
+        live_slot_current = bool(
+            live_hkt
+            and live_hkt.date() == hkt_now.date()
+            and live_hkt.hour == hkt_now.hour
+        )
+        external_slot_due = active_live_hour and hkt_now.minute >= 10
+        snapshot["externalPublisherExpectedSlot"] = (
+            f"{hkt_now.date().isoformat()}T{hkt_now.hour:02d}:00+08:00"
+            if active_live_hour
+            else None
+        )
+        snapshot["externalPublisherSlotCurrent"] = (
+            live_slot_current if active_live_hour else None
+        )
+        snapshot["externalPublisherNoProgress"] = bool(
+            external_slot_due and not live_slot_current
+        )
+
         for row in plan:
             if row.get("robot") != "general-producer":
                 continue
@@ -787,9 +822,24 @@ def main() -> int:
             )
             row["verifyNextCycle"] = [
                 "prepublishDraftId advances via alternate verified production",
-                "liveLastUpdated advances",
+                "liveLastUpdated advances into the current scheduled HKT slot",
                 "producer capacity later returns AVAILABLE",
             ]
+            if external_slot_due and not live_slot_current:
+                row["faultClass"] = "external-publisher-no-progress"
+                row["status"] = "external-failover-stuck"
+                row["requiresEditorReplan"] = True
+                row["reason"] = (
+                    "GitHub Copilot producer capacity is exhausted and the external "
+                    "Newsroom Publisher did not advance Live into the current scheduled "
+                    f"{hkt_now.hour:02d}:00 HKT slot by minute {hkt_now.minute:02d}; "
+                    "closed-loop recovery must re-invoke or replace the external path"
+                )
+                row["verifyNextCycle"] = [
+                    "liveLastUpdated advances into the current scheduled HKT slot",
+                    "a new material Live commit exists on main",
+                    "downstream Desk Merge / Pages / Discord outcome becomes current",
+                ]
 
     apply_previous_outcomes(
         plan,
@@ -836,7 +886,14 @@ def main() -> int:
         "assignments": plan,
         "dispatchableCount": sum(1 for row in plan if row.get("dispatchable")),
         "blockedCount": sum(1 for row in plan if row.get("status") == "blocked"),
-        "stuckCount": sum(1 for row in plan if row.get("status") == "stuck"),
+        "stuckCount": sum(
+            1 for row in plan
+            if row.get("status") in {"stuck", "external-failover-stuck"}
+        ),
+        "externalPublisherNoProgress": any(
+            row.get("faultClass") == "external-publisher-no-progress"
+            for row in plan
+        ),
         "healthy": len(plan) == 0,
     }
     Path(args.output).write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
