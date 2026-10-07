@@ -270,6 +270,7 @@ jobs:
           COPY_OK: ${{ steps.copy.outputs.ok }}
           COPY_CAPACITY: ${{ steps.copy.outputs.capacity_exhausted }}
           LOCAL_FALLBACK_OK: ${{ steps.local_fallback.outputs.ok }}
+          LOCAL_FALLBACK_OUTCOME: ${{ steps.local_fallback.outcome }}
         shell: bash
         run: |
           set -euo pipefail
@@ -281,15 +282,20 @@ jobs:
           verify_ok=os.environ.get("VERIFY_OK") == "true"
           copy_ok=os.environ.get("COPY_OK") == "true"
           local_fallback_ok=os.environ.get("LOCAL_FALLBACK_OK") == "true"
+          local_fallback_outcome=os.environ.get("LOCAL_FALLBACK_OUTCOME") or ""
           capacity=(os.environ.get("VERIFY_CAPACITY") == "true" or os.environ.get("COPY_CAPACITY") == "true")
           now=datetime.now(timezone.utc)
           if capacity and local_fallback_ok:
               status="DEGRADED_LOCAL_FALLBACK"
               reason="GitHub Copilot quota/capacity exhausted; open-source local fallback succeeded"
               blocked_until=None
+          elif capacity and local_fallback_outcome in {"failure", "success"}:
+              status="LOCAL_FALLBACK_FAILED"
+              reason="GitHub Copilot quota/capacity exhausted; GitHub-native local fallback attempted but produced no publishable verified output"
+              blocked_until=None
           elif capacity:
               status="QUOTA_EXHAUSTED"
-              reason="GitHub Copilot monthly quota/capacity exhausted and local fallback unavailable"
+              reason="GitHub Copilot monthly quota/capacity exhausted and no local fallback attempt was available"
               blocked_until=now + timedelta(hours=6)
           elif verify_ok and copy_ok:
               status="AVAILABLE"
@@ -309,10 +315,10 @@ jobs:
               "blockedUntil": blocked_until.isoformat().replace("+00:00","Z") if blocked_until else None,
               "recoveryOwner": (
                   "workflow:general-news-producer.yml"
-                  if local_fallback_ok
+                  if (local_fallback_ok or status == "LOCAL_FALLBACK_FAILED")
                   else ("automation:Newsroom Publisher" if capacity else None)
               ),
-              "localFallbackModel": "qwen2.5:1.5b" if local_fallback_ok else None,
+              "localFallbackModel": "qwen2.5:1.5b" if (local_fallback_ok or status == "LOCAL_FALLBACK_FAILED") else None,
               "workflowRunId": os.environ.get("GITHUB_RUN_ID"),
           }
           Path("/tmp/producer-capacity.json").write_text(
