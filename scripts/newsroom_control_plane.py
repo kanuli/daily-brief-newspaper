@@ -669,6 +669,7 @@ def main() -> int:
     desk_dt = parse_iso(desk.get("generatedAt") or desk.get("lastUpdated"))
     if live_dt and (desk_dt is None or live_dt > desk_dt) and not any(
         row["robot"] in {"general-producer", "live-publisher", "daily-recovery"}
+        and row.get("dispatchable")
         for row in plan
     ):
         add_assignment(
