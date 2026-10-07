@@ -436,7 +436,7 @@ jobs:
           exit 1
 
       - name: Fail non-capacity verification/copy errors
-        if: always() && steps.pending.outputs.pending != 'true' && steps.prepare.outputs.candidate_count != '0' && steps.capacity.outputs.blocked != 'true' && (steps.verify.outputs.ok != 'true' || steps.copy.outputs.ok != 'true')
+        if: always() && steps.pending.outputs.pending != 'true' && steps.prepare.outputs.candidate_count != '0' && steps.capacity.outputs.blocked != 'true' && steps.local_fallback.outputs.ok != 'true' && (steps.verify.outputs.ok != 'true' || steps.copy.outputs.ok != 'true')
         shell: bash
         run: |
           echo "GENERAL_NEWS_PRODUCER_ERROR verification/copy failed for a non-capacity reason" >&2
