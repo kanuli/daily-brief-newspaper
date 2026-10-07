@@ -20,7 +20,8 @@
     "todayFirst": true,
     "doNotFabricateNews": true,
     "doNotFakeFreshness": true,
-    "consumedDraftMustNotBlockProducer": true
+    "consumedDraftMustNotBlockProducer": true,
+    "producerCapacityUsesPublisherFailover": true
   },
   "robots": [
     {
@@ -66,7 +67,8 @@
       "faultClasses": [
         "desk-stale-with-candidates",
         "verification-gap",
-        "live-stale-with-candidates"
+        "live-stale-with-candidates",
+        "producer-capacity-exhausted"
       ],
       "modes": [
         "normal"
@@ -75,7 +77,8 @@
         "prepublish VERIFIED_DRAFT created or advanced",
         "staleDesks reduced",
         "publishable article created"
-      ]
+      ],
+      "alternateRecoveryOwner": "automation:Newsroom Publisher"
     },
     {
       "id": "live-publisher",

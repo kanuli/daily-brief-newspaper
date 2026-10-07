@@ -95,6 +95,8 @@ jobs:
         run: npm install -g @github/copilot
 
       - name: Verify current candidates against web sources
+        id: verify
+        continue-on-error: true
         if: steps.pending.outputs.pending != 'true' && steps.prepare.outputs.candidate_count != '0'
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -135,17 +137,31 @@ jobs:
           Omit a desk entirely if no candidate can be verified safely. Do not add candidates that are not in request.json. Do not output Markdown or commentary.
           EOF
           )
-          timeout 300s copilot -p "$PROMPT" -s \
-            --no-ask-user \
-            --disable-builtin-mcps \
-            --available-tools='view,web_search,web_fetch' \
-            --allow-tool='read,url' \
-            --allow-all-urls \
-            > facts.raw
-          test -s facts.raw
+          set +e
+          timeout 300s copilot -p "$PROMPT" -s             --no-ask-user             --disable-builtin-mcps             --available-tools='view,web_search,web_fetch'             --allow-tool='read,url'             --allow-all-urls             > facts.raw 2> facts.err
+          rc=$?
+          set -e
+          cat facts.err >&2 || true
+
+          ok=false
+          if [ "$rc" -eq 0 ] && [ -s facts.raw ]; then
+            ok=true
+          fi
+          capacity=false
+          if grep -Eqi 'exceeded your monthly quota|monthly quota|quota exceeded|capacity unavailable|copilot.*unavailable' facts.err facts.raw 2>/dev/null; then
+            capacity=true
+          fi
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+          echo "capacity_exhausted=$capacity" >> "$GITHUB_OUTPUT"
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          if [ "$ok" != "true" ]; then
+            exit 1
+          fi
 
       - name: Write Cantonese copy from verified facts only
-        if: steps.pending.outputs.pending != 'true' && steps.prepare.outputs.candidate_count != '0'
+        id: copy
+        continue-on-error: true
+        if: steps.pending.outputs.pending != 'true' && steps.prepare.outputs.candidate_count != '0' && steps.verify.outputs.ok == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         shell: bash
@@ -180,16 +196,101 @@ jobs:
           Do not output Markdown or commentary.
           EOF
           )
-          timeout 240s copilot -p "$PROMPT" -s \
-            --no-ask-user \
-            --disable-builtin-mcps \
-            --available-tools='view' \
-            --allow-tool='read' \
-            > copy.raw
-          test -s copy.raw
+          set +e
+          timeout 240s copilot -p "$PROMPT" -s             --no-ask-user             --disable-builtin-mcps             --available-tools='view'             --allow-tool='read'             > copy.raw 2> copy.err
+          rc=$?
+          set -e
+          cat copy.err >&2 || true
+
+          ok=false
+          if [ "$rc" -eq 0 ] && [ -s copy.raw ]; then
+            ok=true
+          fi
+          capacity=false
+          if grep -Eqi 'exceeded your monthly quota|monthly quota|quota exceeded|capacity unavailable|copilot.*unavailable' copy.err copy.raw 2>/dev/null; then
+            capacity=true
+          fi
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+          echo "capacity_exhausted=$capacity" >> "$GITHUB_OUTPUT"
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          if [ "$ok" != "true" ]; then
+            exit 1
+          fi
+
+      - name: Record producer capacity outcome
+        id: capacity
+        if: always() && steps.pending.outputs.pending != 'true' && steps.prepare.outputs.candidate_count != '0'
+        env:
+          VERIFY_OK: ${{ steps.verify.outputs.ok }}
+          VERIFY_CAPACITY: ${{ steps.verify.outputs.capacity_exhausted }}
+          COPY_OK: ${{ steps.copy.outputs.ok }}
+          COPY_CAPACITY: ${{ steps.copy.outputs.capacity_exhausted }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+
+          verify_ok=os.environ.get("VERIFY_OK") == "true"
+          copy_ok=os.environ.get("COPY_OK") == "true"
+          capacity=(os.environ.get("VERIFY_CAPACITY") == "true" or os.environ.get("COPY_CAPACITY") == "true")
+          now=datetime.now(timezone.utc)
+          if capacity:
+              status="QUOTA_EXHAUSTED"
+              reason="GitHub Copilot monthly quota/capacity exhausted"
+              blocked_until=now + timedelta(hours=6)
+          elif verify_ok and copy_ok:
+              status="AVAILABLE"
+              reason="GitHub Copilot verification and copy path succeeded"
+              blocked_until=None
+          else:
+              status="ERROR"
+              reason="General Producer failed for a non-capacity reason"
+              blocked_until=None
+
+          data={
+              "schemaVersion": 1,
+              "producer": "General News Verified Producer",
+              "checkedAt": now.isoformat().replace("+00:00","Z"),
+              "status": status,
+              "reason": reason,
+              "blockedUntil": blocked_until.isoformat().replace("+00:00","Z") if blocked_until else None,
+              "recoveryOwner": "automation:Newsroom Publisher" if capacity else None,
+              "workflowRunId": os.environ.get("GITHUB_RUN_ID"),
+          }
+          Path("/tmp/producer-capacity.json").write_text(
+              json.dumps(data,ensure_ascii=False,indent=2)+"\n",
+              encoding="utf-8",
+          )
+          print("blocked=" + ("true" if capacity else "false"))
+          print("status=" + status)
+          PY
+          cat /tmp/producer-capacity.json
+
+      - name: Persist producer capacity telemetry
+        if: always() && steps.pending.outputs.pending != 'true' && steps.prepare.outputs.candidate_count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s /tmp/producer-capacity.json
+          encoded=$(base64 -w0 /tmp/producer-capacity.json)
+          current_sha=$(gh api "repos/${GITHUB_REPOSITORY}/contents/data/producer-capacity.json?ref=prepublish-news" --jq .sha 2>/dev/null || true)
+          args=(--method PUT "repos/${GITHUB_REPOSITORY}/contents/data/producer-capacity.json"
+            -f message="Update General Producer capacity status"
+            -f content="$encoded"
+            -f branch="prepublish-news")
+          if [ -n "$current_sha" ]; then
+            args+=(-f sha="$current_sha")
+          fi
+          gh api "${args[@]}" >/dev/null
+          echo "GENERAL_NEWS_PRODUCER_CAPACITY_TELEMETRY_PERSISTED status=${{ steps.capacity.outputs.status }}"
 
       - name: Merge only schema-valid evidence and copy
-        if: steps.pending.outputs.pending != 'true'
+        if: steps.pending.outputs.pending != 'true' && (steps.prepare.outputs.candidate_count == '0' || (steps.verify.outputs.ok == 'true' && steps.copy.outputs.ok == 'true'))
         shell: bash
         run: |
           set -euo pipefail
@@ -215,7 +316,7 @@ jobs:
           cat /tmp/general-news-verification-report.json
 
       - name: Produce outcome using Editor-in-Chief freshness targets
-        if: steps.pending.outputs.pending != 'true'
+        if: steps.pending.outputs.pending != 'true' && (steps.prepare.outputs.candidate_count == '0' || (steps.verify.outputs.ok == 'true' && steps.copy.outputs.ok == 'true'))
         id: producer
         shell: bash
         run: |
@@ -262,6 +363,17 @@ jobs:
             sleep $((attempt * 2))
           done
           echo "Could not persist general-news draft" >&2
+          exit 1
+
+      - name: Report producer capacity failover
+        if: steps.capacity.outputs.blocked == 'true'
+        run: echo "GENERAL_NEWS_PRODUCER_CAPACITY_EXHAUSTED recoveryOwner=automation:Newsroom Publisher"
+
+      - name: Fail non-capacity verification/copy errors
+        if: always() && steps.pending.outputs.pending != 'true' && steps.prepare.outputs.candidate_count != '0' && steps.capacity.outputs.blocked != 'true' && (steps.verify.outputs.ok != 'true' || steps.copy.outputs.ok != 'true')
+        shell: bash
+        run: |
+          echo "GENERAL_NEWS_PRODUCER_ERROR verification/copy failed for a non-capacity reason" >&2
           exit 1
 
       - name: Report healthy no-op

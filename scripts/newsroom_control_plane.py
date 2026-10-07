@@ -126,6 +126,13 @@ def pending_live_draft(
     return bool(created and 0 <= (now - created).total_seconds() <= 120 * 60)
 
 
+def producer_capacity_blocked(capacity: dict[str, Any], now: datetime) -> bool:
+    if str(capacity.get("status") or "").upper() != "QUOTA_EXHAUSTED":
+        return False
+    blocked_until = parse_iso(capacity.get("blockedUntil"))
+    return blocked_until is None or now < blocked_until
+
+
 def make_cycle_id(now: datetime) -> str:
     return now.strftime("%Y%m%dT%H%M%SZ")
 
@@ -321,6 +328,17 @@ def apply_previous_outcomes(
         prior = previous_rows.get(row["robot"])
         row["attempt"] = 1
         row["outcomeBefore"] = snapshot
+        if row.get("status") == "external-failover":
+            if prior:
+                row["attempt"] = int(prior.get("attempt") or 1)
+                row["previousOutcome"] = {
+                    "cycleId": previous.get("cycleId"),
+                    "progress": None,
+                    "mode": prior.get("mode"),
+                    "attempt": prior.get("attempt", 1),
+                    "evaluation": "external-capacity-failover",
+                }
+            continue
         if not prior:
             continue
         execution = execution_for(previous, row["workflow"])
@@ -398,6 +416,7 @@ def main() -> int:
     ap.add_argument("--registry", default="config/newsroom-robots.json")
     ap.add_argument("--staging", required=True)
     ap.add_argument("--prepublish")
+    ap.add_argument("--producer-capacity")
     ap.add_argument("--freshness", required=True)
     ap.add_argument("--editor-status", required=True)
     ap.add_argument("--sentinel", required=True)
@@ -423,6 +442,7 @@ def main() -> int:
     registry, robots, trigger_map = load_registry(args.registry)
     staging = load(args.staging, {})
     prepublish = load(args.prepublish, {})
+    producer_capacity = load(args.producer_capacity, {})
     freshness = load(args.freshness, {})
     editor = load(args.editor_status, {})
     sentinel = load(args.sentinel, {})
@@ -450,6 +470,11 @@ def main() -> int:
         publication_rc=args.publication_rc,
         vocab_ok=vocab_ok,
     )
+    producer_blocked = producer_capacity_blocked(producer_capacity, now)
+    snapshot["producerCapacityStatus"] = producer_capacity.get("status")
+    snapshot["producerCapacityCheckedAt"] = producer_capacity.get("checkedAt")
+    snapshot["producerCapacityBlockedUntil"] = producer_capacity.get("blockedUntil")
+    snapshot["producerCapacityBlocked"] = producer_blocked
 
     trigger_robot = trigger_map.get(args.trigger_workflow)
     trigger_success = bool(trigger_robot and args.trigger_conclusion == "success")
@@ -605,7 +630,12 @@ def main() -> int:
             "General News Producer completed and left a verified Live draft ready for publication",
             priority=15,
         )
-    if trigger_robot == "general-producer" and args.trigger_conclusion and args.trigger_conclusion != "success":
+    if (
+        trigger_robot == "general-producer"
+        and args.trigger_conclusion
+        and args.trigger_conclusion != "success"
+        and not producer_blocked
+    ):
         add_assignment(
             plan,
             robots,
@@ -739,6 +769,27 @@ def main() -> int:
         )
 
     snapshot["staleDesks"] = sorted(stale_desks)
+
+    if producer_blocked:
+        for row in plan:
+            if row.get("robot") != "general-producer":
+                continue
+            row["faultClass"] = "producer-capacity-exhausted"
+            row["status"] = "external-failover"
+            row["dispatchable"] = False
+            row["blockedBy"] = ["automation:Newsroom Publisher"]
+            row["requiresExternalPublisher"] = True
+            row["reason"] = (
+                "GitHub Copilot producer capacity is exhausted; the existing "
+                "Newsroom Publisher owns the alternate verified production path "
+                "until the capacity probe window expires"
+            )
+            row["verifyNextCycle"] = [
+                "prepublishDraftId advances via alternate verified production",
+                "liveLastUpdated advances",
+                "producer capacity later returns AVAILABLE",
+            ]
+
     apply_previous_outcomes(
         plan,
         robots,

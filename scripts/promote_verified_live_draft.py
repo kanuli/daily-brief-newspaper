@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 LIVE_PATH = DATA / "live.json"
 LATEST_PATH = DATA / "latest.json"
+HKT = timezone(timedelta(hours=8))
 
 REQUIRED = (
     "id", "title", "dek", "summary", "body", "context", "why",
@@ -131,8 +132,18 @@ def validate_draft(draft, now: datetime, grace_minutes: int, max_age_minutes: in
 
 
 def build_live(draft, old_live, latest, target, articles):
-    daily_date = str(latest.get("date") or old_live.get("date") or target.date().isoformat())
-    hour = display_hour(target, daily_date)
+    target_hkt = target.astimezone(HKT)
+    target_date = target_hkt.date().isoformat()
+    if target_hkt.hour == 0:
+        # 00:00 closes the previous Daily publication day as 24:00.
+        previous_date = (target_hkt.date() - timedelta(days=1)).isoformat()
+        latest_date = str(latest.get("date") or "")
+        daily_date = latest_date if latest_date == previous_date else previous_date
+    else:
+        # Never let a stale Daily root date drag a current Live snapshot back
+        # into yesterday. The publication target is authoritative.
+        daily_date = target_date
+    hour = display_hour(target_hkt, daily_date)
     old_by_id = {
         str(item.get("id")): item
         for item in (old_live.get("items") or [])

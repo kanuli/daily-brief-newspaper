@@ -35,6 +35,7 @@ def base_files():
             },
         },
         "prepublish": {},
+        "producer_capacity": {},
         "freshness": {
             "desks": {
                 "world": {"fresh": True, "dailySynced": True, "newestAgeHours": 1},
@@ -79,6 +80,8 @@ def run_case(
                 str(paths["staging"]),
                 "--prepublish",
                 str(paths["prepublish"]),
+                "--producer-capacity",
+                str(paths["producer_capacity"]),
                 "--freshness",
                 str(paths["freshness"]),
                 "--editor-status",
@@ -304,6 +307,35 @@ stock = next(x for x in r["assignments"] if x["robot"] == "stock")
 assert stock["status"] == "stuck", r
 assert stock["dispatchable"] is False, r
 assert r["stuckCount"] == 1, r
+
+def producer_capacity_exhausted(d):
+    stale_with_candidates(d)
+    d["producer_capacity"] = {
+        "status": "QUOTA_EXHAUSTED",
+        "checkedAt": NOW_ISO,
+        "blockedUntil": (NOW + timedelta(hours=6)).isoformat().replace("+00:00", "Z"),
+        "recoveryOwner": "automation:Newsroom Publisher",
+    }
+
+r = run_case(mutate=producer_capacity_exhausted)
+producer = next(x for x in r["assignments"] if x["robot"] == "general-producer")
+assert producer["faultClass"] == "producer-capacity-exhausted", r
+assert producer["status"] == "external-failover", r
+assert producer["dispatchable"] is False, r
+assert producer["blockedBy"] == ["automation:Newsroom Publisher"], r
+assert producer["requiresExternalPublisher"] is True, r
+assert r["evidenceSnapshot"]["producerCapacityBlocked"] is True, r
+
+r = run_case(
+    mutate=producer_capacity_exhausted,
+    trigger_workflow="General News Verified Producer",
+    trigger_conclusion="success",
+)
+assert not any(
+    x["robot"] == "collector" and x["faultClass"] == "producer-exhausted"
+    for x in r["assignments"]
+), r
+
 
 def producer_failure(d):
     stale_with_candidates(d)

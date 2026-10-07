@@ -66,6 +66,7 @@ jobs:
           rm -f \
             /tmp/search-staging.json \
             /tmp/prepublish.json \
+            /tmp/producer-capacity.json \
             /tmp/page-news-sentinel.json \
             /tmp/editor-status.json \
             /tmp/previous-assignments.json
@@ -75,6 +76,7 @@ jobs:
 
           git fetch -q origin prepublish-news:refs/remotes/origin/prepublish-news || true
           git show origin/prepublish-news:data/prepublish.json > /tmp/prepublish.json 2>/dev/null || echo '{}' > /tmp/prepublish.json
+          git show origin/prepublish-news:data/producer-capacity.json > /tmp/producer-capacity.json 2>/dev/null || echo '{}' > /tmp/producer-capacity.json
 
           git fetch -q origin page-sentinel-status:refs/remotes/origin/page-sentinel-status || true
           git show origin/page-sentinel-status:data/page-news-sentinel-status.json > /tmp/page-news-sentinel.json 2>/dev/null || echo '{}' > /tmp/page-news-sentinel.json
@@ -133,6 +135,7 @@ jobs:
             --registry config/newsroom-robots.json \
             --staging /tmp/search-staging.json \
             --prepublish /tmp/prepublish.json \
+            --producer-capacity /tmp/producer-capacity.json \
             --freshness /tmp/desk-freshness.json \
             --editor-status /tmp/editor-status.json \
             --sentinel /tmp/page-news-sentinel.json \

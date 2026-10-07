@@ -3,7 +3,7 @@ import copy
 import json
 import pathlib
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from atomic_publish import atomic_write_json
 from desk_retention import keep_on_desk
@@ -14,6 +14,7 @@ DATA = ROOT / "data"
 LIVE = DATA / "live.json"
 DESK = DATA / "desk-latest.json"
 MIN_BODY_MEASURE = 95
+HKT = timezone(timedelta(hours=8))
 
 FLOORS = {
     "world": 8,
@@ -312,7 +313,22 @@ def main():
     if not routing_gate:
         raise SystemExit("public desk routing integrity failed after merge")
 
-    desk["date"] = live.get("date", desk.get("date"))
+    canonical_date = str(live.get("date") or desk.get("date") or "")
+    try:
+        live_updated = datetime.fromisoformat(str(live.get("lastUpdated") or "").replace("Z", "+00:00"))
+        if live_updated.tzinfo is None:
+            raise ValueError("lastUpdated has no timezone")
+        live_hkt = live_updated.astimezone(HKT)
+        if live_hkt.hour == 0:
+            previous_date = (live_hkt.date() - timedelta(days=1)).isoformat()
+            if canonical_date != previous_date:
+                canonical_date = live_hkt.date().isoformat()
+        else:
+            canonical_date = live_hkt.date().isoformat()
+    except Exception:
+        pass
+    desk["date"] = canonical_date
+    live["date"] = canonical_date
     desk["generatedAt"] = live.get("lastUpdated")
     desk["mode"] = "ROLLING_DESK_LATEST"
     desk["editorialStandardVersion"] = 3

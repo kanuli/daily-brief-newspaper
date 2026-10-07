@@ -134,10 +134,22 @@ def build(now: datetime | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
     desk_path = DATA / "desk-latest.json"
     desk = load(desk_path)
     desk_date = str(desk.get("date") or "")
-    if desk_date < target:
+    effective_desk_date = desk_date
+    generated_at = str(desk.get("generatedAt") or desk.get("lastUpdated") or "")
+    if generated_at:
+        try:
+            generated = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+            if generated.tzinfo is not None:
+                generated_date = generated.astimezone(HKT).date().isoformat()
+                if generated_date > effective_desk_date:
+                    effective_desk_date = generated_date
+        except Exception:
+            pass
+    if effective_desk_date < target:
         raise SystemExit(
             f"Rolling Desk is not current enough to build required Daily: "
-            f"desk date={desk_date} required={target}"
+            f"desk date={desk_date} generatedAt={generated_at or 'missing'} "
+            f"effective date={effective_desk_date} required={target}"
         )
 
     desks = desk.get("desks") if isinstance(desk.get("desks"), dict) else {}
