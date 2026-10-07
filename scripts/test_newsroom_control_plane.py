@@ -325,6 +325,24 @@ assert producer["dispatchable"] is False, r
 assert producer["blockedBy"] == ["automation:Newsroom Publisher"], r
 assert producer["requiresExternalPublisher"] is True, r
 assert r["evidenceSnapshot"]["producerCapacityBlocked"] is True, r
+assert r["evidenceSnapshot"]["externalPublisherSlotCurrent"] is True, r
+assert r["externalPublisherNoProgress"] is False, r
+
+def producer_capacity_external_slot_missed(d):
+    producer_capacity_exhausted(d)
+    stale=(NOW - timedelta(hours=2)).isoformat().replace("+00:00", "Z")
+    d["live"] = {"lastUpdated": stale}
+    d["desk"] = {"generatedAt": stale}
+
+r = run_case(mutate=producer_capacity_external_slot_missed)
+producer = next(x for x in r["assignments"] if x["robot"] == "general-producer")
+assert producer["faultClass"] == "external-publisher-no-progress", r
+assert producer["status"] == "external-failover-stuck", r
+assert producer["dispatchable"] is False, r
+assert producer["requiresEditorReplan"] is True, r
+assert r["externalPublisherNoProgress"] is True, r
+assert r["stuckCount"] >= 1, r
+assert r["evidenceSnapshot"]["externalPublisherSlotCurrent"] is False, r
 
 r = run_case(
     mutate=producer_capacity_exhausted,
