@@ -328,6 +328,18 @@ assert r["evidenceSnapshot"]["producerCapacityBlocked"] is True, r
 assert r["evidenceSnapshot"]["externalPublisherSlotCurrent"] is True, r
 assert r["externalPublisherNoProgress"] is False, r
 
+def producer_capacity_expired_but_still_exhausted(d):
+    producer_capacity_exhausted(d)
+    d["producer_capacity"]["blockedUntil"] = (NOW - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
+
+r = run_case(mutate=producer_capacity_expired_but_still_exhausted)
+producer = next(x for x in r["assignments"] if x["robot"] == "general-producer")
+assert r["evidenceSnapshot"]["producerCapacityStatus"] == "QUOTA_EXHAUSTED", r
+assert r["evidenceSnapshot"]["producerCapacityBlocked"] is True, r
+assert producer["faultClass"] == "producer-capacity-exhausted", r
+assert producer["status"] == "external-failover", r
+assert producer["dispatchable"] is False, r
+
 def producer_capacity_external_slot_missed(d):
     producer_capacity_exhausted(d)
     stale=(NOW - timedelta(hours=2)).isoformat().replace("+00:00", "Z")
