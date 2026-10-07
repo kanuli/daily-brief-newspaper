@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from opencc import OpenCC
+from googlenewsdecoder import gnewsdecoder
 
 import general_news_verified_producer as producer
 
@@ -223,12 +224,27 @@ class ArticleTextParser(HTMLParser):
                 self.parts.append(value)
 
 
-def source_packet(candidate: dict[str, Any]) -> dict[str, str] | None:
-    match = bing_search(candidate)
-    if not match:
+def decoded_candidate_url(candidate: dict[str, Any]) -> str | None:
+    raw = clean(candidate.get("url"))
+    if not raw:
         return None
+    host = (urllib.parse.urlparse(raw).hostname or "").lower()
+    if host != "news.google.com":
+        return raw if safe_http_url(raw) else None
     try:
-        final_url, payload = fetch(match["url"], accept="text/html,application/xhtml+xml,*/*")
+        result = gnewsdecoder(raw, interval=None, timeout=15.0)
+        if isinstance(result, dict) and result.get("success"):
+            decoded = clean(result.get("decoded_url"))
+            if decoded and safe_http_url(decoded):
+                return decoded
+    except Exception:
+        pass
+    return None
+
+
+def extract_source_page(url: str) -> tuple[str, str] | None:
+    try:
+        final_url, payload = fetch(url, accept="text/html,application/xhtml+xml,*/*")
         text = payload.decode("utf-8", errors="ignore")
         parser = ArticleTextParser()
         parser.feed(text)
@@ -236,17 +252,36 @@ def source_packet(candidate: dict[str, Any]) -> dict[str, str] | None:
         source_text = clean(" ".join(chunks))
     except Exception:
         return None
-
     if len(source_text) < 300:
         return None
-    source_text = source_text[:MAX_SOURCE_TEXT]
+    return final_url, source_text[:MAX_SOURCE_TEXT]
+
+
+def source_packet(candidate: dict[str, Any]) -> dict[str, str] | None:
+    direct = decoded_candidate_url(candidate)
+    source_page_title = producer.TITLE_SUFFIX.sub("", clean(candidate.get("title")))
+    page = extract_source_page(direct) if direct else None
+
+    # Free Bing RSS is a secondary locator only if Google News decoding or the
+    # decoded publisher page is unavailable. Publication still requires an
+    # actual fetched publisher page; a search snippet alone is never enough.
+    if not page:
+        match = bing_search(candidate)
+        if not match:
+            return None
+        page = extract_source_page(match["url"])
+        if not page:
+            return None
+        source_page_title = match["title"]
+
+    final_url, source_text = page
     return {
         "candidateId": clean(candidate.get("id")),
         "desk": clean(candidate.get("desk")),
         "originalTitle": producer.TITLE_SUFFIX.sub("", clean(candidate.get("title"))),
         "sourceName": clean(candidate.get("source")),
         "directUrl": final_url,
-        "sourcePageTitle": match["title"],
+        "sourcePageTitle": source_page_title,
         "sourceText": source_text,
     }
 
