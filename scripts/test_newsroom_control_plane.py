@@ -340,6 +340,23 @@ assert producer["faultClass"] == "producer-capacity-exhausted", r
 assert producer["status"] == "external-failover", r
 assert producer["dispatchable"] is False, r
 
+def producer_local_fallback_failed_but_retryable(d):
+    stale_with_candidates(d)
+    d["producer_capacity"] = {
+        "status": "LOCAL_FALLBACK_FAILED",
+        "checkedAt": NOW_ISO,
+        "blockedUntil": None,
+        "recoveryOwner": "workflow:general-news-producer.yml",
+        "localFallbackModel": "qwen2.5:1.5b",
+    }
+
+r = run_case(mutate=producer_local_fallback_failed_but_retryable)
+producer = next(x for x in r["assignments"] if x["robot"] == "general-producer")
+assert r["evidenceSnapshot"]["producerCapacityStatus"] == "LOCAL_FALLBACK_FAILED", r
+assert r["evidenceSnapshot"]["producerCapacityBlocked"] is False, r
+assert producer["faultClass"] == "desk-stale-with-candidates", r
+assert producer["dispatchable"] is True, r
+
 def producer_capacity_external_slot_missed(d):
     producer_capacity_exhausted(d)
     stale=(NOW - timedelta(hours=2)).isoformat().replace("+00:00", "Z")
