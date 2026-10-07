@@ -319,7 +319,7 @@ def valid_output(packet: dict[str, str], value: dict[str, Any]) -> tuple[list[st
             return None
         copy[field] = text
 
-    public = " ".join(copy.values() + facts)
+    public = " ".join(list(copy.values()) + facts)
     if set(NUM_RE.findall(public)) - allowed_numbers(packet):
         return None
     if producer.PROCESS_FILLER.search(public) or BANNED_PUBLIC.search(public):
