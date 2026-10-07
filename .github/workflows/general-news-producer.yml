@@ -315,8 +315,12 @@ jobs:
               "blockedUntil": blocked_until.isoformat().replace("+00:00","Z") if blocked_until else None,
               "recoveryOwner": (
                   "workflow:general-news-producer.yml"
-                  if (local_fallback_ok or status == "LOCAL_FALLBACK_FAILED")
-                  else ("automation:Newsroom Publisher" if capacity else None)
+                  if local_fallback_ok
+                  else (
+                      "automation:Newsroom Publisher"
+                      if status in {"LOCAL_FALLBACK_FAILED", "QUOTA_EXHAUSTED"}
+                      else None
+                  )
               ),
               "localFallbackModel": "qwen2.5:1.5b" if (local_fallback_ok or status == "LOCAL_FALLBACK_FAILED") else None,
               "workflowRunId": os.environ.get("GITHUB_RUN_ID"),
