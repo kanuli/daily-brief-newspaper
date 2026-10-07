@@ -127,10 +127,16 @@ def pending_live_draft(
 
 
 def producer_capacity_blocked(capacity: dict[str, Any], now: datetime) -> bool:
-    if str(capacity.get("status") or "").upper() != "QUOTA_EXHAUSTED":
-        return False
-    blocked_until = parse_iso(capacity.get("blockedUntil"))
-    return blocked_until is None or now < blocked_until
+    """Fail closed while capacity telemetry still says QUOTA_EXHAUSTED.
+
+    blockedUntil is only the earliest time at which a fresh capacity probe may
+    be attempted. It is NOT proof that capacity recovered. Only an explicit
+    non-exhausted status from fresh telemetry may unblock the producer.
+    """
+    status = str(capacity.get("status") or "").upper()
+    if status == "QUOTA_EXHAUSTED":
+        return True
+    return False
 
 
 def make_cycle_id(now: datetime) -> str:
