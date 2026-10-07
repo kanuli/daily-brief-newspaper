@@ -12,7 +12,7 @@ import argparse
 import json
 import re
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -151,9 +151,7 @@ def hkt_label(value: Any) -> str:
         dt = datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(
             timezone.utc
         )
-        hkt = dt.astimezone(timezone.utc).astimezone(
-            timezone(__import__("datetime").timedelta(hours=8))
-        )
+        hkt = dt.astimezone(timezone(timedelta(hours=8)))
         return hkt.strftime("%m月%d日 %H:%M HKT")
     except Exception:
         return "今日"
