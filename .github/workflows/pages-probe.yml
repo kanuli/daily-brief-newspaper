@@ -171,10 +171,11 @@ jobs:
                   remote_latest=fetch_json('latest.json'); remote_live=fetch_json('live.json'); remote_desk=fetch_json('desk-latest.json')
                   remote_stocks=fetch_json('stocks-latest.json'); remote_tts=fetch_json('tts-manifest.json')
                   desk_ok,_=desk_contract(remote_desk)
+                  # Voice is asynchronous by newsroom policy. It is monitored below
+                  # but MUST NOT block otherwise-valid text publication.
                   data_ok=(stock_semantic_ok and remote_latest.get('date')==local_latest.get('date') and remote_live.get('lastUpdated')==local_live.get('lastUpdated')
                            and publication_complete(remote_live) and remote_desk.get('generatedAt')==local_live.get('lastUpdated') and desk_ok
-                           and remote_stocks.get('generatedAt')==local_stocks.get('generatedAt') and stock_contract(remote_stocks)
-                           and voice_manifest_at_least(remote_tts,local_tts))
+                           and remote_stocks.get('generatedAt')==local_stocks.get('generatedAt') and stock_contract(remote_stocks))
                   if data_ok: error=None; break
                   error='public data contract not yet current/complete'
                   if not stock_semantic_ok: error='Stock News substantive freshness validation failed: '+stock_semantic_detail
@@ -224,13 +225,14 @@ jobs:
                   runtime_checks[path]={'ok':False,'error':str(exc)}
           runtime_match=all(x.get('ok') for x in runtime_checks.values())
 
-          overall=bool(daily_match and live_match and desk_match and stock_match and voice_match and all_pages_ok and runtime_match)
+          # Voice readiness is reported independently and never blocks text/news publication.
+          overall=bool(daily_match and live_match and desk_match and stock_match and all_pages_ok and runtime_match)
           payload={
               'checkedAt':now.isoformat(),'checkedAtHKT':now_hkt.isoformat(),'publicBaseUrl':root,
               'dailyMatch':daily_match,'liveMatch':live_match,'publicationComplete':publication_complete(remote_live),
               'deskMatch':desk_match,'deskIssues':desk_issues,'stockDataMatch':stock_data_match,
               'stockSemanticValid':stock_semantic_ok,'stockSemanticDetail':stock_semantic_detail,'stockMatch':stock_match,
-              'voiceManifestMatch':voice_match,'allCorePagesOk':all_pages_ok,'pageChecks':page_checks,
+              'voiceManifestMatch':voice_match,'voiceNonBlocking':True,'allCorePagesOk':all_pages_ok,'pageChecks':page_checks,
               'runtimeMatch':runtime_match,'runtimeChecks':runtime_checks,
               'retailRetiredContract':all(not x.get('retailStale',False) for x in page_checks.values()),
               'match':overall,'error':error,
