@@ -161,12 +161,10 @@ def build_copy(candidate: dict[str, Any], title_zh: str) -> dict[str, str]:
     source = HK.convert(clean(candidate.get("source")))
     desk = clean(candidate.get("desk"))
     purpose = DESK_PURPOSE.get(desk, "公共事務")
-    time_label = hkt_label(candidate.get("publishedAt"))
-
     dek = f"{source}報道，{title_zh}。"
     summary = f"{source}最新報道指出，{title_zh}。"
     body = (
-        f"{source}報道，{title_zh}。消息於{time_label}前後刊出，屬於{purpose}的最新發展。"
+        f"{source}報道，{title_zh}。這項消息屬於{purpose}的最新發展。"
         "現階段公開消息的核心重點就是上述進展，相關內容仍會隨正式公布而更新。"
         "\n\n"
         f"這項發展與{purpose}直接相關。後續可留意相關機構、當事方或官方渠道公布的新安排與進一步資料；"
@@ -226,7 +224,11 @@ def main() -> int:
     rejected: list[str] = []
 
     for cid, candidate in allowed.items():
-        title_zh = safe_title(clean(candidate.get("title")), translated.get(cid, ""))
+        original_title = HK.convert(clean(candidate.get("title")))
+        if len(CJK_RE.findall(original_title)) >= 6 and len(KANA_RE.findall(original_title)) <= 8:
+            title_zh = original_title
+        else:
+            title_zh = safe_title(clean(candidate.get("title")), translated.get(cid, ""))
         if not title_zh:
             rejected.append(f"{cid}:unsafe-title")
             continue
