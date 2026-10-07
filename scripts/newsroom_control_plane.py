@@ -134,7 +134,7 @@ def producer_capacity_blocked(capacity: dict[str, Any], now: datetime) -> bool:
     non-exhausted status from fresh telemetry may unblock the producer.
     """
     status = str(capacity.get("status") or "").upper()
-    if status == "QUOTA_EXHAUSTED":
+    if status in {"QUOTA_EXHAUSTED", "LOCAL_FALLBACK_FAILED"}:
         return True
     return False
 
