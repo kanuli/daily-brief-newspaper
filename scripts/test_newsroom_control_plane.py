@@ -340,7 +340,7 @@ assert producer["faultClass"] == "producer-capacity-exhausted", r
 assert producer["status"] == "external-failover", r
 assert producer["dispatchable"] is False, r
 
-def producer_local_fallback_failed_but_retryable(d):
+def producer_local_fallback_failed_stays_blocked(d):
     stale_with_candidates(d)
     d["producer_capacity"] = {
         "status": "LOCAL_FALLBACK_FAILED",
@@ -350,12 +350,12 @@ def producer_local_fallback_failed_but_retryable(d):
         "localFallbackModel": "qwen2.5:1.5b",
     }
 
-r = run_case(mutate=producer_local_fallback_failed_but_retryable)
+r = run_case(mutate=producer_local_fallback_failed_stays_blocked)
 producer = next(x for x in r["assignments"] if x["robot"] == "general-producer")
 assert r["evidenceSnapshot"]["producerCapacityStatus"] == "LOCAL_FALLBACK_FAILED", r
-assert r["evidenceSnapshot"]["producerCapacityBlocked"] is False, r
-assert producer["faultClass"] == "desk-stale-with-candidates", r
-assert producer["dispatchable"] is True, r
+assert r["evidenceSnapshot"]["producerCapacityBlocked"] is True, r
+assert producer["faultClass"] == "producer-capacity-exhausted", r
+assert producer["dispatchable"] is False, r
 
 def producer_capacity_external_slot_missed(d):
     producer_capacity_exhausted(d)
@@ -412,4 +412,73 @@ assert stock["dispatchable"] is True, r
 assert pages["dispatchable"] is True, r
 assert "stock" not in pages.get("blockedBy", []), r
 
-print("NEWSROOM_CONTROL_PLANE_V2_TESTS_OK")
+def live_publication_failure(d):
+    d["editor"]["currentDay"] = {"dailyCurrent": True}
+    d["editor"]["validatorAudit"] = [{"name": "daily-v3", "ok": True}]
+    d["editor"]["findings"] = [{"code": "LIVE_STALE", "area": "live", "severity": "critical"}]
+
+r = run_case(mutate=live_publication_failure, publication_rc=1)
+assert "daily-recovery" not in {x["robot"] for x in r["assignments"]}, r
+assert "general-producer" in {x["robot"] for x in r["assignments"]}, r
+assert r["healthy"] is False, r
+
+r = run_case(publication_rc=1)
+assert r["assignments"] == [], r
+assert r["healthy"] is False, r  # Unknown validator failure must not become GREEN.
+
+def daily_date_failed(d):
+    d["latest"]["date"] = "2026-10-05"
+
+r = run_case(mutate=daily_date_failed, publication_rc=1)
+assert "daily-recovery" in {x["robot"] for x in r["assignments"]}, r
+
+def daily_structure_failed(d):
+    d["editor"]["validatorAudit"] = [{"name": "daily-v3", "ok": False}]
+
+r = run_case(mutate=daily_structure_failed, publication_rc=1)
+assert "daily-recovery" in {x["robot"] for x in r["assignments"]}, r
+
+def editorial_page_gap(d):
+    d["sentinel"] = {
+        "checkedAt": NOW_ISO,
+        "persistentFailedPages": ["world.html"],
+        "repairWorkflows": ["rolling-news-search.yml", "merge-live-into-desk.yml"],
+        "pageResults": [{"page": "world.html", "kind": "topic", "httpStatus": 200, "ok": False}],
+    }
+
+r = run_case(mutate=editorial_page_gap)
+assert "pages" not in {x["robot"] for x in r["assignments"]}, r
+assert r["healthy"] is False, r  # Correct routing does not erase editorial failure.
+
+def public_http_failed(d):
+    d["sentinel"] = {
+        "checkedAt": NOW_ISO,
+        "persistentFailedPages": ["index.html"],
+        "repairWorkflows": ["pages.yml"],
+        "pageResults": [{"page": "index.html", "kind": "daily", "httpStatus": 500, "ok": False}],
+    }
+
+r = run_case(mutate=public_http_failed)
+assert "pages" in {x["robot"] for x in r["assignments"]}, r
+assert "daily-recovery" not in {x["robot"] for x in r["assignments"]}, r
+
+def stale_probe_only(d):
+    d["editor"]["findings"] = [{"code": "PUBLIC_PROBE_STALE", "area": "pages", "severity": "critical"}]
+
+r = run_case(mutate=stale_probe_only)
+assert "pages" not in {x["robot"] for x in r["assignments"]}, r
+assert r["healthy"] is False, r
+
+def actual_propagation_fault(d):
+    d["editor"]["findings"] = [{"code": "PUBLIC_LIVE_NOT_PROPAGATED", "area": "pages", "severity": "critical"}]
+
+r = run_case(mutate=actual_propagation_fault)
+assert "pages" in {x["robot"] for x in r["assignments"]}, r
+
+from newsroom_control_plane import daily_recovery_required
+handover = datetime(2026, 10, 6, 0, 14, tzinfo=timezone.utc)
+assert not daily_recovery_required({"date": "2026-10-05"}, {}, handover)
+assert daily_recovery_required({"date": "2026-10-05"}, {}, handover + timedelta(minutes=1))
+
+print("NEWSROOM_CONTROL_PLANE_V2_TESTS_OK routing_regressions=10")
+

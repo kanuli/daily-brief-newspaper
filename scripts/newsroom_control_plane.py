@@ -25,6 +25,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from desk_freshness_policy import current_daily_dates
+
 HKT = timezone(timedelta(hours=8))
 SOFT_TARGETS = {
     "world": 3,
@@ -137,6 +139,38 @@ def producer_capacity_blocked(capacity: dict[str, Any], now: datetime) -> bool:
     if status in {"QUOTA_EXHAUSTED", "LOCAL_FALLBACK_FAILED"}:
         return True
     return False
+
+
+def daily_recovery_required(latest: dict[str, Any], editor: dict[str, Any], now: datetime) -> bool:
+    """Daily owns its edition/structure, not unrelated Live or desk failures."""
+    if str(latest.get("date") or "") not in current_daily_dates(now=now):
+        return True
+    if (editor.get("currentDay") or {}).get("dailyCurrent") is False:
+        return True
+    if any(
+        isinstance(row, dict) and row.get("name") == "daily-v3" and row.get("ok") is False
+        for row in (editor.get("validatorAudit") or [])
+    ):
+        return True
+    return any(
+        isinstance(row, dict) and row.get("area") == "daily" and row.get("severity") == "critical"
+        for row in (editor.get("findings") or [])
+    )
+
+
+def sentinel_requires_deployment(sentinel: dict[str, Any], pages_workflow: str) -> bool:
+    """Use sentinel ownership: an HTTP-200 editorial gap is not a deploy fault.
+
+    Legacy/unclassified failed-page evidence remains conservative. Modern
+    sentinel reports explicitly distinguish deployment from newsroom owners.
+    """
+    failed = sentinel.get("persistentFailedPages") or []
+    if not failed:
+        return False
+    repairs = sentinel.get("repairWorkflows")
+    if isinstance(repairs, list) and repairs:
+        return pages_workflow in repairs
+    return True
 
 
 def make_cycle_id(now: datetime) -> str:
@@ -752,23 +786,24 @@ def main() -> int:
 
     # 7) Daily/current publication.
     failed_pages = set(sentinel.get("persistentFailedPages") or [])
-    if args.publication_rc != 0 or "index.html" in failed_pages:
+    if daily_recovery_required(latest, editor, now):
         add_assignment(
             plan,
             robots,
             "daily-recovery",
             "daily-currentness",
-            "Daily/current publication validator or public index failed",
+            "repository Daily edition/currentness or Daily structure failed",
         )
 
     # 8) Pages/public propagation. This robot deploys; it does not rebuild newsroom data.
     page_fault = any(
         isinstance(f, dict)
+        and f.get("code") != "PUBLIC_PROBE_STALE"
         and (f.get("area") == "pages" or str(f.get("code", "")).startswith("PUBLIC_"))
         and f.get("severity") == "critical"
         for f in (editor.get("findings") or [])
     )
-    if failed_pages or page_fault:
+    if sentinel_requires_deployment(sentinel, str(robots["pages"]["workflow"])) or page_fault:
         add_assignment(
             plan,
             robots,
@@ -900,7 +935,17 @@ def main() -> int:
             row.get("faultClass") == "external-publisher-no-progress"
             for row in plan
         ),
-        "healthy": len(plan) == 0,
+        "healthy": (
+            len(plan) == 0
+            and args.stock_rc == 0
+            and args.publication_rc == 0
+            and args.vocab_rc == 0
+            and not any(
+                isinstance(f, dict) and f.get("severity") == "critical"
+                for f in (editor.get("findings") or [])
+            )
+            and not (sentinel.get("persistentFailedPages") or [])
+        ),
     }
     Path(args.output).write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -909,3 +954,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

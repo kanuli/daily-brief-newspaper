@@ -231,7 +231,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check --quiet opencc-python-reimplemented googlenewsdecoder==0.2.1
+          python -m pip install --disable-pip-version-check --quiet -r scripts/requirements-general-news-fallback.txt
+          python scripts/check_general_news_fallback_dependencies.py
           curl -fsSL https://ollama.com/install.sh | sh
           nohup ollama serve >/tmp/ollama.log 2>&1 &
           ready=false
