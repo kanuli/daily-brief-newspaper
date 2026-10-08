@@ -15,6 +15,9 @@ on:
       - "scripts/general_news_verified_producer.py"
       - "scripts/general_news_verification_robot.py"
       - "scripts/general_news_local_fallback.py"
+      - "scripts/requirements-general-news-fallback.txt"
+      - "scripts/check_general_news_fallback_dependencies.py"
+      - "scripts/probe_general_news_fallback_capability.py"
       - "scripts/validate_desk_freshness.py"
       - "scripts/validate_stock_news.py"
       - "scripts/validate_publication_current.py"
@@ -53,7 +56,8 @@ concurrency:
 jobs:
   assign:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    # Existing control plane plus at most one bounded runtime capability check.
+    timeout-minutes: 12
     steps:
       - name: Checkout current main
         uses: actions/checkout@v4
@@ -88,6 +92,52 @@ jobs:
 
           git fetch -q origin editor-assignments:refs/remotes/origin/editor-assignments || true
           git show origin/editor-assignments:data/newsroom-assignments.json > /tmp/previous-assignments.json 2>/dev/null || echo '{}' > /tmp/previous-assignments.json
+
+      # Infrastructure only: one immutable attempt for the reviewed fallback revision.
+      # No news discovery, article/draft writes, publication or leaf dispatch here.
+      - name: Site Editor-in-Chief claims bounded infrastructure capability probe
+        id: capability_claim
+        timeout-minutes: 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/probe_general_news_fallback_capability.py prepare \
+            --root . --state /tmp/eic-capability-claim.json \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Restore existing local fallback model for infrastructure probe
+        if: steps.capability_claim.outputs.claimed == 'true'
+        timeout-minutes: 2
+        continue-on-error: true
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama/models
+          key: ollama-qwen2.5-1.5b-v1
+
+      - name: Check repaired dependencies and synthetic local-model readiness only
+        if: steps.capability_claim.outputs.claimed == 'true'
+        timeout-minutes: 5
+        continue-on-error: true
+        shell: bash
+        run: |
+          python scripts/probe_general_news_fallback_capability.py run \
+            --root . --state /tmp/eic-capability-claim.json \
+            --result /tmp/eic-capability-result.json
+
+      - name: Preserve immutable capability history and fresh runtime-only verdict
+        if: always() && steps.capability_claim.outputs.claimed == 'true'
+        timeout-minutes: 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/probe_general_news_fallback_capability.py finalize \
+            --state /tmp/eic-capability-claim.json \
+            --result /tmp/eic-capability-result.json \
+            --capacity /tmp/producer-capacity.json
 
       - name: Run current newsroom checks
         shell: bash
