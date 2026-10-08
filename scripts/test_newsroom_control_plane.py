@@ -45,6 +45,7 @@ def base_files():
         },
         "editor": {"findings": [], "repairPlan": [], "voiceWorkflowAudit": {"coverageComplete": True}},
         "sentinel": {"checkedAt": NOW_ISO, "persistentFailedPages": []},
+        "pages_status": {"checkedAt": NOW_ISO, "match": True},
         "previous": {},
         "latest": {"date": "2026-10-06"},
         "live": {"lastUpdated": NOW_ISO},
@@ -88,6 +89,8 @@ def run_case(
                 str(paths["editor"]),
                 "--sentinel",
                 str(paths["sentinel"]),
+                "--pages-status",
+                str(paths["pages_status"]),
                 "--previous-assignments",
                 str(paths["previous"]),
                 "--latest",
@@ -463,12 +466,14 @@ assert "pages" in {x["robot"] for x in r["assignments"]}, r
 assert "daily-recovery" not in {x["robot"] for x in r["assignments"]}, r
 
 def stale_probe_only(d):
+    d["pages_status"]["checkedAt"] = (NOW - timedelta(hours=5)).isoformat().replace("+00:00", "Z")
     d["editor"]["findings"] = [
         {"code": "PUBLIC_PROBE_STALE", "area": "pages", "severity": "critical"},
         {"code": "PERSISTENT_PUBLIC_PROBE_STALE", "area": "pages", "severity": "critical"},
     ]
 
 r = run_case(mutate=stale_probe_only)
+assert {x["robot"] for x in r["assignments"]} == {"public-probe"}, r
 assert "pages" not in {x["robot"] for x in r["assignments"]}, r
 assert r["healthy"] is False, r
 
@@ -488,5 +493,112 @@ assert not daily_recovery_required(
 )
 assert daily_recovery_required({"date": "2026-10-05"}, {}, handover + timedelta(minutes=1))
 
-print("NEWSROOM_CONTROL_PLANE_V2_TESTS_OK routing_regressions=11")
+def probe_row(result):
+    return next(x for x in result["assignments"] if x["robot"] == "public-probe")
+
+
+# Missing, malformed and changing future clocks remain one stable invalid fault.
+for bad_clock in (None, "nonsense", "2026-10-07T08:55:00Z", "2026-10-08T09:55:00Z"):
+    def invalid_probe(d, value=bad_clock):
+        d["pages_status"] = {"checkedAt": value, "match": True}
+    r = run_case(mutate=invalid_probe)
+    row = probe_row(r)
+    assert row["probeBudgetKey"] == "invalid-public-probe", r
+    assert row["dispatchable"] is True, r
+    assert {x["robot"] for x in r["assignments"]} == {"public-probe"}, r
+    assert r["healthy"] is False, r
+
+stale_stamp = (NOW - timedelta(hours=5)).isoformat().replace("+00:00", "Z")
+first = run_case(mutate=lambda d: d["pages_status"].update(checkedAt=stale_stamp))
+first_row = probe_row(first)
+assert first_row["dispatchable"] is True, first
+assert first["publicProbeRecovery"]["maxDispatches"] == 1, first
+
+def after_probe_dispatch(d):
+    d["pages_status"]["checkedAt"] = stale_stamp
+    d["previous"] = dict(first)
+    d["previous"]["execution"] = [{
+        "assignmentId": first_row["assignmentId"], "workflow": "pages-probe.yml",
+        "dispatched": True, "reason": "assigned-by-editor-in-chief",
+    }]
+
+second = run_case(mutate=after_probe_dispatch)
+assert probe_row(second)["dispatchable"] is False, second
+assert probe_row(second)["status"] == "observation-in-flight", second
+assert second["publicProbeRecovery"]["dispatchesUsed"] == 1, second
+assert second["healthy"] is False, second
+
+# Completion is not observation/publication, even a reported success.
+completed = run_case(mutate=after_probe_dispatch,
+    trigger_workflow="Verify Public Pages Publication Snapshot", trigger_conclusion="success")
+assert probe_row(completed)["status"] == "stuck", completed
+assert completed["stuckCount"] == 1, completed
+assert completed["healthy"] is False, completed
+
+def false_execution_after_hold(d):
+    d["pages_status"]["checkedAt"] = stale_stamp
+    d["previous"] = dict(completed)
+    d["previous"]["execution"] = [{
+        "assignmentId": probe_row(completed)["assignmentId"], "workflow": "pages-probe.yml",
+        "dispatched": False, "reason": "stuck",
+    }]
+
+held = run_case(mutate=false_execution_after_hold)
+assert probe_row(held)["dispatchable"] is False, held
+assert probe_row(held)["status"] == "stuck", held
+assert held["publicProbeRecovery"]["requiresEditorReplan"] is True, held
+assert held["publicProbeRecovery"]["dispatchesUsed"] == 1, held
+
+# An earlier genuine clock or an invalid clock cannot renew a consumed budget.
+for bad_clock in ("invalid-again", "2030-01-01T00:00:00Z",
+                  (NOW - timedelta(hours=6)).isoformat()):
+    def regression(d, value=bad_clock):
+        false_execution_after_hold(d)
+        d["pages_status"]["checkedAt"] = value
+    r = run_case(mutate=regression)
+    assert r["publicProbeRecovery"]["budgetKey"] == stale_stamp, r
+    assert probe_row(r)["dispatchable"] is False, r
+
+def invalid_used_budget(d):
+    d["pages_status"] = {"checkedAt": "future-again", "match": True}
+    d["previous"] = {"publicProbeRecovery": {
+        "budgetKey": "invalid-public-probe", "dispatchesUsed": 1,
+        "dispatchedAt": (NOW - timedelta(minutes=11)).isoformat(),
+        "lastObservationAt": None,
+    }, "assignments": [], "execution": []}
+
+r = run_case(mutate=invalid_used_budget)
+assert probe_row(r)["status"] == "stuck", r
+assert probe_row(r)["dispatchable"] is False, r
+
+def genuine_advance(d):
+    false_execution_after_hold(d)
+    d["pages_status"] = {"checkedAt": NOW_ISO, "match": True}
+
+r = run_case(mutate=genuine_advance)
+assert r["assignments"] == [], r
+assert r["publicProbeRecovery"]["budgetKey"] == NOW_ISO, r
+assert r["publicProbeRecovery"]["dispatchesUsed"] == 0, r
+assert r["publicProbeRecovery"]["requiresEditorReplan"] is False, r
+assert r["healthy"] is True, r
+
+# Fresh observation showing failure keeps the newsroom RED until actual repair
+# and the independently owned EIC audit classify/verify the genuine mismatch.
+r = run_case(mutate=lambda d: d["pages_status"].update(match=False))
+assert r["assignments"] == [], r
+assert r["healthy"] is False, r
+r = run_case(mutate=lambda d: d["pages_status"].update(match=False), publication_rc=1)
+assert r["healthy"] is False, r
+
+workflow = (ROOT / ".github/workflows/editor-in-chief-newsroom-assignment.yml").read_text(encoding="utf-8")
+assert '"Verify Public Pages Publication Snapshot"' in workflow
+assert "git show origin/pages-status:data/pages-live-status.json" in workflow
+assert "--pages-status /tmp/pages-live-status.json" in workflow
+observer = next(x for x in registry["robots"] if x["id"] == "public-probe")
+assert observer["workflow"] == "pages-probe.yml"
+assert observer["readOnlyObservation"] is True
+assert observer["faultClasses"] == ["public-probe-stale"]
+assert observer["maxRuntimeMinutes"] == 5
+print("NEWSROOM_CONTROL_PLANE_V2_TESTS_OK routing_regressions=11 public_probe_regressions=17")
+
 

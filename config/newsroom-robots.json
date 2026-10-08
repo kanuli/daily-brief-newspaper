@@ -25,6 +25,21 @@
   },
   "robots": [
     {
+      "id": "public-probe",
+      "workflow": "pages-probe.yml",
+      "workflowName": "Verify Public Pages Publication Snapshot",
+      "job": "observe actual public Pages and publish truthful verification telemetry only",
+      "priority": 5,
+      "maxRuntimeMinutes": 5,
+      "readOnlyObservation": true,
+      "faultClasses": ["public-probe-stale"],
+      "modes": ["normal"],
+      "successEvidence": [
+        "pages-status checkedAt advances from a real public HTTP observation",
+        "fresh public publication match or a genuine mismatch reaches Editor-in-Chief"
+      ]
+    },
+    {
       "id": "collector",
       "workflow": "rolling-news-search.yml",
       "workflowName": "Rolling News Search 15m",
@@ -246,3 +261,4 @@
     }
   ]
 }
+

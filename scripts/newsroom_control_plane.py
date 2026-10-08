@@ -175,6 +175,89 @@ def make_cycle_id(now: datetime) -> str:
     return now.strftime("%Y%m%dT%H%M%SZ")
 
 
+def public_probe_evidence(pages: dict[str, Any], now: datetime) -> dict[str, Any]:
+    """Dispatch is not observation; invalid clocks cannot renew a budget."""
+    stamp = parse_iso(pages.get("checkedAt"))
+    genuine_clock = stamp is not None and stamp <= now
+    age = (now - stamp).total_seconds() / 60.0 if genuine_clock else None
+    normalized = stamp.isoformat().replace("+00:00", "Z") if genuine_clock else None
+    return {
+        "publicProbeCheckedAt": normalized,
+        "publicProbeAgeMinutes": age,
+        "publicProbeFresh": age is not None and age <= 30.0,
+        "publicProbeMatch": pages.get("match") is True,
+        "publicProbeBudgetKey": normalized or "invalid-public-probe",
+    }
+
+
+def public_probe_recovery(previous: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    """Latch one successful Site EIC dispatch until genuine evidence advances.
+
+    This survives already-active/blocked cycles and absent assignments. Missing,
+    malformed, future or regressing telemetry cannot manufacture another budget.
+    A fresh observation may still show failure: its clock is not publication.
+    """
+    prior = previous.get("publicProbeRecovery") or {}
+    if not isinstance(prior, dict):
+        prior = {}
+    current_stamp = parse_iso(evidence.get("publicProbeCheckedAt"))
+    prior_stamp = parse_iso(prior.get("lastObservationAt"))
+    advanced = current_stamp is not None and (prior_stamp is None or current_stamp > prior_stamp)
+    key = evidence["publicProbeBudgetKey"] if advanced or not prior else prior.get("budgetKey")
+    key = key or "invalid-public-probe"
+    same_key = prior.get("budgetKey") == key
+    used = 1 if same_key and prior.get("dispatchesUsed") == 1 else 0
+    dispatched_at = prior.get("dispatchedAt") if same_key else None
+    for row in (previous.get("assignments") or []):
+        if not isinstance(row, dict) or row.get("robot") != "public-probe" or row.get("probeBudgetKey") != key:
+            continue
+        if any(
+            isinstance(item, dict) and item.get("workflow") == row.get("workflow")
+            and item.get("dispatched") is True and item.get("assignmentId") == row.get("assignmentId")
+            for item in (previous.get("execution") or [])
+        ):
+            used = 1
+            dispatched_at = dispatched_at or previous.get("checkedAt")
+    return {
+        "budgetKey": key,
+        "maxDispatches": 1,
+        "dispatchesUsed": used,
+        "dispatchedAt": dispatched_at,
+        "lastObservationAt": evidence["publicProbeCheckedAt"] if advanced else prior.get("lastObservationAt"),
+        "freshObservation": evidence["publicProbeFresh"],
+        "requiresEditorReplan": bool(same_key and prior.get("requiresEditorReplan")),
+    }
+
+
+def assign_public_observation(
+    plan: list[dict[str, Any]], robots: dict[str, dict[str, Any]],
+    evidence: dict[str, Any], recovery: dict[str, Any], now: datetime,
+    trigger_robot: str | None,
+) -> None:
+    if evidence["publicProbeFresh"]:
+        return
+    add_assignment(
+        plan, robots, "public-probe", "public-probe-stale",
+        "public observation is missing, invalid or older than 30 minutes; verify HTTP outcomes without deploying or changing news",
+    )
+    row = next(item for item in plan if item["robot"] == "public-probe")
+    row["probeBudgetKey"] = recovery["budgetKey"]
+    row["readOnlyObservation"] = True
+    row["attempt"] = recovery["dispatchesUsed"] + 1
+    if recovery["dispatchesUsed"]:
+        dispatched = parse_iso(recovery.get("dispatchedAt"))
+        expired = (
+            recovery["requiresEditorReplan"] or dispatched is None or dispatched > now
+            or (now - dispatched).total_seconds() > 10 * 60
+        )
+        completed = trigger_robot == "public-probe"
+        row["dispatchable"] = False
+        row["status"] = "stuck" if expired or completed else "observation-in-flight"
+        row["requiresEditorReplan"] = expired or completed
+        recovery["requiresEditorReplan"] = expired or completed
+        row["reason"] += "; the single dispatch budget is consumed until genuine observation evidence advances"
+
+
 def add_assignment(
     plan: list[dict[str, Any]],
     robots: dict[str, dict[str, Any]],
@@ -363,6 +446,10 @@ def apply_previous_outcomes(
         if isinstance(row, dict) and row.get("robot")
     }
     for row in plan:
+        if row["robot"] == "public-probe":
+            # Its immutable observation budget is independent of content retry.
+            row["outcomeBefore"] = snapshot
+            continue
         prior = previous_rows.get(row["robot"])
         row["attempt"] = 1
         row["outcomeBefore"] = snapshot
@@ -471,6 +558,7 @@ def main() -> int:
     ap.add_argument("--freshness", required=True)
     ap.add_argument("--editor-status", required=True)
     ap.add_argument("--sentinel", required=True)
+    ap.add_argument("--pages-status", default="/tmp/pages-live-status.json")
     ap.add_argument("--previous-assignments")
     ap.add_argument("--latest", default="data/latest.json")
     ap.add_argument("--live", default="data/live.json")
@@ -497,6 +585,9 @@ def main() -> int:
     freshness = load(args.freshness, {})
     editor = load(args.editor_status, {})
     sentinel = load(args.sentinel, {})
+    pages = load(args.pages_status, {})
+    if not isinstance(pages, dict):
+        pages = {}
     previous = load(args.previous_assignments, {})
     latest = load(args.latest, {})
     live = load(args.live, {})
@@ -522,6 +613,9 @@ def main() -> int:
         vocab_ok=vocab_ok,
     )
     producer_blocked = producer_capacity_blocked(producer_capacity, now)
+    probe_evidence = public_probe_evidence(pages, now)
+    snapshot.update(probe_evidence)
+    probe_recovery = public_probe_recovery(previous, probe_evidence)
     snapshot["producerCapacityStatus"] = producer_capacity.get("status")
     snapshot["producerCapacityCheckedAt"] = producer_capacity.get("checkedAt")
     snapshot["producerCapacityBlockedUntil"] = producer_capacity.get("blockedUntil")
@@ -530,6 +624,7 @@ def main() -> int:
     trigger_robot = trigger_map.get(args.trigger_workflow)
     trigger_success = bool(trigger_robot and args.trigger_conclusion == "success")
     plan: list[dict[str, Any]] = []
+    assign_public_observation(plan, robots, probe_evidence, probe_recovery, now, trigger_robot)
 
     # 1) Discovery health: timestamp freshness alone is never enough.
     stamp = parse_iso(staging.get("lastSearchAt") or staging.get("lastSearchStartedAt"))
@@ -908,6 +1003,7 @@ def main() -> int:
             "conclusion": args.trigger_conclusion or None,
         },
         "evidenceSnapshot": snapshot,
+        "publicProbeRecovery": probe_recovery,
         "collectorAgeMinutes": round(age, 1),
         "stockCheckAgeMinutes": round(stock_age, 1),
         "standingDuty": {
@@ -938,6 +1034,8 @@ def main() -> int:
             and args.stock_rc == 0
             and args.publication_rc == 0
             and args.vocab_rc == 0
+            and probe_evidence["publicProbeFresh"]
+            and probe_evidence["publicProbeMatch"]
             and not any(
                 isinstance(f, dict) and f.get("severity") == "critical"
                 for f in (editor.get("findings") or [])
@@ -952,4 +1050,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 

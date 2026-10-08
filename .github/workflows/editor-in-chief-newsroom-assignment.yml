@@ -37,6 +37,7 @@ on:
       - "Daily Japanese vocab"
       - "Today Daily Recovery"
       - "Deploy Daily Brief to GitHub Pages"
+      - "Verify Public Pages Publication Snapshot"
       - "Publish Canto Nano Female Cantonese News Voice"
     types: [completed]
   schedule:
@@ -74,6 +75,7 @@ jobs:
             /tmp/prepublish.json \
             /tmp/producer-capacity.json \
             /tmp/page-news-sentinel.json \
+            /tmp/pages-live-status.json \
             /tmp/editor-status.json \
             /tmp/previous-assignments.json
 
@@ -86,6 +88,9 @@ jobs:
 
           git fetch -q origin page-sentinel-status:refs/remotes/origin/page-sentinel-status || true
           git show origin/page-sentinel-status:data/page-news-sentinel-status.json > /tmp/page-news-sentinel.json 2>/dev/null || echo '{}' > /tmp/page-news-sentinel.json
+
+          git fetch -q origin pages-status:refs/remotes/origin/pages-status || true
+          git show origin/pages-status:data/pages-live-status.json > /tmp/pages-live-status.json 2>/dev/null || echo '{}' > /tmp/pages-live-status.json
 
           git fetch -q origin editor-status:refs/remotes/origin/editor-status || true
           git show origin/editor-status:data/editor-in-chief-status.json > /tmp/editor-status.json 2>/dev/null || echo '{}' > /tmp/editor-status.json
@@ -191,6 +196,7 @@ jobs:
             --freshness /tmp/desk-freshness.json \
             --editor-status /tmp/editor-status.json \
             --sentinel /tmp/page-news-sentinel.json \
+            --pages-status /tmp/pages-live-status.json \
             --previous-assignments /tmp/previous-assignments.json \
             --latest data/latest.json \
             --live data/live.json \
@@ -354,3 +360,4 @@ jobs:
             exit 1
           fi
           echo "EDITOR_IN_CHIEF_NEWSROOM_ASSIGNMENT_PASS"
+
