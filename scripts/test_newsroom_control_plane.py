@@ -463,7 +463,10 @@ assert "pages" in {x["robot"] for x in r["assignments"]}, r
 assert "daily-recovery" not in {x["robot"] for x in r["assignments"]}, r
 
 def stale_probe_only(d):
-    d["editor"]["findings"] = [{"code": "PUBLIC_PROBE_STALE", "area": "pages", "severity": "critical"}]
+    d["editor"]["findings"] = [
+        {"code": "PUBLIC_PROBE_STALE", "area": "pages", "severity": "critical"},
+        {"code": "PERSISTENT_PUBLIC_PROBE_STALE", "area": "pages", "severity": "critical"},
+    ]
 
 r = run_case(mutate=stale_probe_only)
 assert "pages" not in {x["robot"] for x in r["assignments"]}, r
@@ -478,7 +481,12 @@ assert "pages" in {x["robot"] for x in r["assignments"]}, r
 from newsroom_control_plane import daily_recovery_required
 handover = datetime(2026, 10, 6, 0, 14, tzinfo=timezone.utc)
 assert not daily_recovery_required({"date": "2026-10-05"}, {}, handover)
+assert not daily_recovery_required(
+    {"date": "2026-10-05"},
+    {"status": "HEALTHY", "currentDay": {"dailyCurrent": False}},
+    handover,
+)
 assert daily_recovery_required({"date": "2026-10-05"}, {}, handover + timedelta(minutes=1))
 
-print("NEWSROOM_CONTROL_PLANE_V2_TESTS_OK routing_regressions=10")
+print("NEWSROOM_CONTROL_PLANE_V2_TESTS_OK routing_regressions=11")
 

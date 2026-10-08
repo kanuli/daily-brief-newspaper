@@ -145,8 +145,6 @@ def daily_recovery_required(latest: dict[str, Any], editor: dict[str, Any], now:
     """Daily owns its edition/structure, not unrelated Live or desk failures."""
     if str(latest.get("date") or "") not in current_daily_dates(now=now):
         return True
-    if (editor.get("currentDay") or {}).get("dailyCurrent") is False:
-        return True
     if any(
         isinstance(row, dict) and row.get("name") == "daily-v3" and row.get("ok") is False
         for row in (editor.get("validatorAudit") or [])
@@ -798,7 +796,7 @@ def main() -> int:
     # 8) Pages/public propagation. This robot deploys; it does not rebuild newsroom data.
     page_fault = any(
         isinstance(f, dict)
-        and f.get("code") != "PUBLIC_PROBE_STALE"
+        and f.get("code") not in {"PUBLIC_PROBE_STALE", "PERSISTENT_PUBLIC_PROBE_STALE"}
         and (f.get("area") == "pages" or str(f.get("code", "")).startswith("PUBLIC_"))
         and f.get("severity") == "critical"
         for f in (editor.get("findings") or [])
