@@ -9,7 +9,6 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
-import types
 import unittest
 import sys
 from unittest.mock import Mock, patch
@@ -20,6 +19,7 @@ spec = importlib.util.spec_from_file_location("capability_probe", PROBE_PATH)
 probe = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe)
 OLD_WORKFLOW_BLOB = "fcdfc29ba29ef57be3ff2f9dd795c9649bd3fcc8"
+PREVIOUS_REVIEWED_REVISION = "6de962d26310ac95b62ae2c1e1bf2a7163d4571eb11eeb049a7591a5518e446e"
 
 
 def evidence():
@@ -81,6 +81,21 @@ class CapabilityProbeTests(unittest.TestCase):
 
     def test_exact_reviewed_revision_matches_current_fix(self):
         self.assertEqual(probe.revision(ROOT), probe.REVIEWED_REVISION)
+
+    def test_meaningful_checker_repair_gets_new_attempt_without_erasing_old_failure(self):
+        store = MemoryStore()
+        old_claim = {"probeRevision": PREVIOUS_REVIEWED_REVISION, "remainingAttempts": 0}
+        old_result = {"probeRevision": PREVIOUS_REVIEWED_REVISION, "status": "LOCAL_FALLBACK_FAILED"}
+        store.create(probe.claim_path(PREVIOUS_REVIEWED_REVISION), old_claim)
+        store.create(probe.result_path(PREVIOUS_REVIEWED_REVISION), old_result)
+        before = copy.deepcopy(store.ledger)
+        self.assertNotEqual(probe.REVIEWED_REVISION, PREVIOUS_REVIEWED_REVISION)
+        with tempfile.TemporaryDirectory() as td:
+            self.assertTrue(probe.prepare(ROOT, store, Path(td) / "new-claim.json")["claimed"])
+            self.assertFalse(probe.prepare(ROOT, store, Path(td) / "second-claim.json")["claimed"])
+        for name, original in before.items():
+            self.assertEqual(store.ledger[name], original)
+        self.assertEqual(len(store.ledger), 3)
 
     def test_news_content_and_main_head_do_not_change_probe_revision(self):
         with tempfile.TemporaryDirectory() as td:
@@ -292,21 +307,19 @@ class CapabilityProbeTests(unittest.TestCase):
                 probe.finalize(store, state, result, Path(td) / "second.json")
             self.assertEqual(store.ledger, original)
 
-    def fake_dependency_loader(self):
-        module = types.SimpleNamespace(check_dependencies=lambda: evidence()["dependencies"])
-        return patch.object(probe.importlib.util, "spec_from_file_location", return_value=types.SimpleNamespace(loader=Mock())), patch.object(
-            probe.importlib.util, "module_from_spec", return_value=module
+    def fake_dependency_child(self):
+        return patch.object(
+            probe, "run_command", return_value=json.dumps(evidence()["dependencies"]).encode("utf-8")
         )
 
     def test_model_check_uses_only_fixed_non_news_synthetic_prompt(self):
-        first, second = self.fake_dependency_loader()
         calls = []
         def local(endpoint, **kwargs):
             calls.append((endpoint, kwargs))
             if endpoint == "/api/tags":
                 return {"models": [{"name": probe.MODEL, "digest": "a" * 64}]}
             return {"model": probe.MODEL, "done": True, "response": json.dumps(probe.EXPECTED_SYNTHETIC)}
-        with first, second, patch.object(probe, "local_json", side_effect=local):
+        with self.fake_dependency_child(), patch.object(probe, "local_json", side_effect=local):
             found = probe.check_runtime(ROOT, probe.time.monotonic() + 60)
         self.assertEqual(found, evidence())
         self.assertEqual(len(calls), 2)
@@ -314,20 +327,61 @@ class CapabilityProbeTests(unittest.TestCase):
         self.assertEqual(calls[1][1]["payload"]["keep_alive"], 0)
 
     def test_model_missing_rejects_before_generation(self):
-        first, second = self.fake_dependency_loader()
-        with first, second, patch.object(probe, "local_json", return_value={"models": []}) as calls:
+        with self.fake_dependency_child(), patch.object(probe, "local_json", return_value={"models": []}) as calls:
             with self.assertRaises(probe.ProbeFailure):
                 probe.check_runtime(ROOT, probe.time.monotonic() + 60)
             self.assertEqual(calls.call_count, 1)
 
     def test_malformed_synthetic_response_fails_closed(self):
-        first, second = self.fake_dependency_loader()
-        with first, second, patch.object(probe, "local_json", side_effect=[
+        with self.fake_dependency_child(), patch.object(probe, "local_json", side_effect=[
             {"models": [{"name": probe.MODEL, "digest": "a" * 64}]},
             {"model": probe.MODEL, "done": True, "response": '{"readiness":"ok","value":true}'},
         ]):
             with self.assertRaises(probe.ProbeFailure):
                 probe.check_runtime(ROOT, probe.time.monotonic() + 60)
+
+    def test_dependency_check_uses_fresh_same_interpreter_not_parent_imports(self):
+        deadline = probe.time.monotonic() + 60
+        model_responses = [
+            {"models": [{"name": probe.MODEL, "digest": "a" * 64}]},
+            {"model": probe.MODEL, "done": True, "response": json.dumps(probe.EXPECTED_SYNTHETIC)},
+        ]
+        with self.fake_dependency_child() as child, patch(
+            "importlib.metadata.version", side_effect=AssertionError("parent has no newly created user-site")
+        ), patch("importlib.import_module", side_effect=AssertionError("no parent dependency import")), patch.object(
+            probe, "local_json", side_effect=model_responses
+        ):
+            self.assertEqual(probe.check_runtime(ROOT, deadline), evidence())
+        child.assert_called_once_with(
+            [sys.executable, str(ROOT / probe.REVISION_FILES[2]), "--json-only"],
+            "dependencies-check", deadline, cap=20,
+        )
+
+    def test_child_dependency_output_is_strict_before_local_model_calls(self):
+        invalid = (
+            b"", b"not-json", b"\xff", b"[]", b"null",
+            b'GENERAL_NEWS_FALLBACK_DEPENDENCIES_OK {"googlenewsdecoder":"0.2.1","selectolax":"0.4.12"}',
+            b'{"googlenewsdecoder":"0.2.1","selectolax":"1.0.0"}',
+            b'{"googlenewsdecoder":"0.2.1","selectolax":"0.4.12","unknown":true}',
+            b'{"googlenewsdecoder":"wrong","googlenewsdecoder":"0.2.1","selectolax":"0.4.12"}',
+            b'{"googlenewsdecoder":"0.2.1","selectolax":"0.4.12"} {}',
+            b"x" * (probe.MAX_JSON_BYTES + 1),
+        )
+        for raw in invalid:
+            with self.subTest(raw=raw[:100]), patch.object(probe, "run_command", return_value=raw), patch.object(
+                probe, "local_json"
+            ) as model:
+                with self.assertRaises(probe.ProbeFailure):
+                    probe.check_runtime(ROOT, probe.time.monotonic() + 60)
+                model.assert_not_called()
+
+    def test_child_dependency_failure_blocks_local_model_calls(self):
+        with patch.object(
+            probe, "run_command", side_effect=probe.ProbeFailure("dependencies-check", "command-failed")
+        ), patch.object(probe, "local_json") as model:
+            with self.assertRaises(probe.ProbeFailure):
+                probe.check_runtime(ROOT, probe.time.monotonic() + 60)
+            model.assert_not_called()
 
     def test_credentials_not_forwarded_to_runtime_child(self):
         with patch.dict(probe.os.environ, {"GH_TOKEN": "secret", "GITHUB_TOKEN": "secret", "MY_API_KEY": "secret", "PATH": "safe"}):

@@ -13,13 +13,13 @@ import base64
 import copy
 from datetime import datetime, timezone
 import hashlib
-import importlib.util
 import json
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -29,7 +29,7 @@ CAPACITY_BRANCH = "prepublish-news"
 LEDGER_BRANCH = "eic-capability-ledger"
 CAPACITY_PATH = "data/producer-capacity.json"
 LEDGER_ROOT = "data/producer-capability-probes"
-REVIEWED_REVISION = "6de962d26310ac95b62ae2c1e1bf2a7163d4571eb11eeb049a7591a5518e446e"
+REVIEWED_REVISION = "eb3707b28647cbb1a78a306446df9f4c7422f951dd1b63fbd851e5d9289c9a1e"
 REVISION_FILES = (
     "scripts/general_news_local_fallback.py",
     "scripts/requirements-general-news-fallback.txt",
@@ -287,7 +287,6 @@ def tags_model(tags: dict):
 
 
 def bootstrap_runtime(root: Path, deadline: float) -> None:
-    import sys
     run_command(
         [sys.executable, "-m", "pip", "install", "--no-input", "--quiet",
          "--disable-pip-version-check", "--retries", "0", "--timeout", "20",
@@ -327,12 +326,28 @@ def bootstrap_runtime(root: Path, deadline: float) -> None:
 
 
 def check_runtime(root: Path, deadline: float) -> dict:
-    spec = importlib.util.spec_from_file_location(
-        "general_news_fallback_dependency_check", root / REVISION_FILES[2]
+    # pip may create the user-site directory after this parent interpreter has
+    # started. A fresh copy of the same interpreter discovers installed paths;
+    # do not import newly installed dependencies using the parent's old sys.path.
+    raw = run_command(
+        [sys.executable, str(root / REVISION_FILES[2]), "--json-only"],
+        "dependencies-check", deadline, cap=20,
     )
-    dependency_check = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(dependency_check)
-    versions = dependency_check.check_dependencies()
+    if not isinstance(raw, bytes) or len(raw) > MAX_JSON_BYTES:
+        raise ProbeFailure("dependencies-check", "invalid-or-oversized-json")
+    def unique_keys(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate-key")
+            value[key] = item
+        return value
+    try:
+        versions = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_keys)
+    except (UnicodeError, ValueError):
+        raise ProbeFailure("dependencies-check", "invalid-json") from None
+    if not isinstance(versions, dict) or versions != {"googlenewsdecoder": "0.2.1", "selectolax": "0.4.12"}:
+        raise ProbeFailure("dependencies-check", "unexpected-verified-versions")
     digest = tags_model(local_json("/api/tags"))
     if digest is None:
         raise ProbeFailure("model", "model-not-present")

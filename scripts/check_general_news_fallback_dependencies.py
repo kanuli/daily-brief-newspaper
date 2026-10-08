@@ -6,10 +6,12 @@ model generation, draft writes, publication, or remote calls.
 """
 from __future__ import annotations
 
+import argparse
 import importlib
 import importlib.metadata
 import inspect
 import json
+import sys
 
 EXPECTED_VERSIONS = {
     "googlenewsdecoder": "0.2.1",
@@ -56,15 +58,28 @@ def check_dependencies() -> dict[str, str]:
     return versions
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--json-only", action="store_true",
+        help="Emit only the exact verified version object on success; errors go to stderr.",
+    )
+    args = parser.parse_args(argv)
     try:
         versions = check_dependencies()
     except Exception as exc:
+        if args.json_only:
+            # A machine caller must never mistake diagnostics for readiness.
+            print(json.dumps({"error": type(exc).__name__}), file=sys.stderr)
+            return 1
         print(
             "GENERAL_NEWS_FALLBACK_DEPENDENCIES_FAILED",
             json.dumps({"error": type(exc).__name__, "detail": str(exc)}, ensure_ascii=False),
         )
         return 1
+    if args.json_only:
+        print(json.dumps(versions, sort_keys=True))
+        return 0
     print("GENERAL_NEWS_FALLBACK_DEPENDENCIES_OK", json.dumps(versions, sort_keys=True))
     return 0
 

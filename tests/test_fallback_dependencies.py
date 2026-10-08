@@ -6,6 +6,7 @@ import contextlib
 import hashlib
 import importlib.util
 import io
+import json
 from pathlib import Path
 import types
 import unittest
@@ -115,8 +116,30 @@ class DependencyRegressionTests(unittest.TestCase):
 
     def test_cli_failure_is_nonzero(self):
         with patch.object(check, "check_dependencies", side_effect=ImportError("decoder unavailable")), contextlib.redirect_stdout(io.StringIO()) as output:
-            self.assertEqual(check.main(), 1)
+            self.assertEqual(check.main([]), 1)
         self.assertIn("GENERAL_NEWS_FALLBACK_DEPENDENCIES_FAILED", output.getvalue())
+
+    def test_normal_cli_success_protocol_is_unchanged(self):
+        with patch.object(check, "check_dependencies", return_value=check.EXPECTED_VERSIONS), contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(check.main([]), 0)
+        self.assertEqual(
+            output.getvalue(),
+            "GENERAL_NEWS_FALLBACK_DEPENDENCIES_OK " + json.dumps(check.EXPECTED_VERSIONS, sort_keys=True) + "\n",
+        )
+
+    def test_json_only_success_is_exact_versions_without_banner(self):
+        with patch.object(check, "check_dependencies", return_value=check.EXPECTED_VERSIONS), contextlib.redirect_stdout(io.StringIO()) as output, contextlib.redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual(check.main(["--json-only"]), 0)
+        self.assertEqual(json.loads(output.getvalue()), check.EXPECTED_VERSIONS)
+        self.assertEqual(output.getvalue().count("\n"), 1)
+        self.assertEqual(errors.getvalue(), "")
+
+    def test_json_only_failure_is_nonzero_and_has_no_success_stdout(self):
+        with patch.object(check, "check_dependencies", side_effect=ImportError("secret-token-detail")), contextlib.redirect_stdout(io.StringIO()) as output, contextlib.redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual(check.main(["--json-only"]), 1)
+        self.assertEqual(output.getvalue(), "")
+        self.assertEqual(json.loads(errors.getvalue()), {"error": "ImportError"})
+        self.assertNotIn("secret-token-detail", errors.getvalue())
 
 
 if __name__ == "__main__":
