@@ -54,20 +54,31 @@ class OrdinaryDailyBodyTests(unittest.TestCase):
         for term in ("至少100", "最多1800", "來源支持", "填充", "來源不足時不得編造"):
             self.assertIn(term, tail)
 
-    def test_workflow_adds_quality_flag_only_to_ordinary_production(self):
+    def test_workflow_requires_daily_ready_copy_for_trial_and_ordinary_production(self):
         workflow = (budget.ROOT / ".github/workflows/general-news-producer.yml").read_text(encoding="utf-8")
-        self.assertIn("if [ '${{ steps.trial_guard.outputs.active }}' != 'true' ]; then\n            ordinary_copy_args+=(--daily-ready-copy)", workflow)
+        self.assertIn("ordinary_copy_args=(--daily-ready-copy)", workflow)
         self.assertIn('"${ordinary_copy_args[@]}"', workflow)
         self.assertIn('timeout --signal=KILL "${fallback_seconds}s"', workflow)
-        self.assertEqual(workflow.count("ordinary_copy_args+=(--daily-ready-copy)"), 1)
+        self.assertEqual(workflow.count("ordinary_copy_args=(--daily-ready-copy)"), 1)
 
-    def test_no_semantic_budget_or_original_editorial_gate_change(self):
+    def test_larger_model_contract_preserves_spent_predecessor_and_strict_gates(self):
         import sys
         sys.path.insert(0, str(budget.ROOT / "scripts"))
         import editorial_revision_trial as trial
-        self.assertEqual(trial.CONTRACT_REVISION, "93e667e53906bc85a5a549633c3b0efa8044ae3aa6f83f8eeb4ea27660a72cd3")
-        self.assertNotIn("daily-ready", json.dumps(trial.CONTRACT))
+        self.assertEqual(trial.PREDECESSOR_CONTRACT, "93e667e53906bc85a5a549633c3b0efa8044ae3aa6f83f8eeb4ea27660a72cd3")
+        self.assertNotEqual(trial.CONTRACT_REVISION, trial.PREDECESSOR_CONTRACT)
+        self.assertEqual(trial.CONTRACT["model"], "qwen2.5:7b")
+        self.assertEqual(trial.CONTRACT["dailyBody"]["visibleMinimum"], 100)
+        self.assertEqual(trial.CONTRACT["sourceSelection"]["maxModelCalls"], 3)
+        self.assertEqual(trial.CONTRACT["gatePolicy"], "existing-valid-output-and-canonical-merge-unchanged")
         self.assertTrue(trial.reviewed_code(budget.ROOT))
+
+    def test_existing_runner_resources_are_checked_before_larger_model_pull(self):
+        workflow = (budget.ROOT / ".github/workflows/general-news-producer.yml").read_text(encoding="utf-8")
+        self.assertIn("ollama-qwen2.5-7b-v1", workflow)
+        self.assertIn("LOCAL_MODEL_RESOURCES_INSUFFICIENT", workflow)
+        self.assertLess(workflow.index("LOCAL_MODEL_RESOURCES_INSUFFICIENT"), workflow.index("ollama pull qwen2.5:7b"))
+        self.assertNotIn("ollama pull qwen2.5:1.5b", workflow)
 
     def test_short_model_body_is_rejected_without_writes_and_same_call_budget(self):
         harness = budget.SourceSelectionBudgetTests()

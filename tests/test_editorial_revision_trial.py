@@ -18,14 +18,14 @@ import general_news_verified_producer as producer
 import probe_general_news_fallback_capability as capability
 import newsroom_control_plane as control
 
-NOW = datetime(2026, 10, 8, 16, 20, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 9, 16, 20, tzinfo=timezone.utc)
 EIC = {"runId": "900", "workflow": "Editor-in-Chief Newsroom Assignment"}
 CHILD = {"runId": "901", "workflow": "General News Verified Producer"}
 LOCAL_ENGINE = trial.producer_engine("false", "false", "true")
 COPILOT_ENGINE = trial.producer_engine("true", "true", "false")
 BASE = {
     "status": "LOCAL_FALLBACK_FAILED", "workflowRunId": trial.FAILED_RUN,
-    "checkedAt": trial.FAILED_CHECKED_AT, "localFallbackModel": trial.MODEL,
+    "checkedAt": trial.FAILED_CHECKED_AT, "localFallbackModel": trial.FAILED_MODEL,
     "reason": "Synthetic fixture representing actual editorial rejection, not news",
 }
 
@@ -37,12 +37,23 @@ class Store:
             trial.DRAFT_PATH: {"sha": "old-draft-sha", "value": {"draftId": "old-draft"}},
             f"{trial.TRIAL_ROOT}/{trial.PREDECESSOR_CONTRACT}.result.json": {
                 "sha": trial.PREDECESSOR_RESULT_SHA,
-                "value": {"status": "EDITORIAL_TRIAL_FAILED", "childRunId": trial.PREDECESSOR_CHILD,
-                          "editorialOutcomeVerified": False},
+                "value": {"status": "VERIFIED_NEW_DRAFT", "childRunId": trial.PREDECESSOR_CHILD,
+                          "editorialOutcomeVerified": True},
             },
         }
         self.capacity_writes = []
         self.creates = []
+        self.failed_run = {
+            "id": int(trial.FAILED_RUN), "repository": {"full_name": trial.REPOSITORY},
+            "name": "General News Verified Producer", "path": ".github/workflows/general-news-producer.yml",
+            "event": "workflow_dispatch", "head_branch": "main", "head_sha": trial.FAILED_HEAD,
+            "run_attempt": 1, "status": "completed", "conclusion": "failure",
+        }
+        self.failed_job = {
+            "id": trial.FAILED_JOB, "run_id": int(trial.FAILED_RUN), "name": "produce",
+            "status": "completed", "conclusion": "failure",
+            "steps": [{"name": "Fail non-capacity verification/copy errors", "conclusion": "failure"}],
+        }
 
     def ledger_ready(self):
         return True
@@ -51,6 +62,11 @@ class Store:
         return {"User-Agent": "synthetic-observer-test"}
 
     def json_request(self, request):
+        failed_url = f"/actions/runs/{trial.FAILED_RUN}"
+        if request.full_url.endswith(failed_url):
+            return copy.deepcopy(self.failed_run)
+        if request.full_url.endswith(failed_url + "/jobs?per_page=100"):
+            return {"jobs": [copy.deepcopy(self.failed_job)]}
         return {
             "id": 901, "repository": {"full_name": trial.REPOSITORY},
             "name": CHILD["workflow"], "path": ".github/workflows/general-news-producer.yml",
@@ -148,21 +164,53 @@ class TrialTests(unittest.TestCase):
     def test_reviewed_sources_exact(self):
         self.assertTrue(trial.reviewed_code(ROOT))
 
-    def test_current_revision_requires_the_exact_failed_predecessor_proof(self):
+    def test_current_revision_requires_the_exact_successful_predecessor_proof(self):
         path = f"{trial.TRIAL_ROOT}/{trial.PREDECESSOR_CONTRACT}.result.json"
-        for change in ("missing", "sha", "success", "other-child"):
+        for change in ("missing", "sha", "failed", "other-child"):
             store = Store()
             if change == "missing":
                 store.rows.pop(path)
             elif change == "sha":
                 store.rows[path]["sha"] = "different-proof"
-            elif change == "success":
-                store.rows[path]["value"].update(status="VERIFIED_NEW_DRAFT", editorialOutcomeVerified=True)
+            elif change == "failed":
+                store.rows[path]["value"].update(status="EDITORIAL_TRIAL_FAILED", editorialOutcomeVerified=False)
             else:
                 store.rows[path]["value"]["childRunId"] = "another-child"
             with self.subTest(change=change):
                 self.assertEqual(trial.eligible(ROOT, store, EIC, NOW)["reason"],
-                                 "reviewed-predecessor-failure-not-proven")
+                                 "reviewed-predecessor-success-not-proven")
+
+    def test_exact_failed_run_and_job_are_required_without_writes(self):
+        for delta in ({"id": 1}, {"repository": {"full_name": "other/repo"}},
+                      {"head_sha": "other"}, {"head_branch": "other"},
+                      {"run_attempt": True}, {"run_attempt": 2},
+                      {"status": "in_progress"}, {"conclusion": "success"}):
+            store = Store(); store.failed_run.update(delta)
+            with self.subTest(run=delta):
+                self.assertEqual(trial.eligible(ROOT, store, EIC, NOW)["reason"],
+                                 "exact-prior-editorial-production-failure-not-proven")
+                self.assertEqual(store.creates + store.capacity_writes, [])
+        for delta in ({"id": 1}, {"run_id": 1}, {"name": "other"},
+                      {"status": "in_progress"}, {"conclusion": "success"}, {"steps": []}):
+            store = Store(); store.failed_job.update(delta)
+            with self.subTest(job=delta):
+                self.assertFalse(trial.eligible(ROOT, store, EIC, NOW)["eligible"])
+                self.assertEqual(store.creates + store.capacity_writes, [])
+
+    def test_failed_run_transport_error_is_closed_not_content_repair(self):
+        store = Store()
+        with patch.object(store, "json_request", side_effect=TimeoutError("synthetic")):
+            self.assertFalse(trial.eligible(ROOT, store, EIC, NOW)["eligible"])
+        self.assertEqual(store.creates + store.capacity_writes, [])
+
+    def test_new_model_is_not_the_failed_small_model_and_claim_is_bound(self):
+        self.assertEqual(trial.MODEL, "qwen2.5:7b")
+        self.assertNotEqual(trial.MODEL, trial.FAILED_MODEL)
+        store = Store(); state = claimed(store)
+        self.assertEqual(state["claim"]["failedProduction"], trial.CONTRACT["priorFailedProduction"])
+        store.rows[trial.record_path("claim")]["value"]["failedProduction"]["run"] = "another"
+        with self.assertRaises(trial.ProbeFailure):
+            trial.bind(ROOT, store, trial.CONTRACT_REVISION, EIC["runId"], CHILD, NOW)
 
     def test_meaningful_current_revision_preserves_spent_predecessor_records(self):
         store = Store()
@@ -287,6 +335,14 @@ class TrialTests(unittest.TestCase):
         bad = new_draft(); bad["articles"][0]["body"] = "fake short body"
         with self.assertRaises(trial.ProbeFailure):
             trial.stamp_draft(ROOT, store, state, bad, CHILD, NOW, engine=LOCAL_ENGINE)
+
+    def test_short_body_cannot_clear_capacity_even_with_canonical_article_shape(self):
+        store = Store(); state = claimed(store)
+        bad = new_draft(); bad["articles"][0]["body"] = "中" * 47 + "\n\n" + "文" * 48
+        self.assertFalse(trial.canonical_article_ok(bad["articles"][0], state["claim"], NOW))
+        with self.assertRaises(trial.ProbeFailure):
+            trial.stamp_draft(ROOT, store, state, bad, CHILD, NOW, engine=LOCAL_ENGINE)
+        self.assertEqual(store.capacity_writes, [])
 
     def test_previous_hkt_day_within_thirty_hours_uses_actual_canonical_policy(self):
         store = Store(); state = claimed(store)

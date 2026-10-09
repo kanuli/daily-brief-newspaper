@@ -55,7 +55,7 @@ class FakeResponse:
         return None
 
     def read(self):
-        return json.dumps({"model": "qwen2.5:1.5b", "done": True, "response": json.dumps(self.value)}, ensure_ascii=False).encode("utf-8")
+        return json.dumps({"model": "qwen2.5:7b", "done": True, "response": json.dumps(self.value)}, ensure_ascii=False).encode("utf-8")
 
 
 class StructuredContractTests(unittest.TestCase):
@@ -112,7 +112,7 @@ class StructuredContractTests(unittest.TestCase):
         request = response.call_args.args[0]
         body = json.loads(request.data)
         self.assertEqual(request.full_url, "http://127.0.0.1:11434/api/generate")
-        self.assertEqual(body["model"], "qwen2.5:1.5b")
+        self.assertEqual(body["model"], "qwen2.5:7b")
         self.assertEqual(body["format"], schema)
         self.assertIs(body["stream"], False)
         self.assertIs(body["truncate"], False)

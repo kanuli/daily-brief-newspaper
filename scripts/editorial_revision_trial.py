@@ -25,25 +25,30 @@ from probe_general_news_fallback_capability import (
 
 DRAFT_PATH = "data/prepublish.json"
 TRIAL_ROOT = "data/producer-editorial-trials"
-MODEL = "qwen2.5:1.5b"
-FAILED_RUN = "37805090332"
-FAILED_CAPACITY_SHA = "3c2541d5c9ff3619b49abdcef4c1333bbc259275"
-FAILED_CHECKED_AT = "2026-10-08T16:03:29.435752Z"
+MODEL = "qwen2.5:7b"
+FAILED_MODEL = "qwen2.5:1.5b"
+FAILED_RUN = "37916836587"
+FAILED_JOB = 113774991335
+FAILED_HEAD = "a9c0fc9c4be514a9e99f297c9c4708e1183b2cfa"
+FAILED_CAPACITY_SHA = "ee98c99c29234da4bdac578705967197a9a68e1c"
+FAILED_CHECKED_AT = "2026-10-09T10:22:40.395030Z"
 MAX_RUNTIME_MINUTES = 20
-PREDECESSOR_CONTRACT = "7952ffe860b26e951b1a980dfc0f8260dd7721f92cc3170b53547f62291b64ef"
-PREDECESSOR_RESULT_SHA = "2ea6997f6078196eff7949d7a7ec8a001793b8ac"
-PREDECESSOR_CHILD = "37885330986"
+PREDECESSOR_CONTRACT = "93e667e53906bc85a5a549633c3b0efa8044ae3aa6f83f8eeb4ea27660a72cd3"
+PREDECESSOR_RESULT_SHA = "3f8546e7ebcebd7a6e5aca8db80db89ad16a6f4b"
+PREDECESSOR_CHILD = "37911303424"
 FALLBACK_BIND_DEADLINE_SECONDS = 660
 # Fixed reviewed BEHAVIOR, not source/HEAD/clock: cosmetic source edits cannot
 # mint another immutable ledger path. Exact reviewed code is a separate check.
 CONTRACT = {
-    "protocol": "ollama-hk-language-preserving-bounded-copy-v4", "model": MODEL,
+    "protocol": "ollama-larger-model-daily-ready-copy-v5", "model": MODEL,
     "candidateIdentity": "exact-candidate-id-enum",
     "copyFields": ["title", "dek", "summary", "body", "context", "why", "watchNext"],
     "copyFieldsRequired": True, "copyStringsNonempty": True,
     "bodyRepresentation": "two-or-three-source-paragraphs-serialized-with-double-newline",
     "predecessorContract": PREDECESSOR_CONTRACT,
-    "observedPredecessorFailure": "accessible-english-sources-yielded-zero-cjk-copy-and-third-body-format-failed",
+    "observedPriorProductionFailure": "three-small-model-completions-rejected-for-kana-or-supplied-paragraph-representation",
+    "priorFailedProduction": {"run": FAILED_RUN, "job": FAILED_JOB, "head": FAILED_HEAD, "model": FAILED_MODEL},
+    "dailyBody": {"visibleMinimum": 100, "visibleMaximum": 1800, "paragraphCharactersMinimum": 50, "paragraphCharactersMaximum": 600},
     "copyLanguageRepresentation": "literal-cjk-leading-single-line-fields-and-body-paragraphs",
     "modelContextTokens": 32768,
     "truncateInput": False,
@@ -60,7 +65,7 @@ CONTRACT = {
     "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged",
 }
 REVIEWED_SOURCES = {
-    "scripts/general_news_local_fallback.py": "164d0b6cfc47382b4470f7a4bcde00c8605c55d300fd8ccf5bfc9061ecb1707e",
+    "scripts/general_news_local_fallback.py": "194d8f5c3d4fa597de600a57ef82e23b0dc21f2e783527b6e244072cc9db668e",
     "scripts/general_news_verified_producer.py": "b8604594ee18a5f7bc31d68acb0fb175ec752b73dc9f5970e1cd207ca2f37e2d",
     "scripts/general_news_verification_robot.py": "5e60639ab28729975e8f8543efe669b2e11af77e7667913f13b1e33a3dd1b6f5",
 }
@@ -166,6 +171,37 @@ class TrialStore(GitHubCapacityStore):
         })
 
 
+def failed_production_proven(store) -> bool:
+    """Read-only exact completed run/job evidence; never creates a retry."""
+    try:
+        def read(path):
+            return store.json_request(urllib.request.Request(
+                f"https://api.github.com/repos/{REPOSITORY}/actions/runs/{FAILED_RUN}{path}",
+                headers=store.headers(), method="GET"))
+        run = read("")
+        if (not isinstance(run, dict) or type(run.get("id")) is not int
+            or str(run["id"]) != FAILED_RUN or run.get("repository", {}).get("full_name") != REPOSITORY
+            or run.get("name") != "General News Verified Producer"
+            or run.get("path") != ".github/workflows/general-news-producer.yml"
+            or run.get("head_branch") != "main" or run.get("head_sha") != FAILED_HEAD
+            or run.get("event") != "workflow_dispatch" or type(run.get("run_attempt")) is not int
+            or run["run_attempt"] != 1 or run.get("status") != "completed" or run.get("conclusion") != "failure"):
+            return False
+        jobs = read("/jobs?per_page=100").get("jobs")
+        if not isinstance(jobs, list):
+            return False
+        matching = [job for job in jobs if isinstance(job, dict) and type(job.get("id")) is int and job["id"] == FAILED_JOB]
+        if len(matching) != 1:
+            return False
+        job = matching[0]
+        return (job.get("run_id") == int(FAILED_RUN) and job.get("name") == "produce"
+                and job.get("status") == "completed" and job.get("conclusion") == "failure"
+                and any(isinstance(step, dict) and step.get("name") == "Fail non-capacity verification/copy errors"
+                        and step.get("conclusion") == "failure" for step in job.get("steps", [])))
+    except Exception:
+        return False
+
+
 def eligible(root: Path, store, owner: dict, now: datetime) -> dict:
     if not reviewed_code(root):
         return {"eligible": False, "reason": "unreviewed-code"}
@@ -176,16 +212,16 @@ def eligible(root: Path, store, owner: dict, now: datetime) -> dict:
         or capacity["value"].get("status") != "LOCAL_FALLBACK_FAILED"
         or capacity["value"].get("workflowRunId") != FAILED_RUN
         or capacity["value"].get("checkedAt") != FAILED_CHECKED_AT
-        or capacity["value"].get("localFallbackModel") != MODEL
+        or capacity["value"].get("localFallbackModel") != FAILED_MODEL
         or capacity["value"].get("capabilityOnly") is True):
         return {"eligible": False, "reason": "base-editorial-failure-changed"}
     checked_clock(capacity["value"]["checkedAt"], now)
     predecessor = store.read(f"{TRIAL_ROOT}/{PREDECESSOR_CONTRACT}.result.json")
     if (not predecessor or predecessor["sha"] != PREDECESSOR_RESULT_SHA
-        or predecessor["value"].get("status") != "EDITORIAL_TRIAL_FAILED"
+        or predecessor["value"].get("status") != "VERIFIED_NEW_DRAFT"
         or predecessor["value"].get("childRunId") != PREDECESSOR_CHILD
-        or predecessor["value"].get("editorialOutcomeVerified") is not False):
-        return {"eligible": False, "reason": "reviewed-predecessor-failure-not-proven"}
+        or predecessor["value"].get("editorialOutcomeVerified") is not True):
+        return {"eligible": False, "reason": "reviewed-predecessor-success-not-proven"}
     if store.read(record_path("claim")) is not None:
         from editorial_trial_observation import observe_pending_trial
         observation = observe_pending_trial(
@@ -201,12 +237,15 @@ def eligible(root: Path, store, owner: dict, now: datetime) -> dict:
             "priorCapacity": capacity["value"], "capacityRemainsFailed": True,
             "publicationPermissionGranted": False,
         }
+    if not failed_production_proven(store):
+        return {"eligible": False, "reason": "exact-prior-editorial-production-failure-not-proven"}
     return {
         "eligible": True, "owner": "Site Editor-in-Chief",
         "contractRevision": CONTRACT_REVISION, "dispatcherRunId": owner["runId"],
         "checkedAt": iso(now), "capacitySHA": capacity["sha"],
         "priorCapacity": capacity["value"], "capacityRemainsFailed": True,
         "predecessorResultSHA": PREDECESSOR_RESULT_SHA,
+        "failedProduction": CONTRACT["priorFailedProduction"],
         "publicationPermissionGranted": False,
     }
 
@@ -239,6 +278,7 @@ def claim(root: Path, store, permit: dict, assignment: dict, owner: dict, now: d
         "attempt": 1, "maxAttempts": 1, "remainingAttempts": 0,
         "priorCapacitySHA": FAILED_CAPACITY_SHA, "priorCapacity": copy.deepcopy(fresh["priorCapacity"]),
         "predecessorResultSHA": PREDECESSOR_RESULT_SHA,
+        "failedProduction": copy.deepcopy(CONTRACT["priorFailedProduction"]),
         "priorDraftId": (old_draft or {}).get("value", {}).get("draftId"),
         "publicationPermissionGranted": False,
     }
@@ -261,6 +301,7 @@ def bind(root: Path, store, contract: str, dispatcher: str, child: dict, now: da
         or state.get("dispatcherRunId") != dispatcher
         or state.get("priorCapacitySHA") != FAILED_CAPACITY_SHA
         or state.get("predecessorResultSHA") != PREDECESSOR_RESULT_SHA
+        or state.get("failedProduction") != CONTRACT["priorFailedProduction"]
         or state.get("priorCapacity", {}).get("workflowRunId") != FAILED_RUN
         or not capacity or capacity["sha"] != FAILED_CAPACITY_SHA
         or state.get("attempt") != 1 or state.get("remainingAttempts") != 0
@@ -326,6 +367,9 @@ def canonical_article_ok(article, claimed: dict, now: datetime) -> bool:
     import general_news_verified_producer as producer
     import general_news_verification_robot as verification_robot
     if not isinstance(article, dict):
+        return False
+    body = article.get("body")
+    if not isinstance(body, str) or not 100 <= len(re.sub(r"\s+", "", body)) <= 1800:
         return False
     verification = article.get("verification") or {}
     evidence = article.get("sources") or []

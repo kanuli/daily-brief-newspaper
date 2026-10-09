@@ -252,7 +252,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ollama/models
-          key: ollama-qwen2.5-1.5b-v1
+          key: ollama-qwen2.5-7b-v1
 
       - name: Run open-source local capacity fallback
         id: local_fallback
@@ -278,12 +278,18 @@ jobs:
             echo "ok=false" >> "$GITHUB_OUTPUT"
             exit 1
           fi
-          ollama pull qwen2.5:1.5b
+          python - <<'PY'
+          import shutil
+          from pathlib import Path
+          available_kib = next(int(line.split()[1]) for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemAvailable:'))
+          free_bytes = shutil.disk_usage('.').free
+          print(f'LOCAL_MODEL_RESOURCES availableMemoryMiB={available_kib // 1024} freeDiskGiB={free_bytes // (1024 ** 3)}')
+          if available_kib < 10 * 1024 * 1024 or free_bytes < 8 * 1024 ** 3:
+              raise SystemExit('LOCAL_MODEL_RESOURCES_INSUFFICIENT')
+          PY
+          ollama pull qwen2.5:7b
           fallback_seconds=$(python -c 'import math, sys, time; deadline=float(sys.argv[1]); remaining=min(600, math.floor(deadline-time.time())); assert math.isfinite(deadline) and remaining > 0; print(remaining)' '${{ steps.trial_guard.outputs.fallback_deadline_unix }}')
-          ordinary_copy_args=()
-          if [ '${{ steps.trial_guard.outputs.active }}' != 'true' ]; then
-            ordinary_copy_args+=(--daily-ready-copy)
-          fi
+          ordinary_copy_args=(--daily-ready-copy)
           set +e
           timeout --signal=KILL "${fallback_seconds}s" \
             python scripts/general_news_local_fallback.py \
@@ -295,7 +301,7 @@ jobs:
           set -e
           if [ "$rc" -eq 0 ]; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
-            echo "GENERAL_NEWS_LOCAL_CAPACITY_FALLBACK_OK model=qwen2.5:1.5b"
+            echo "GENERAL_NEWS_LOCAL_CAPACITY_FALLBACK_OK model=qwen2.5:7b"
             exit 0
           fi
           cat /tmp/ollama.log >&2 || true
@@ -363,7 +369,7 @@ jobs:
                       else None
                   )
               ),
-              "localFallbackModel": "qwen2.5:1.5b" if (local_fallback_ok or status == "LOCAL_FALLBACK_FAILED") else None,
+              "localFallbackModel": "qwen2.5:7b" if (local_fallback_ok or status == "LOCAL_FALLBACK_FAILED") else None,
               "workflowRunId": os.environ.get("GITHUB_RUN_ID"),
           }
           Path("/tmp/producer-capacity.json").write_text(
@@ -481,7 +487,7 @@ jobs:
 
       - name: Report degraded local fallback
         if: steps.capacity.outputs.status == 'DEGRADED_LOCAL_FALLBACK'
-        run: echo "GENERAL_NEWS_PRODUCER_DEGRADED localFallback=qwen2.5:1.5b"
+        run: echo "GENERAL_NEWS_PRODUCER_DEGRADED localFallback=qwen2.5:7b"
 
       - name: Finalize reviewed trial from exact persisted draft or preserve failed capacity
         if: always() && steps.trial_guard.outputs.active == 'true'

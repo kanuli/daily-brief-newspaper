@@ -311,7 +311,7 @@ class SourceSelectionBudgetTests(unittest.TestCase):
             def __exit__(self, *args):
                 return None
             def read(self):
-                return json.dumps({"response": "{}"}).encode()
+                return json.dumps({"model": "qwen2.5:7b", "done": True, "response": "{}"}).encode()
         for timeout in (0, -1, math.inf, math.nan, 241):
             with self.subTest(timeout=timeout), patch.object(self.module.urllib.request, "urlopen") as http:
                 with self.assertRaises(ValueError):

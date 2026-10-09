@@ -40,7 +40,7 @@ from googlenewsdecoder import gnewsdecoder
 import general_news_verified_producer as producer
 
 MODEL_URL = "http://127.0.0.1:11434/api/generate"
-MODEL_NAME = "qwen2.5:1.5b"
+MODEL_NAME = "qwen2.5:7b"
 MODEL_CONTEXT = 32768
 TARGET_COPY_PATTERN = r'^[㐀-鿿][^"\\\u0000-\u001f]*$'
 COPY_LANGUAGE_REPRESENTATION_ERRORS = frozenset({
@@ -605,6 +605,8 @@ def ollama_json(prompt: str, *, schema: dict[str, Any], timeout: float = 240) ->
     )
     with urllib.request.urlopen(req, timeout=timeout) as response:
         payload = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, dict) or payload.get("model") != MODEL_NAME or payload.get("done") is not True:
+        raise ValueError("model identity or completion not verified")
     try:
         print("LOCAL_MODEL_RUNTIME", json.dumps(model_runtime_metadata(payload), ensure_ascii=False))
     except Exception:
