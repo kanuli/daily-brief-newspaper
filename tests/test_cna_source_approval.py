@@ -98,11 +98,29 @@ class CnaApprovalTests(unittest.TestCase):
         parser = self.fallback.CnaArticleBodyParser()
         parser.feed('<meta name="description" content="PRIVATE"><p>PRIVATE CHROME</p>'
                     '<div class="paragraph"><p>合成正文甲<a>內文</a></p>'
-                    '<script>PRIVATE SCRIPT</script><p>合成正文乙</p></div>'
+                    '<script>PRIVATE SCRIPT</script><p>合成正文乙</p>'
+                    '<div class="keywordTag"><a>PRIVATE TAG</a></div>PRIVATE PROMOTION</div>'
                     '<div class="paragraph appDownload"><p>PRIVATE DONATION</p></div>'
                     '<div class="paragraph articleADbox"><p>PRIVATE AD</p></div>')
         self.assertEqual("".join(parser.parts), "合成正文甲內文合成正文乙")
         self.assertEqual(parser.meta, [])
+
+    def test_keywords_and_promotion_cannot_pad_short_publisher_body_over_minimum(self):
+        body = ('<div class="paragraph"><p>short</p><div class="keywordTag">'
+                + 'PRIVATE NONBODY ' * 100 + '</div></div>').encode()
+        with patch.object(self.fallback, "fetch", return_value=(LINK, body)):
+            self.assertIsNone(self.fallback.extract_source_page(LINK))
+
+    def test_prepared_candidate_keeps_exact_approval_provenance_within_original_cap(self):
+        row = collector.cna_feed_items(feed(link=LINK, title="合成測試非新聞日本政策資料"), "japan", NOW)[0]
+        with patch.object(robot, "soft_stale_desks", return_value=["japan"]), \
+             patch.object(robot, "existing_identity", return_value=(set(), set())):
+            request = robot.prepare_request({"desks": {"japan": [row]}}, {}, {}, NOW)
+        self.assertEqual(request["candidateCount"], 1)
+        selected = request["candidates"][0]
+        self.assertEqual(selected["provider"], row["provider"])
+        self.assertEqual(selected["publishedAt"], row["publishedAt"])
+        self.assertTrue(self.fallback.trusted(selected))
 
     def test_body_minimum_and_all_original_copy_gates_still_apply(self):
         with patch.object(self.fallback, "fetch", return_value=(LINK, b'<div class="paragraph"><p>short</p></div>')):

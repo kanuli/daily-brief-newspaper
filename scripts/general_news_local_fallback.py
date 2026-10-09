@@ -305,12 +305,27 @@ class RthkArticleBodyParser(HTMLParser):
 
 class CnaArticleBodyParser(RthkArticleBodyParser):
     """Only the exact article paragraph container, not ads, donation or metadata."""
+    def __init__(self) -> None:
+        super().__init__()
+        self.paragraph_depth = 0
+
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "p" and self.depth and not self.skip:
+            self.paragraph_depth += 1
         if tag.lower() == "div" and not self.skip:
             if self.depth or dict(attrs).get("class") == "paragraph":
                 self.depth += 1
             return
         super().handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() == "p" and self.paragraph_depth and not self.skip:
+            self.paragraph_depth -= 1
+        super().handle_endtag(tag)
+
+    def handle_data(self, data: str) -> None:
+        if self.depth and self.paragraph_depth and not self.skip:
+            self.parts.append(data)
 
 
 def decoded_candidate_url(candidate: dict[str, Any]) -> str | None:

@@ -99,7 +99,7 @@ CONTRACT = {
     "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged",
 }
 REVIEWED_SOURCES = {
-    "scripts/general_news_local_fallback.py": "745b43ab161e1428998cbf46df08fb7e9cd343607067fd57b3d638589172d649",
+    "scripts/general_news_local_fallback.py": "2b3a902d9a604430cb1a025e74a79c85ed1a9c28d61570a596e80718931186e8",
     "scripts/parallel_general_news_fallback.py": "c5247c9d38338d37cebada3630feac4b4437cd650f07c1fc2eb03a2a2453aa0c",
     ".github/workflows/general-news-producer.yml": "1caacbf6c61e90accf2f1c53a51aeeb132180afc082641b5e480c574480ae932",
     "scripts/owned_general_news_runtime.py": "f1522b4d906d34c9a6e8c2bd9a2c9f7b8f69c7d298c9b91eb6d0dbacf107a1db",
