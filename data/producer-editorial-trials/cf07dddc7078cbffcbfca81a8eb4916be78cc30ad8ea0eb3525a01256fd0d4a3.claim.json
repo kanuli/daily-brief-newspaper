@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "owner": "Site Editor-in-Chief",
+  "scope": "single-reviewed-editorial-code-trial",
+  "contractRevision": "cf07dddc7078cbffcbfca81a8eb4916be78cc30ad8ea0eb3525a01256fd0d4a3",
+  "contract": {
+    "protocol": "google-gemma-rthk-exact-article-body-extraction-v11",
+    "model": "gemma3:4b-it-qat",
+    "modelDeveloper": "Google DeepMind",
+    "ownerPolicy": "non-China-developed-models-only",
+    "modelManifestDigest": "b0313423c9448adfab711aacbc9d0b885a390eb31f1145d7f8495d1e6f84f257",
+    "verifiedRuntimePredecessor": {
+      "run": "37950761065",
+      "head": "932bb166cb4b52ba1be096ff797dbfdb0c462216",
+      "job": 113890880726
+    },
+    "publisherBodyExtraction": {
+      "host": "news.rthk.hk",
+      "scheme": "https",
+      "port": "default-or-443",
+      "path": "/rthk/ch/component/k2/<digits>-<eight-digit-date>.htm",
+      "queryAndFragment": "none",
+      "body": "div-with-exact-itemFullText-class-token",
+      "excluded": [
+        "metadata",
+        "navigation",
+        "footer",
+        "script",
+        "style",
+        "noscript",
+        "svg"
+      ],
+      "minimumActualBodyCharacters": 300,
+      "maximumSourceCharacters": 9000,
+      "observedFailure": "twelve-source-probes-zero-model-calls-original-parser-missed-div-body",
+      "measuredFailedArticles": {
+        "1873366": 427,
+        "1873291": 228,
+        "1873367": 199,
+        "1873345": 128
+      },
+      "shortArticlePolicy": "reject-without-metadata-padding-or-search-snippet-substitution"
+    },
+    "runtimeOwnership": {
+      "loopbackPort": 11435,
+      "daemon": "one-worker-owned-clean-environment-process",
+      "modelStore": "explicit-cache-matching-model-directory",
+      "parallelRequests": 1,
+      "loadedModels": 1,
+      "warmup": "empty-prompt-load-only-no-generated-tokens",
+      "warmupSeconds": 60,
+      "budget": "inside-original-shared-deadline-no-renewal",
+      "proof": "exact-loaded-model-digest-and-observed-resource-scalars",
+      "observedFailure": "installer-daemon-port-conflict-obscured-runtime-plus-two-240-second-timeouts"
+    },
+    "execution": {
+      "workers": 3,
+      "maxParallel": 3,
+      "deskPartition": "distinct-index-modulo-three",
+      "maxSourceProbesPerWorker": 4,
+      "maxModelCallsPerWorker": 1,
+      "childBindings": 1,
+      "canonicalProducerJobs": 1,
+      "sourcePlan": "exact-run-code-request-staging-and-state-digests",
+      "deadline": "fixed-shared-plan-deadline-no-worker-renewal",
+      "enginePolicy": "reviewed-Google-local-only-no-unpinned-Copilot"
+    },
+    "candidateIdentity": "exact-candidate-id-enum",
+    "copyFields": [
+      "title",
+      "dek",
+      "summary",
+      "body",
+      "context",
+      "why",
+      "watchNext"
+    ],
+    "copyFieldsRequired": true,
+    "copyStringsNonempty": true,
+    "bodyRepresentation": "two-or-three-source-paragraphs-serialized-with-double-newline",
+    "predecessorContract": "07c723dc652c32b51237c599fd082e8eb518dba75cf40ca565a658185ca5c1b1",
+    "observedPriorProductionFailure": "three-small-model-completions-rejected-for-kana-or-supplied-paragraph-representation",
+    "priorFailedProduction": {
+      "run": "37955233912",
+      "job": 113905133099,
+      "head": "2e12721182d544be4cb3634d50e01c0ef5eddd15",
+      "model": "gemma3:4b-it-qat"
+    },
+    "dailyBody": {
+      "visibleMinimum": 100,
+      "visibleMaximum": 1800,
+      "paragraphCharactersMinimum": 60,
+      "paragraphCharactersMaximum": 110
+    },
+    "boundedCopy": {
+      "paragraphs": 2,
+      "factCharactersMaximum": 100,
+      "fieldCharacterLimits": {
+        "title": 40,
+        "dek": 60,
+        "summary": 80,
+        "context": 60,
+        "why": 50,
+        "watchNext": 50
+      },
+      "policy": "source-faithful-concise-copy-no-truncation-padding-or-output-repair"
+    },
+    "copyLanguageRepresentation": "literal-cjk-leading-single-line-fields-and-body-paragraphs",
+    "copyGrammarExcludes": [
+      "U+3040-U+30FF",
+      "U+FF66-U+FF9F"
+    ],
+    "observedGoogleFailure": "CJK-leading-copy-with-excessive-kana-correctly-rejected",
+    "modelContextTokens": 32768,
+    "truncateInput": false,
+    "shiftContext": false,
+    "trustedPolicyInstructions": true,
+    "nativeSystemRole": false,
+    "trustedInstructionTransport": "initial-user-prompt-plus-final-after-input-reminder",
+    "localeInstructionPosition": "original-prefix-plus-trusted-after-input-reminder",
+    "sourceSelection": {
+      "mode": "availability-aware-round-robin-v1",
+      "maxCandidatesPerDesk": 4,
+      "maxSourceProbes": 12,
+      "maxModelCalls": 3,
+      "maxAcceptedPerDesk": 1,
+      "sourceWorkerTimeoutSeconds": 35,
+      "sharedFallbackSeconds": 600,
+      "bindDeadlineSeconds": 660
+    },
+    "factsMinimum": 2,
+    "factsMaximum": 5,
+    "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged"
+  },
+  "reviewedSources": {
+    "scripts/general_news_local_fallback.py": "6c60ee527518aa3d40df8d7ff0ebc21d79da51f137936fb90c7d97467282d26b",
+    "scripts/parallel_general_news_fallback.py": "c5247c9d38338d37cebada3630feac4b4437cd650f07c1fc2eb03a2a2453aa0c",
+    ".github/workflows/general-news-producer.yml": "1caacbf6c61e90accf2f1c53a51aeeb132180afc082641b5e480c574480ae932",
+    "scripts/owned_general_news_runtime.py": "f1522b4d906d34c9a6e8c2bd9a2c9f7b8f69c7d298c9b91eb6d0dbacf107a1db",
+    "scripts/general_news_verified_producer.py": "b8604594ee18a5f7bc31d68acb0fb175ec752b73dc9f5970e1cd207ca2f37e2d",
+    "scripts/general_news_verification_robot.py": "1c37dbb561bfb49863284f5a28793a71ed3df181d7efe60482258da9336f21e9"
+  },
+  "claimedAt": "2026-10-09T16:12:39.418545Z",
+  "expiresAt": "2026-10-09T16:32:39.418545Z",
+  "dispatcherRunId": "37957377222",
+  "assignmentId": "7a8ce5a6e783fa0f",
+  "attempt": 1,
+  "maxAttempts": 1,
+  "remainingAttempts": 0,
+  "priorCapacitySHA": "be7dbf9945fa0911bd6e0e136f9d647ba53c4b55",
+  "priorCapacity": {
+    "schemaVersion": 1,
+    "producer": "General News Verified Producer",
+    "checkedAt": "2026-10-09T15:58:07.688766Z",
+    "status": "LOCAL_FALLBACK_FAILED",
+    "reason": "Reviewed Google-local workers produced no publishable verified output",
+    "blockedUntil": null,
+    "recoveryOwner": "automation:Newsroom Publisher",
+    "localFallbackModel": "gemma3:4b-it-qat",
+    "workflowRunId": "37955233912"
+  },
+  "predecessorResultSHA": "f096c5a6f04d12a402638249e68c87ed6744a030",
+  "failedProduction": {
+    "run": "37955233912",
+    "job": 113905133099,
+    "head": "2e12721182d544be4cb3634d50e01c0ef5eddd15",
+    "model": "gemma3:4b-it-qat"
+  },
+  "priorDraftId": "general-news-20261009-2353-hkt",
+  "publicationPermissionGranted": false
+}
