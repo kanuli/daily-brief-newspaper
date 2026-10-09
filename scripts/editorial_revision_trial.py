@@ -94,7 +94,7 @@ REVIEWED_SOURCES = {
     ".github/workflows/general-news-producer.yml": "1caacbf6c61e90accf2f1c53a51aeeb132180afc082641b5e480c574480ae932",
     "scripts/owned_general_news_runtime.py": "f1522b4d906d34c9a6e8c2bd9a2c9f7b8f69c7d298c9b91eb6d0dbacf107a1db",
     "scripts/general_news_verified_producer.py": "b8604594ee18a5f7bc31d68acb0fb175ec752b73dc9f5970e1cd207ca2f37e2d",
-    "scripts/general_news_verification_robot.py": "14c842b96b131e4d949252b77f638100dd6f5ca0f998853d19376b06a0722e59",
+    "scripts/general_news_verification_robot.py": "1c37dbb561bfb49863284f5a28793a71ed3df181d7efe60482258da9336f21e9",
 }
 
 

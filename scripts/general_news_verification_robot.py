@@ -147,7 +147,7 @@ def candidate_score(row: dict[str, Any]) -> tuple[int, float]:
     # than an opaque search redirect. This ranks discovery only: every existing
     # date/dedup/relevance, actual publisher-text and copy gate still runs.
     if (row.get("provider") == "RTHK Official RSS" and source == "香港電台"
-        and row.get("desk") in {"hong-kong", "finance"}
+        and row.get("desk") in {"world", "asia", "hong-kong", "japan", "finance", "ai-tech"}
         and re.fullmatch(r"https://news\.rthk\.hk/rthk/ch/component/k2/\d+-\d{8}\.htm", clean(row.get("url")))):
         points += 4
     stamp = parse_iso(row.get("publishedAt")) or datetime.min.replace(tzinfo=timezone.utc)

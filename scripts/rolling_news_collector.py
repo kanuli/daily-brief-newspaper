@@ -36,8 +36,34 @@ DIRECT_PUBLISHER_FEEDS = {
     # Pin the independently observed HTTPS publisher endpoint; never downgrade.
     "hong-kong": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_clocal.xml",
     "finance": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_cfinance.xml",
+    "world": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_cinternational.xml",
+    "asia": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_cinternational.xml",
+    "japan": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_cinternational.xml",
+    "ai-tech": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_cfinance.xml",
 }
 MAX_DIRECT_FEED_BYTES = 131072
+DIRECT_WORLD_TITLE = re.compile(r"美國|英國|法國|德國|俄羅斯|俄軍|烏克蘭|烏軍|歐盟|歐洲|北約|聯合國|加拿大|澳洲|巴西|墨西哥|阿根廷|南非|蘇丹")
+DIRECT_ASIA_TITLE = re.compile(r"亞洲|中國|內地|台灣|南韓|北韓|韓國|新加坡|馬來西亞|泰國|越南|印尼|菲律賓|印度|巴基斯坦|孟加拉|斯里蘭卡|中東|以色列|伊朗|伊拉克|加沙")
+DIRECT_JAPAN_TITLE = re.compile(r"日本|東京|日圓|高市|岸田|石破|自民黨")
+DIRECT_TECH_TITLE = re.compile(r"人工智能|\bAI\b|科技|半導體|晶片|英偉達|輝達|OpenAI|網絡攻擊|黑客|資訊科技|網絡安全|蘋果公司|數據中心", re.I)
+
+
+def direct_title_routed(title: str, desk: str) -> bool:
+    """Conservative discovery routing; unknown regions stay in normal search."""
+    japan = bool(DIRECT_JAPAN_TITLE.search(title))
+    asia = bool(DIRECT_ASIA_TITLE.search(title))
+    tech = bool(DIRECT_TECH_TITLE.search(title))
+    if desk == "world":
+        return bool(DIRECT_WORLD_TITLE.search(title)) and not japan and not asia and not tech
+    if desk == "asia":
+        return asia and not japan and not tech
+    if desk == "japan":
+        return japan and not tech
+    if desk == "ai-tech":
+        return tech
+    if desk == "finance":
+        return not tech
+    return desk == "hong-kong"
 
 
 def direct_feed_get(url: str) -> bytes:
@@ -75,6 +101,8 @@ def direct_feed_items(payload: bytes, desk: str, discovered: datetime) -> list[d
             or parsed.username or parsed.password or parsed.port not in {None, 443}
             or not re.fullmatch(r"/rthk/ch/component/k2/\d+-\d{8}\.htm", parsed.path)
             or published is None or published > discovered):
+            continue
+        if not direct_title_routed(row["title"], desk):
             continue
         row["source"] = "香港電台"
         row["provider"] = "RTHK Official RSS"
@@ -472,6 +500,7 @@ def collect(existing: dict[str, Any], mode: str = "normal") -> dict[str, Any]:
     merged = retained_candidates(existing, started)
     errors: list[dict[str, str]] = []
     query_audit: dict[str, dict[str, int]] = {}
+    direct_payloads: dict[str, bytes | None] = {}
 
     for desk, base_queries in QUERY_PLAN.items():
         queries = list(base_queries)
@@ -498,7 +527,14 @@ def collect(existing: dict[str, Any], mode: str = "normal") -> dict[str, Any]:
         if desk in DIRECT_PUBLISHER_FEEDS:
             query_audit[desk]["directPublisherQueries"] = 1
             try:
-                items = direct_feed_items(direct_feed_get(DIRECT_PUBLISHER_FEEDS[desk]), desk, started)
+                feed_url = DIRECT_PUBLISHER_FEEDS[desk]
+                if feed_url not in direct_payloads:
+                    direct_payloads[feed_url] = None
+                    direct_payloads[feed_url] = direct_feed_get(feed_url)
+                payload = direct_payloads[feed_url]
+                if payload is None:
+                    raise ValueError("publisher-feed-unavailable")
+                items = direct_feed_items(payload, desk, started)
                 query_audit[desk]["directPublisherItems"] = len(items)
                 merge_items(desk, items, merged, discovered_this_run)
             except Exception:

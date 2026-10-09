@@ -51,7 +51,7 @@ class DirectDiscoveryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             collector.direct_feed_get("https://unreviewed.invalid/feed")
         with self.assertRaises(ValueError):
-            collector.direct_feed_items(feed(), "world", NOW)
+            collector.direct_feed_items(feed(), "football", NOW)
 
     def test_normal_collector_keeps_existing_queries_and_stages_only_discovery(self):
         queried = []
@@ -62,7 +62,7 @@ class DirectDiscoveryTests(unittest.TestCase):
              patch.object(collector, "http_get", side_effect=existing_provider), \
              patch.object(collector, "direct_feed_get", return_value=feed()) as direct:
             staged = collector.collect({})
-        self.assertEqual(direct.call_count, 2)
+        self.assertEqual(direct.call_count, 3)
         direct.assert_any_call(collector.DIRECT_PUBLISHER_FEEDS["hong-kong"])
         direct.assert_any_call(collector.DIRECT_PUBLISHER_FEEDS["finance"])
         self.assertEqual(sum("news.google.com" in url for url in queried), sum(map(len, collector.QUERY_PLAN.values())))
@@ -79,7 +79,7 @@ class DirectDiscoveryTests(unittest.TestCase):
             staged = collector.collect({})
         self.assertEqual(staged["errors"], [{"desk": desk, "provider": "RTHK Official RSS",
                                              "query": "official-publisher-rss", "error": "publisher-feed-unavailable"}
-                                            for desk in ("hong-kong", "finance")])
+                                            for desk in ("world", "asia", "hong-kong", "japan", "finance", "ai-tech")])
         self.assertNotIn("PRIVATE", str(staged))
         self.assertEqual(sum(staged["candidateCounts"].values()), 0)
 
@@ -96,6 +96,31 @@ class DirectDiscoveryTests(unittest.TestCase):
         self.assertEqual(row["desk"], "finance")
         self.assertEqual(row["source"], "香港電台")
         self.assertNotIn("verified", row)
+
+    def test_regions_require_explicit_title_evidence_and_do_not_cross_route(self):
+        fixtures = {"world": "合成測試非新聞資料美國", "asia": "合成測試非新聞資料新加坡",
+                    "japan": "合成測試非新聞資料日本", "ai-tech": "合成測試非新聞資料人工智能"}
+        for expected, title in fixtures.items():
+            for desk in fixtures:
+                with self.subTest(expected=expected, desk=desk):
+                    self.assertEqual(collector.direct_title_routed(title, desk), desk == expected)
+        for desk in fixtures:
+            self.assertFalse(collector.direct_title_routed("合成未知地區材料並非新聞", desk))
+
+    def test_japan_region_takes_precedence_over_asia_and_world_without_output_rewriting(self):
+        title = "合成測試非新聞資料日本與美國"
+        self.assertTrue(collector.direct_title_routed(title, "japan"))
+        self.assertFalse(collector.direct_title_routed(title, "world"))
+        self.assertFalse(collector.direct_title_routed(title, "asia"))
+        rows = collector.direct_feed_items(feed(title=title), "japan", NOW)
+        self.assertEqual(rows[0]["title"], title)
+
+    def test_shared_feed_transport_is_not_retried_once_per_desk_on_failure(self):
+        with patch.object(collector, "now_utc", return_value=NOW), \
+             patch.object(collector, "http_get", return_value=b"<rss><channel/></rss>"), \
+             patch.object(collector, "direct_feed_get", side_effect=TimeoutError("PRIVATE")) as direct:
+            collector.collect({})
+        self.assertEqual(direct.call_count, 3)
 
 
 if __name__ == "__main__":

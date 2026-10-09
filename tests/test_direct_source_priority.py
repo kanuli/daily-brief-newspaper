@@ -35,7 +35,7 @@ class DirectSourcePriorityTests(unittest.TestCase):
         baseline = candidate(7, direct=True)
         expected = robot.candidate_score(baseline)[0]
         for delta in ({"provider": "unreviewed"}, {"source": "unreviewed"},
-                      {"desk": "world"}, {"url": "http://127.0.0.1/private"},
+                      {"desk": "unreviewed"}, {"url": "http://127.0.0.1/private"},
                       {"url": "https://news.rthk.hk.evil.invalid/rthk/ch/component/k2/1999999-20261009.htm"}):
             with self.subTest(delta=delta):
                 self.assertLess(robot.candidate_score({**baseline, **delta})[0], expected)
