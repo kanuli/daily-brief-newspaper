@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "owner": "Site Editor-in-Chief",
+  "scope": "single-reviewed-editorial-code-trial",
+  "contractRevision": "d7b9d06009cce4c0e81dfcd89e5f5cbe6e5f0d583051211bbc229fbcbdaaaaf9",
+  "contract": {
+    "protocol": "ollama-google-gemma-parallel-kana-excluding-copy-grammar-v8",
+    "model": "gemma3:4b-it-qat",
+    "modelDeveloper": "Google DeepMind",
+    "ownerPolicy": "non-China-developed-models-only",
+    "modelManifestDigest": "b0313423c9448adfab711aacbc9d0b885a390eb31f1145d7f8495d1e6f84f257",
+    "failedPriorTrial": {
+      "run": "37926162046",
+      "head": "da534291ab3b3017cb25ee87b191ed799392b294",
+      "job": 113806967039
+    },
+    "execution": {
+      "workers": 3,
+      "maxParallel": 3,
+      "deskPartition": "distinct-index-modulo-three",
+      "maxSourceProbesPerWorker": 4,
+      "maxModelCallsPerWorker": 1,
+      "childBindings": 1,
+      "canonicalProducerJobs": 1,
+      "sourcePlan": "exact-run-code-request-staging-and-state-digests",
+      "deadline": "fixed-shared-plan-deadline-no-worker-renewal",
+      "enginePolicy": "reviewed-Google-local-only-no-unpinned-Copilot"
+    },
+    "candidateIdentity": "exact-candidate-id-enum",
+    "copyFields": [
+      "title",
+      "dek",
+      "summary",
+      "body",
+      "context",
+      "why",
+      "watchNext"
+    ],
+    "copyFieldsRequired": true,
+    "copyStringsNonempty": true,
+    "bodyRepresentation": "two-or-three-source-paragraphs-serialized-with-double-newline",
+    "predecessorContract": "a41728ef57d21ab1777933a7f5e8b17a19c4939dbe3250aa76ed800acf8ebbf9",
+    "observedPriorProductionFailure": "three-small-model-completions-rejected-for-kana-or-supplied-paragraph-representation",
+    "priorFailedProduction": {
+      "run": "37916836587",
+      "job": 113774991335,
+      "head": "a9c0fc9c4be514a9e99f297c9c4708e1183b2cfa",
+      "model": "qwen2.5:1.5b"
+    },
+    "dailyBody": {
+      "visibleMinimum": 100,
+      "visibleMaximum": 1800,
+      "paragraphCharactersMinimum": 50,
+      "paragraphCharactersMaximum": 600
+    },
+    "copyLanguageRepresentation": "literal-cjk-leading-single-line-fields-and-body-paragraphs",
+    "copyGrammarExcludes": [
+      "U+3040-U+30FF",
+      "U+FF66-U+FF9F"
+    ],
+    "observedGoogleFailure": "CJK-leading-copy-with-excessive-kana-correctly-rejected",
+    "modelContextTokens": 32768,
+    "truncateInput": false,
+    "shiftContext": false,
+    "trustedPolicyInstructions": true,
+    "nativeSystemRole": false,
+    "trustedInstructionTransport": "initial-user-prompt-plus-final-after-input-reminder",
+    "localeInstructionPosition": "original-prefix-plus-trusted-after-input-reminder",
+    "sourceSelection": {
+      "mode": "availability-aware-round-robin-v1",
+      "maxCandidatesPerDesk": 4,
+      "maxSourceProbes": 12,
+      "maxModelCalls": 3,
+      "maxAcceptedPerDesk": 1,
+      "sourceWorkerTimeoutSeconds": 35,
+      "sharedFallbackSeconds": 600,
+      "bindDeadlineSeconds": 660
+    },
+    "factsMinimum": 2,
+    "factsMaximum": 5,
+    "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged"
+  },
+  "reviewedSources": {
+    "scripts/general_news_local_fallback.py": "67ff2bcbf06febc6b6bdb1b2928dfee0cc8b3317615b812419ebcc56e78f4eb7",
+    "scripts/parallel_general_news_fallback.py": "c5247c9d38338d37cebada3630feac4b4437cd650f07c1fc2eb03a2a2453aa0c",
+    ".github/workflows/general-news-producer.yml": "123e2bda7127f1f79022c979be88a25e95245d76c180f08523e966d5aeb70023",
+    "scripts/general_news_verified_producer.py": "b8604594ee18a5f7bc31d68acb0fb175ec752b73dc9f5970e1cd207ca2f37e2d",
+    "scripts/general_news_verification_robot.py": "5e60639ab28729975e8f8543efe669b2e11af77e7667913f13b1e33a3dd1b6f5"
+  },
+  "claimedAt": "2026-10-09T12:01:45.494814Z",
+  "expiresAt": "2026-10-09T12:21:45.494814Z",
+  "dispatcherRunId": "37927329891",
+  "assignmentId": "1411afdc263288f8",
+  "attempt": 1,
+  "maxAttempts": 1,
+  "remainingAttempts": 0,
+  "priorCapacitySHA": "ee98c99c29234da4bdac578705967197a9a68e1c",
+  "priorCapacity": {
+    "schemaVersion": 1,
+    "producer": "General News Verified Producer",
+    "checkedAt": "2026-10-09T10:22:40.395030Z",
+    "status": "LOCAL_FALLBACK_FAILED",
+    "reason": "GitHub Copilot quota/capacity exhausted; GitHub-native local fallback attempted but produced no publishable verified output",
+    "blockedUntil": null,
+    "recoveryOwner": "automation:Newsroom Publisher",
+    "localFallbackModel": "qwen2.5:1.5b",
+    "workflowRunId": "37916836587"
+  },
+  "predecessorResultSHA": "4117c3238175f52ef6b04746e50322f36bd8be9d",
+  "failedProduction": {
+    "run": "37916836587",
+    "job": 113774991335,
+    "head": "a9c0fc9c4be514a9e99f297c9c4708e1183b2cfa",
+    "model": "qwen2.5:1.5b"
+  },
+  "priorDraftId": "general-news-20261009-1805-hkt",
+  "publicationPermissionGranted": false
+}
