@@ -25,7 +25,7 @@ COPY_FIELDS = ("title", "dek", "summary", "body", "context", "why", "watchNext")
 def load_functions(path):
     source = path.read_text(encoding="utf-8")
     tree = ast.parse(source)
-    wanted_functions = {"clean", "allowed_numbers", "valid_output", "editorial_gate_diagnostics", "copy_output_schema", "main"}
+    wanted_functions = {"clean", "allowed_numbers", "valid_output", "editorial_gate_diagnostics", "copy_output_schema", "canonical_copy_output", "main"}
     wanted_constants = {"NUM_RE", "CJK_RE", "KANA_RE", "BANNED_PUBLIC"}
     nodes = [node for node in tree.body if (
         isinstance(node, ast.FunctionDef) and node.name in wanted_functions
@@ -117,9 +117,11 @@ class EditorialDiagnosticsTests(unittest.TestCase):
         self.assertEqual(set(diagnostic["copyFieldCharacters"]), set(COPY_FIELDS))
         self.assertTrue(all(type(size) is int for size in diagnostic["copyFieldCharacters"].values()))
 
-    def run_rejected_main(self, *, source_error=None, diagnostic_error=False):
+    def run_rejected_main(self, *, source_error=None, diagnostic_error=False, malformed_body=False):
         packet, value = fixture()
         value["candidateId"] = "bad-identity"
+        if not malformed_body:
+            value["verifiedCopy"]["body"] = ["合成第一段" * 15, "合成第二段" * 15]
         namespace = dict(OBS)
         # Main's function globals are the namespace originally compiled above.
         original = dict(OBS)
@@ -162,6 +164,13 @@ class EditorialDiagnosticsTests(unittest.TestCase):
         self.assertEqual(diagnostic[0]["reasonCodes"], ["diagnostic-unavailable"])
         self.assertEqual(diagnostic[0]["diagnosticError"], "RuntimeError")
         self.assertNotIn("secret-error-text", json.dumps(diagnostic))
+
+    def test_invalid_model_paragraph_representation_never_guesses_breaks_or_writes_copy(self):
+        with patch.object(Path, "write_text", side_effect=AssertionError("no news writes")):
+            diagnostic = self.run_rejected_main(malformed_body=True)
+        self.assertEqual(diagnostic[0]["stage"], "model-format")
+        self.assertEqual(diagnostic[0]["reasonCodes"], ["body-paragraph-representation-invalid"])
+        self.assertNotIn("合成測試文字", json.dumps(diagnostic, ensure_ascii=False))
 
     def test_rss_parse_error_identifies_locator_not_article_html_parser(self):
         diagnostic = self.run_rejected_main(source_error=ET.ParseError("secret-response-body"))

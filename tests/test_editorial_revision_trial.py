@@ -35,6 +35,11 @@ class Store:
         self.rows = {
             trial.CAPACITY_PATH: {"sha": trial.FAILED_CAPACITY_SHA, "value": copy.deepcopy(BASE)},
             trial.DRAFT_PATH: {"sha": "old-draft-sha", "value": {"draftId": "old-draft"}},
+            f"{trial.TRIAL_ROOT}/{trial.PREDECESSOR_CONTRACT}.result.json": {
+                "sha": trial.PREDECESSOR_RESULT_SHA,
+                "value": {"status": "EDITORIAL_TRIAL_FAILED", "childRunId": trial.PREDECESSOR_CHILD,
+                          "editorialOutcomeVerified": False},
+            },
         }
         self.capacity_writes = []
         self.creates = []
@@ -131,6 +136,34 @@ def classified_trial(permit):
 class TrialTests(unittest.TestCase):
     def test_reviewed_sources_exact(self):
         self.assertTrue(trial.reviewed_code(ROOT))
+
+    def test_paragraph_revision_requires_the_exact_failed_predecessor_proof(self):
+        path = f"{trial.TRIAL_ROOT}/{trial.PREDECESSOR_CONTRACT}.result.json"
+        for change in ("missing", "sha", "success", "other-child"):
+            store = Store()
+            if change == "missing":
+                store.rows.pop(path)
+            elif change == "sha":
+                store.rows[path]["sha"] = "different-proof"
+            elif change == "success":
+                store.rows[path]["value"].update(status="VERIFIED_NEW_DRAFT", editorialOutcomeVerified=True)
+            else:
+                store.rows[path]["value"]["childRunId"] = "another-child"
+            with self.subTest(change=change):
+                self.assertEqual(trial.eligible(ROOT, store, EIC, NOW)["reason"],
+                                 "reviewed-predecessor-failure-not-proven")
+
+    def test_meaningful_paragraph_revision_preserves_spent_v1_records(self):
+        store = Store()
+        old_claim = f"{trial.TRIAL_ROOT}/{trial.PREDECESSOR_CONTRACT}.claim.json"
+        store.rows[old_claim] = {"sha": "immutable-old-claim", "value": {"remainingAttempts": 0}}
+        before = copy.deepcopy(store.rows)
+        self.assertTrue(trial.eligible(ROOT, store, EIC, NOW)["eligible"])
+        state = claimed(store)
+        self.assertNotEqual(trial.CONTRACT_REVISION, trial.PREDECESSOR_CONTRACT)
+        for path in (old_claim, f"{trial.TRIAL_ROOT}/{trial.PREDECESSOR_CONTRACT}.result.json"):
+            self.assertEqual(store.rows[path], before[path])
+        self.assertEqual(state["claim"]["predecessorResultSHA"], trial.PREDECESSOR_RESULT_SHA)
         self.assertEqual(trial.CONTRACT["copyFields"], list(producer.COPY_FIELDS))
 
     def test_runtime_capacity_not_reset_by_claim_or_bind(self):

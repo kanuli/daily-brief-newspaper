@@ -448,8 +448,9 @@ def apply_previous_outcomes(
         if isinstance(row, dict) and row.get("robot")
     }
     for row in plan:
-        if row["robot"] == "public-probe":
-            # Its immutable observation budget is independent of content retry.
+        if row["robot"] in {"public-probe", "daily-recovery"}:
+            # Durable observation/material-input ledgers own these budgets;
+            # generic retries must not reset a held or exhausted epoch.
             row["outcomeBefore"] = snapshot
             continue
         prior = previous_rows.get(row["robot"])
@@ -631,6 +632,16 @@ def main() -> int:
         vocab_ok=vocab_ok,
     )
     producer_blocked = producer_capacity_blocked(producer_capacity, now)
+    from daily_recovery_dependency import daily_budget, inspect_daily_dependency
+    import build_today_daily_from_desk as daily_builder
+    import validate_desk_integrity as desk_integrity
+    integrity_state, integrity_detail = desk_integrity.inspect(Path(args.desk), Path(args.live))
+    daily_input = inspect_daily_dependency(
+        now=now, desk=desk, live=live, builder=daily_builder,
+        integrity_state=integrity_state, integrity_detail=integrity_detail,
+    )
+    daily_recovery_state, daily_decision = daily_budget(previous, daily_input)
+    snapshot["dailyRecoveryInputEvidence"] = daily_input
     # A successful deployment is not an independent observation. Retain the
     # latest real deployment clock across blocked/unassigned cycles; neither
     # missing metadata nor regressing/future clocks can erase this obligation.
@@ -839,6 +850,26 @@ def main() -> int:
             priority=20,
         )
 
+    # Daily needs a genuinely current verified Desk and eight Daily-safe stories.
+    # Resolve this prerequisite before writer/race checks so a waiting Daily
+    # cannot prevent newer verified Live from reaching Desk Merge.
+    if daily_recovery_required(latest, editor, now):
+        add_assignment(
+            plan, robots, "daily-recovery", "daily-currentness",
+            "repository Daily edition/currentness or Daily structure failed",
+        )
+        daily_row = next(row for row in plan if row["robot"] == "daily-recovery")
+        daily_row.update(daily_decision)
+        daily_row["blockedBy"] = ["verified-current-rolling-desk"] if not daily_input["ready"] else []
+        if str(latest.get("date") or "") >= daily_input["requiredEdition"]:
+            # This builder only recovers a stale edition; its current-edition
+            # NOOP cannot repair malformed current copy. Escalate honestly,
+            # rather than repeatedly dispatch or pretend Desk is the blocker.
+            daily_row.update(
+                status="stuck", dispatchable=False, requiresEditorReplan=True,
+                blockedBy=[], reason="current-daily-structural-fault-not-repairable-by-stale-edition-builder",
+            )
+
     # A newer Live snapshot with no upstream writer currently assigned belongs to Desk Merge.
     live_dt = parse_iso(live.get("lastUpdated"))
     desk_dt = parse_iso(desk.get("generatedAt") or desk.get("lastUpdated"))
@@ -908,14 +939,7 @@ def main() -> int:
 
     # 7) Daily/current publication.
     failed_pages = set(sentinel.get("persistentFailedPages") or [])
-    if daily_recovery_required(latest, editor, now):
-        add_assignment(
-            plan,
-            robots,
-            "daily-recovery",
-            "daily-currentness",
-            "repository Daily edition/currentness or Daily structure failed",
-        )
+    # Daily was planned above, before dependency/race checks.
 
     # 8) Pages/public propagation. This robot deploys; it does not rebuild newsroom data.
     page_fault = any(
@@ -1058,6 +1082,7 @@ def main() -> int:
         },
         "evidenceSnapshot": snapshot,
         "publicProbeRecovery": probe_recovery,
+        "dailyRecoveryInput": daily_recovery_state,
         "collectorAgeMinutes": round(age, 1),
         "stockCheckAgeMinutes": round(stock_age, 1),
         "standingDuty": {

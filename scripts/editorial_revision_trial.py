@@ -30,18 +30,24 @@ FAILED_RUN = "37805090332"
 FAILED_CAPACITY_SHA = "3c2541d5c9ff3619b49abdcef4c1333bbc259275"
 FAILED_CHECKED_AT = "2026-10-08T16:03:29.435752Z"
 MAX_RUNTIME_MINUTES = 20
+PREDECESSOR_CONTRACT = "eb53e7505f72f8071c3abdef4a17d89673fc5c3006aaba6493299fbe2cad67a7"
+PREDECESSOR_RESULT_SHA = "4961499c24285914e6ad9914b31671280613df40"
+PREDECESSOR_CHILD = "37882927467"
 # Fixed reviewed BEHAVIOR, not source/HEAD/clock: cosmetic source edits cannot
 # mint another immutable ledger path. Exact reviewed code is a separate check.
 CONTRACT = {
-    "protocol": "ollama-structured-copy-v1", "model": MODEL,
+    "protocol": "ollama-structured-paragraph-copy-v2", "model": MODEL,
     "candidateIdentity": "exact-candidate-id-enum",
     "copyFields": ["title", "dek", "summary", "body", "context", "why", "watchNext"],
     "copyFieldsRequired": True, "copyStringsNonempty": True,
+    "bodyRepresentation": "two-or-three-source-paragraphs-serialized-with-double-newline",
+    "predecessorContract": PREDECESSOR_CONTRACT,
+    "observedPredecessorFailure": "body-paragraph-break-missing",
     "factsMinimum": 2, "factsMaximum": 5,
     "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged",
 }
 REVIEWED_SOURCES = {
-    "scripts/general_news_local_fallback.py": "adb7c10ef30d63a11a001819413d06448c0f9accc0214e146cbeb19b55953e6e",
+    "scripts/general_news_local_fallback.py": "7b004f7f18174e7f74bce51ef755ec067a8e9bfba23091b9a9686c653b94f395",
     "scripts/general_news_verified_producer.py": "b8604594ee18a5f7bc31d68acb0fb175ec752b73dc9f5970e1cd207ca2f37e2d",
     "scripts/general_news_verification_robot.py": "5e60639ab28729975e8f8543efe669b2e11af77e7667913f13b1e33a3dd1b6f5",
 }
@@ -161,6 +167,12 @@ def eligible(root: Path, store, owner: dict, now: datetime) -> dict:
         or capacity["value"].get("capabilityOnly") is True):
         return {"eligible": False, "reason": "base-editorial-failure-changed"}
     checked_clock(capacity["value"]["checkedAt"], now)
+    predecessor = store.read(f"{TRIAL_ROOT}/{PREDECESSOR_CONTRACT}.result.json")
+    if (not predecessor or predecessor["sha"] != PREDECESSOR_RESULT_SHA
+        or predecessor["value"].get("status") != "EDITORIAL_TRIAL_FAILED"
+        or predecessor["value"].get("childRunId") != PREDECESSOR_CHILD
+        or predecessor["value"].get("editorialOutcomeVerified") is not False):
+        return {"eligible": False, "reason": "reviewed-predecessor-failure-not-proven"}
     if store.read(record_path("claim")) is not None:
         return {"eligible": False, "reason": "semantic-trial-budget-consumed"}
     return {
@@ -168,6 +180,7 @@ def eligible(root: Path, store, owner: dict, now: datetime) -> dict:
         "contractRevision": CONTRACT_REVISION, "dispatcherRunId": owner["runId"],
         "checkedAt": iso(now), "capacitySHA": capacity["sha"],
         "priorCapacity": capacity["value"], "capacityRemainsFailed": True,
+        "predecessorResultSHA": PREDECESSOR_RESULT_SHA,
         "publicationPermissionGranted": False,
     }
 
@@ -199,6 +212,7 @@ def claim(root: Path, store, permit: dict, assignment: dict, owner: dict, now: d
         "dispatcherRunId": owner["runId"], "assignmentId": assignment["assignmentId"],
         "attempt": 1, "maxAttempts": 1, "remainingAttempts": 0,
         "priorCapacitySHA": FAILED_CAPACITY_SHA, "priorCapacity": copy.deepcopy(fresh["priorCapacity"]),
+        "predecessorResultSHA": PREDECESSOR_RESULT_SHA,
         "priorDraftId": (old_draft or {}).get("value", {}).get("draftId"),
         "publicationPermissionGranted": False,
     }
@@ -220,6 +234,7 @@ def bind(root: Path, store, contract: str, dispatcher: str, child: dict, now: da
         or state.get("reviewedSources") != REVIEWED_SOURCES or state.get("contract") != CONTRACT
         or state.get("dispatcherRunId") != dispatcher
         or state.get("priorCapacitySHA") != FAILED_CAPACITY_SHA
+        or state.get("predecessorResultSHA") != PREDECESSOR_RESULT_SHA
         or state.get("priorCapacity", {}).get("workflowRunId") != FAILED_RUN
         or not capacity or capacity["sha"] != FAILED_CAPACITY_SHA
         or state.get("attempt") != 1 or state.get("remainingAttempts") != 0

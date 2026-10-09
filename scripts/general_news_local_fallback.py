@@ -295,11 +295,16 @@ def copy_output_schema(packet: dict[str, str]) -> dict[str, Any]:
         field: {"type": "string", "minLength": 1}
         for field in producer.COPY_FIELDS
     }
-    # Avoid claiming regex grammar support from an untested runner version.
-    # Paragraph breaks are still strictly required by valid_output unchanged.
-    properties["body"]["description"] = (
-        "Two or three source-grounded prose paragraphs separated by two newline characters."
-    )
+    # Array cardinality expresses the paragraph boundary without depending on
+    # whether the runner's string grammar can enforce newline characters.
+    properties["body"] = {
+        "type": "array", "items": {"type": "string", "minLength": 1},
+        "minItems": 2, "maxItems": 3,
+        "description": (
+            "Two or three distinct source-grounded prose paragraphs. Each array "
+            "item is one nonempty paragraph, without newline characters."
+        ),
+    }
     return {
         "type": "object",
         "properties": {
@@ -316,6 +321,31 @@ def copy_output_schema(packet: dict[str, str]) -> dict[str, Any]:
         "required": ["candidateId", "facts", "verifiedCopy"],
         "additionalProperties": False,
     }
+
+
+def canonical_copy_output(value: dict[str, Any]) -> dict[str, Any]:
+    """Serialize only model-supplied paragraph boundaries, never invent them."""
+    if not isinstance(value, dict) or not isinstance(value.get("verifiedCopy"), dict):
+        raise ValueError("structured copy requires a copy object")
+    copy_raw = value["verifiedCopy"]
+    paragraphs_raw = copy_raw.get("body")
+    if not isinstance(paragraphs_raw, list) or not 2 <= len(paragraphs_raw) <= 3:
+        raise ValueError("structured body requires two or three paragraph strings")
+    paragraphs: list[str] = []
+    for paragraph in paragraphs_raw:
+        if not isinstance(paragraph, str) or not paragraph.strip():
+            raise ValueError("structured body requires nonempty paragraph strings")
+        paragraph = paragraph.strip()
+        if "\n" in paragraph or "\r" in paragraph:
+            raise ValueError("each structured body item must be a single paragraph")
+        paragraphs.append(paragraph)
+    if len({clean(paragraph) for paragraph in paragraphs}) != len(paragraphs):
+        raise ValueError("structured body paragraphs must be distinct")
+    copy = dict(copy_raw)
+    copy["body"] = "\n\n".join(paragraphs)
+    canonical = dict(value)
+    canonical["verifiedCopy"] = copy
+    return canonical
 
 
 def ollama_json(prompt: str, *, schema: dict[str, Any]) -> dict[str, Any]:
@@ -362,7 +392,9 @@ def model_prompt(packet: dict[str, str]) -> str:
         "facts 要列2至5項簡潔、可由 SOURCE_TEXT 直接支持的事實。\n"
         "只輸出符合 OUTPUT_SCHEMA 的 JSON，不得省略必要欄位。candidateId 必須原樣等於 "
         + json.dumps(packet["candidateId"], ensure_ascii=False)
-        + "，不要使用省略符或改寫識別碼。body 的段落必須以兩個換行字元分隔。\n"
+        + "，不要使用省略符或改寫識別碼。body 必須是2至3個非空段落字串的陣列，"
+        "每項只寫一段、不含換行字元。各段須有不同的新聞事實或解說重點，"
+        "全部由 SOURCE_TEXT 直接支持，不得重複、填充、拆句湊段或新增材料。\n"
         + "OUTPUT_SCHEMA:\n" + json.dumps(copy_output_schema(packet), ensure_ascii=False) + "\n"
         + "INPUT:\n" + json.dumps(safe, ensure_ascii=False)
     )
@@ -479,6 +511,14 @@ def main() -> int:
             continue
         try:
             model = ollama_json(model_prompt(packet), schema=copy_output_schema(packet))
+            try:
+                model = canonical_copy_output(model)
+            except ValueError:
+                diagnostics.append({
+                    "candidateId": cid, "stage": "model-format", "error": "rejected",
+                    "reasonCodes": ["body-paragraph-representation-invalid"],
+                })
+                continue
             checked = valid_output(packet, model)
         except Exception as exc:
             diagnostics.append({"candidateId": cid, "stage": "model", "error": type(exc).__name__})
