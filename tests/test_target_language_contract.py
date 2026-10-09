@@ -307,7 +307,10 @@ class TargetLanguageContractTests(unittest.TestCase):
         for name in preserved:
             old = next(node for node in budget.BASE_TREE.body if isinstance(node, ast.FunctionDef) and node.name == name)
             new = next(node for node in budget.TREE.body if isinstance(node, ast.FunctionDef) and node.name == name)
-            self.assertEqual(ast.get_source_segment(budget.BASE_SOURCE, old), ast.get_source_segment(budget.SOURCE, new))
+            current = ast.get_source_segment(budget.SOURCE, new)
+            if name == "extract_source_page":
+                current = budget.original_extraction_except_reviewed_parser(current)
+            self.assertEqual(ast.get_source_segment(budget.BASE_SOURCE, old), current)
         for name, expected in (("MAX_SOURCE_PROBES", 12), ("MAX_CANDIDATES_PER_DESK", 4), ("MAX_MODEL_CALLS", 3), ("MAX_RUN_SECONDS", 600), ("MAX_SOURCE_PROBE_SECONDS", 35), ("MAX_SOURCE_TEXT", 9000), ("MAX_SOURCE_BYTES", 1_000_000)):
             self.assertEqual(getattr(self.module, name), expected)
         signature = next(node for node in budget.TREE.body if isinstance(node, ast.FunctionDef) and node.name == "ollama_json")

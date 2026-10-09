@@ -26,26 +26,36 @@ from probe_general_news_fallback_capability import (
 DRAFT_PATH = "data/prepublish.json"
 TRIAL_ROOT = "data/producer-editorial-trials"
 MODEL = "gemma3:4b-it-qat"
-FAILED_MODEL = "qwen2.5:1.5b"
-FAILED_RUN = "37916836587"
-FAILED_JOB = 113774991335
-FAILED_HEAD = "a9c0fc9c4be514a9e99f297c9c4708e1183b2cfa"
-FAILED_CAPACITY_SHA = "ee98c99c29234da4bdac578705967197a9a68e1c"
-FAILED_CHECKED_AT = "2026-10-09T10:22:40.395030Z"
+FAILED_MODEL = "gemma3:4b-it-qat"
+FAILED_RUN = "37955233912"
+FAILED_JOB = 113905133099
+FAILED_HEAD = "2e12721182d544be4cb3634d50e01c0ef5eddd15"
+FAILED_CAPACITY_SHA = "be7dbf9945fa0911bd6e0e136f9d647ba53c4b55"
+FAILED_CHECKED_AT = "2026-10-09T15:58:07.688766Z"
 MAX_RUNTIME_MINUTES = 20
-PREDECESSOR_CONTRACT = "0b11f893f0d2f188ecf03b4e81f803cc0612d70064e43b41ca0059bb97602c17"
-PREDECESSOR_RESULT_SHA = "8efc8446639b170c3e3d1f676848517f1360e7c1"
-PREDECESSOR_CHILD = "37929159669"
-PREDECESSOR_HEAD = "7f54ec37a109a671709c680215f788363d819400"
-PREDECESSOR_JOB = 113818207153
+PREDECESSOR_CONTRACT = "07c723dc652c32b51237c599fd082e8eb518dba75cf40ca565a658185ca5c1b1"
+PREDECESSOR_RESULT_SHA = "f096c5a6f04d12a402638249e68c87ed6744a030"
+PREDECESSOR_CHILD = "37950761065"
+PREDECESSOR_HEAD = "932bb166cb4b52ba1be096ff797dbfdb0c462216"
+PREDECESSOR_JOB = 113890880726
 FALLBACK_BIND_DEADLINE_SECONDS = 660
 # Fixed reviewed BEHAVIOR, not source/HEAD/clock: cosmetic source edits cannot
 # mint another immutable ledger path. Exact reviewed code is a separate check.
 CONTRACT = {
-    "protocol": "ollama-google-gemma-owned-preloaded-runtime-v10", "model": MODEL,
+    "protocol": "google-gemma-rthk-exact-article-body-extraction-v11", "model": MODEL,
     "modelDeveloper": "Google DeepMind", "ownerPolicy": "non-China-developed-models-only",
     "modelManifestDigest": "b0313423c9448adfab711aacbc9d0b885a390eb31f1145d7f8495d1e6f84f257",
-    "failedPriorTrial": {"run": PREDECESSOR_CHILD, "head": PREDECESSOR_HEAD, "job": PREDECESSOR_JOB},
+    "verifiedRuntimePredecessor": {"run": PREDECESSOR_CHILD, "head": PREDECESSOR_HEAD, "job": PREDECESSOR_JOB},
+    "publisherBodyExtraction": {
+        "host": "news.rthk.hk", "scheme": "https", "port": "default-or-443",
+        "path": "/rthk/ch/component/k2/<digits>-<eight-digit-date>.htm",
+        "queryAndFragment": "none", "body": "div-with-exact-itemFullText-class-token",
+        "excluded": ["metadata", "navigation", "footer", "script", "style", "noscript", "svg"],
+        "minimumActualBodyCharacters": 300, "maximumSourceCharacters": 9000,
+        "observedFailure": "twelve-source-probes-zero-model-calls-original-parser-missed-div-body",
+        "measuredFailedArticles": {"1873366": 427, "1873291": 228, "1873367": 199, "1873345": 128},
+        "shortArticlePolicy": "reject-without-metadata-padding-or-search-snippet-substitution",
+    },
     "runtimeOwnership": {"loopbackPort": 11435, "daemon": "one-worker-owned-clean-environment-process",
                          "modelStore": "explicit-cache-matching-model-directory",
                          "parallelRequests": 1, "loadedModels": 1,
@@ -89,7 +99,7 @@ CONTRACT = {
     "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged",
 }
 REVIEWED_SOURCES = {
-    "scripts/general_news_local_fallback.py": "3d945b79500cbb913d2cdd26f8f0863bbe955e1700d9bd0883b5b7879a48a183",
+    "scripts/general_news_local_fallback.py": "6c60ee527518aa3d40df8d7ff0ebc21d79da51f137936fb90c7d97467282d26b",
     "scripts/parallel_general_news_fallback.py": "c5247c9d38338d37cebada3630feac4b4437cd650f07c1fc2eb03a2a2453aa0c",
     ".github/workflows/general-news-producer.yml": "1caacbf6c61e90accf2f1c53a51aeeb132180afc082641b5e480c574480ae932",
     "scripts/owned_general_news_runtime.py": "f1522b4d906d34c9a6e8c2bd9a2c9f7b8f69c7d298c9b91eb6d0dbacf107a1db",
@@ -229,8 +239,8 @@ def failed_production_proven(store) -> bool:
         return False
 
 
-def failed_predecessor_proven(store) -> bool:
-    """Require the exact spent Google trial, never infer from elapsed time."""
+def verified_predecessor_proven(store) -> bool:
+    """Require the exact spent successful Google runtime trial, not a reset."""
     try:
         def read(path):
             return store.json_request(urllib.request.Request(
@@ -243,7 +253,7 @@ def failed_predecessor_proven(store) -> bool:
             or run.get("path") != ".github/workflows/general-news-producer.yml"
             or run.get("head_branch") != "main" or run.get("head_sha") != PREDECESSOR_HEAD
             or run.get("event") != "workflow_dispatch" or type(run.get("run_attempt")) is not int
-            or run["run_attempt"] != 1 or run.get("status") != "completed" or run.get("conclusion") != "failure"):
+            or run["run_attempt"] != 1 or run.get("status") != "completed" or run.get("conclusion") != "success"):
             return False
         jobs = read("/jobs?per_page=100").get("jobs")
         if not isinstance(jobs, list):
@@ -253,9 +263,9 @@ def failed_predecessor_proven(store) -> bool:
             return False
         job = matching[0]
         return (job.get("run_id") == int(PREDECESSOR_CHILD) and job.get("name") == "produce"
-                and job.get("status") == "completed" and job.get("conclusion") == "failure"
+                and job.get("status") == "completed" and job.get("conclusion") == "success"
                 and any(isinstance(step, dict) and step.get("name") == "Finalize reviewed trial from exact persisted draft or preserve failed capacity"
-                        and step.get("conclusion") == "failure" for step in job.get("steps", [])))
+                        and step.get("conclusion") == "success" for step in job.get("steps", [])))
     except Exception:
         return False
 
@@ -276,11 +286,14 @@ def eligible(root: Path, store, owner: dict, now: datetime) -> dict:
     checked_clock(capacity["value"]["checkedAt"], now)
     predecessor = store.read(f"{TRIAL_ROOT}/{PREDECESSOR_CONTRACT}.result.json")
     if (not predecessor or predecessor["sha"] != PREDECESSOR_RESULT_SHA
-        or predecessor["value"].get("status") != "EDITORIAL_TRIAL_FAILED"
+        or predecessor["value"].get("contractRevision") != PREDECESSOR_CONTRACT
+        or predecessor["value"].get("status") != "VERIFIED_NEW_DRAFT"
         or predecessor["value"].get("childRunId") != PREDECESSOR_CHILD
-        or predecessor["value"].get("editorialOutcomeVerified") is not False
-        or predecessor["value"].get("failureCode") != "missing-engine-evidence"):
-        return {"eligible": False, "reason": "reviewed-failed-predecessor-record-not-proven"}
+        or predecessor["value"].get("editorialOutcomeVerified") is not True
+        or predecessor["value"].get("verifiedEngine") != "LOCAL_GEMMA"
+        or predecessor["value"].get("publicationPermissionGranted") is not False
+        or predecessor["value"].get("remainingAttempts") != 0):
+        return {"eligible": False, "reason": "reviewed-successful-predecessor-record-not-proven"}
     if store.read(record_path("claim")) is not None:
         from editorial_trial_observation import observe_pending_trial
         observation = observe_pending_trial(
@@ -298,8 +311,8 @@ def eligible(root: Path, store, owner: dict, now: datetime) -> dict:
         }
     if not failed_production_proven(store):
         return {"eligible": False, "reason": "exact-prior-editorial-production-failure-not-proven"}
-    if not failed_predecessor_proven(store):
-        return {"eligible": False, "reason": "exact-failed-predecessor-trial-not-proven"}
+    if not verified_predecessor_proven(store):
+        return {"eligible": False, "reason": "exact-successful-predecessor-trial-not-proven"}
     return {
         "eligible": True, "owner": "Site Editor-in-Chief",
         "contractRevision": CONTRACT_REVISION, "dispatcherRunId": owner["runId"],

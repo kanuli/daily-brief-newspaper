@@ -37,8 +37,10 @@ class Store:
             trial.DRAFT_PATH: {"sha": "old-draft-sha", "value": {"draftId": "old-draft"}},
             f"{trial.TRIAL_ROOT}/{trial.PREDECESSOR_CONTRACT}.result.json": {
                 "sha": trial.PREDECESSOR_RESULT_SHA,
-                "value": {"status": "EDITORIAL_TRIAL_FAILED", "childRunId": trial.PREDECESSOR_CHILD,
-                          "editorialOutcomeVerified": False, "failureCode": "missing-engine-evidence"},
+                "value": {"status": "VERIFIED_NEW_DRAFT", "childRunId": trial.PREDECESSOR_CHILD,
+                          "contractRevision": trial.PREDECESSOR_CONTRACT,
+                          "editorialOutcomeVerified": True, "verifiedEngine": "LOCAL_GEMMA",
+                          "publicationPermissionGranted": False, "remainingAttempts": 0},
             },
         }
         self.capacity_writes = []
@@ -55,10 +57,10 @@ class Store:
             "steps": [{"name": "Fail non-capacity verification/copy errors", "conclusion": "failure"}],
         }
         self.predecessor_run = {**self.failed_run, "id": int(trial.PREDECESSOR_CHILD),
-                              "head_sha": trial.PREDECESSOR_HEAD, "conclusion": "failure"}
+                              "head_sha": trial.PREDECESSOR_HEAD, "conclusion": "success"}
         self.predecessor_job = {**self.failed_job, "id": trial.PREDECESSOR_JOB,
-                              "run_id": int(trial.PREDECESSOR_CHILD), "conclusion": "failure",
-                              "steps": [{"name": "Finalize reviewed trial from exact persisted draft or preserve failed capacity", "conclusion": "failure"}]}
+                              "run_id": int(trial.PREDECESSOR_CHILD), "conclusion": "success",
+                              "steps": [{"name": "Finalize reviewed trial from exact persisted draft or preserve failed capacity", "conclusion": "success"}]}
 
     def ledger_ready(self):
         return True
@@ -174,23 +176,29 @@ class TrialTests(unittest.TestCase):
     def test_reviewed_sources_exact(self):
         self.assertTrue(trial.reviewed_code(ROOT))
 
-    def test_current_revision_requires_the_exact_failed_serial_predecessor_record(self):
+    def test_current_revision_requires_the_exact_spent_verified_runtime_record(self):
         path = f"{trial.TRIAL_ROOT}/{trial.PREDECESSOR_CONTRACT}.result.json"
-        for change in ("missing", "sha", "success", "other-child", "failure-code"):
+        for change in ("missing", "sha", "failure", "other-child", "engine", "contract", "permission", "remaining-budget"):
             store = Store()
             if change == "missing":
                 store.rows.pop(path)
             elif change == "sha":
                 store.rows[path]["sha"] = "different-proof"
-            elif change == "success":
-                store.rows[path]["value"].update(status="VERIFIED_NEW_DRAFT", editorialOutcomeVerified=True)
+            elif change == "failure":
+                store.rows[path]["value"].update(status="EDITORIAL_TRIAL_FAILED", editorialOutcomeVerified=False)
             elif change == "other-child":
                 store.rows[path]["value"]["childRunId"] = "another-child"
+            elif change == "engine":
+                store.rows[path]["value"]["verifiedEngine"] = "COPILOT"
+            elif change == "contract":
+                store.rows[path]["value"]["contractRevision"] = "other-contract"
+            elif change == "permission":
+                store.rows[path]["value"]["publicationPermissionGranted"] = True
             else:
-                store.rows[path]["value"]["failureCode"] = "other-failure"
+                store.rows[path]["value"]["remainingAttempts"] = 1
             with self.subTest(change=change):
                 self.assertEqual(trial.eligible(ROOT, store, EIC, NOW)["reason"],
-                                 "reviewed-failed-predecessor-record-not-proven")
+                                 "reviewed-successful-predecessor-record-not-proven")
 
     def test_exact_failed_run_and_job_are_required_without_writes(self):
         for delta in ({"id": 1}, {"repository": {"full_name": "other/repo"}},
@@ -215,25 +223,26 @@ class TrialTests(unittest.TestCase):
             self.assertFalse(trial.eligible(ROOT, store, EIC, NOW)["eligible"])
         self.assertEqual(store.creates + store.capacity_writes, [])
 
-    def test_new_model_is_not_the_failed_small_model_and_claim_is_bound(self):
+    def test_parser_revision_keeps_the_same_reviewed_google_model_and_claim_is_bound(self):
         self.assertEqual(trial.MODEL, "gemma3:4b-it-qat")
-        self.assertNotEqual(trial.MODEL, trial.FAILED_MODEL)
+        self.assertEqual(trial.MODEL, trial.FAILED_MODEL)
+        self.assertEqual(trial.CONTRACT["publisherBodyExtraction"]["minimumActualBodyCharacters"], 300)
         store = Store(); state = claimed(store)
         self.assertEqual(state["claim"]["failedProduction"], trial.CONTRACT["priorFailedProduction"])
         store.rows[trial.record_path("claim")]["value"]["failedProduction"]["run"] = "another"
         with self.assertRaises(trial.ProbeFailure):
             trial.bind(ROOT, store, trial.CONTRACT_REVISION, EIC["runId"], CHILD, NOW)
 
-    def test_exact_failed_serial_trial_is_required_before_parallel_admission(self):
+    def test_exact_verified_runtime_trial_is_required_before_source_parser_admission(self):
         for delta in ({"id": 1}, {"head_sha": "other"}, {"head_branch": "other"},
                       {"run_attempt": True}, {"run_attempt": 2}, {"status": "in_progress"},
-                      {"conclusion": "success"}, {"conclusion": "cancelled"}):
+                      {"conclusion": "failure"}, {"conclusion": "cancelled"}):
             store = Store(); store.predecessor_run.update(delta)
             with self.subTest(run=delta):
                 self.assertEqual(trial.eligible(ROOT, store, EIC, NOW)["reason"],
-                                 "exact-failed-predecessor-trial-not-proven")
+                                 "exact-successful-predecessor-trial-not-proven")
                 self.assertEqual(store.creates + store.capacity_writes, [])
-        for delta in ({"id": 1}, {"run_id": 1}, {"conclusion": "success"}, {"steps": []}):
+        for delta in ({"id": 1}, {"run_id": 1}, {"conclusion": "failure"}, {"steps": []}):
             store = Store(); store.predecessor_job.update(delta)
             with self.subTest(job=delta):
                 self.assertFalse(trial.eligible(ROOT, store, EIC, NOW)["eligible"])

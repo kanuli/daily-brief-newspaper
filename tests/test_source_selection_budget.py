@@ -15,6 +15,7 @@ import sys
 import types
 import unittest
 from unittest.mock import patch
+from reviewed_rthk_parser_delta import original_extraction_except_reviewed_parser
 
 ROOT = Path(__file__).resolve().parents[1]
 PROPOSAL = ROOT / "scripts/general_news_local_fallback.py"
@@ -138,7 +139,10 @@ class SourceSelectionBudgetTests(unittest.TestCase):
             with self.subTest(function=name):
                 old = next(node for node in BASE_TREE.body if isinstance(node, ast.FunctionDef) and node.name == name)
                 new = next(node for node in TREE.body if isinstance(node, ast.FunctionDef) and node.name == name)
-                self.assertEqual(ast.get_source_segment(BASE_SOURCE, old), ast.get_source_segment(SOURCE, new))
+                current = ast.get_source_segment(SOURCE, new)
+                if name == "extract_source_page":
+                    current = original_extraction_except_reviewed_parser(current)
+                self.assertEqual(ast.get_source_segment(BASE_SOURCE, old), current)
 
     def test_round_robin_reaches_second_hong_kong_at_attempt_twelve(self):
         data = request()

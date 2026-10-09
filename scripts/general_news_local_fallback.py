@@ -258,6 +258,45 @@ class ArticleTextParser(HTMLParser):
                 self.parts.append(value)
 
 
+class RthkArticleBodyParser(HTMLParser):
+    """Read only the publisher's article-body div, never page chrome/meta.
+
+    Selected only for the exact HTTPS RTHK article URL below. Collect inline
+    fragments before normalizing so markup cannot discard short body words.
+    The existing 300-character source gate still applies to body alone.
+    """
+    def __init__(self) -> None:
+        super().__init__()
+        self.depth = 0
+        self.skip = 0
+        self.parts: list[str] = []
+        self.meta: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style", "noscript", "svg"}:
+            self.skip += 1
+            return
+        if self.skip:
+            return
+        if tag == "div":
+            values = dict(attrs)
+            if self.depth or "itemFullText" in str(values.get("class") or "").split():
+                self.depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style", "noscript", "svg"} and self.skip:
+            self.skip -= 1
+            return
+        if not self.skip and tag == "div" and self.depth:
+            self.depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self.depth and not self.skip:
+            self.parts.append(data)
+
+
 def decoded_candidate_url(candidate: dict[str, Any]) -> str | None:
     raw = clean(candidate.get("url"))
     if not raw:
@@ -280,7 +319,14 @@ def extract_source_page(url: str) -> tuple[str, str] | None:
     try:
         final_url, payload = fetch(url, accept="text/html,application/xhtml+xml,*/*")
         text = payload.decode("utf-8", errors="ignore")
-        parser = ArticleTextParser()
+        parsed = urllib.parse.urlparse(final_url)
+        reviewed_rthk = (
+            parsed.scheme == "https" and parsed.hostname == "news.rthk.hk"
+            and parsed.port in {None, 443} and not parsed.username and not parsed.password
+            and not parsed.query and not parsed.fragment
+            and re.fullmatch(r"/rthk/ch/component/k2/[0-9]+-[0-9]{8}\.htm", parsed.path)
+        )
+        parser = RthkArticleBodyParser() if reviewed_rthk else ArticleTextParser()
         parser.feed(text)
         chunks = parser.meta + parser.parts
         source_text = clean(" ".join(chunks))
