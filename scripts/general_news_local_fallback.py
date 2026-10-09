@@ -42,7 +42,7 @@ import general_news_verified_producer as producer
 MODEL_URL = "http://127.0.0.1:11434/api/generate"
 MODEL_NAME = "gemma3:4b-it-qat"
 MODEL_CONTEXT = 32768
-TARGET_COPY_PATTERN = r'^[㐀-鿿][^"\\\u0000-\u001f]*$'
+TARGET_COPY_PATTERN = r'^[㐀-鿿][^"\\\u0000-\u001f\u3040-\u30ff\uff66-\uff9f]*$'
 COPY_LANGUAGE_REPRESENTATION_ERRORS = frozenset({
     "copy fields must satisfy the Chinese-leading string contract",
     "body paragraphs must satisfy the Chinese-leading string contract",
@@ -656,6 +656,9 @@ def model_prompt(packet: dict[str, str], *, daily_ready: bool = False) -> str:
         + ("正常新聞稿亦須可用於 Daily：body 正文合計至少100個非空白字元、最多1800個，"
            "每段50至600字元。只用來源支持的不同事實寫完整自然段落；不能靠其他欄位字數、"
            "空白、重複或填充補足正文。來源不足時不得編造。\n" if daily_ready else "")
+        + "OUTPUT_SCHEMA 的 verifiedCopy 字串不可含平假名、片假名或半形片假名，"
+        "必須用忠於來源的自然香港繁體中文表述。姓名、機構及產品名稱必須忠於來源；"
+        "不得為符合文字限制而發明譯名、拼音、背景或其他材料。無法忠實表述時不得編造。\n"
     )
 
 

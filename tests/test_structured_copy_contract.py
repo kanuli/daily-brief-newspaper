@@ -135,7 +135,7 @@ class StructuredContractTests(unittest.TestCase):
         schema = NAMESPACE["copy_output_schema"](packet_fixture())
         body = schema["properties"]["verifiedCopy"]["properties"]["body"]
         self.assertNotIn("pattern", body)
-        self.assertEqual(body["items"]["pattern"], r'^[㐀-鿿][^"\\\u0000-\u001f]*$')
+        self.assertEqual(body["items"]["pattern"], r'^[㐀-鿿][^"\\\u0000-\u001f\u3040-\u30ff\uff66-\uff9f]*$')
         self.assertNotIn("(?", body["items"]["pattern"])
         self.assertIn("distinct source-grounded", body["description"])
         packet, value = gate.fixture()
@@ -219,7 +219,7 @@ class StructuredContractTests(unittest.TestCase):
                 try:
                     canonical = NAMESPACE["canonical_copy_output"](value)
                 except ValueError:
-                    self.assertEqual(reason, "missing-copy")
+                    self.assertIn(reason, {"missing-copy", "kana"})
                 else:
                     self.assertIsNone(NAMESPACE["valid_output"](packet, canonical))
 

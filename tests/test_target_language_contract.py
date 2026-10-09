@@ -36,7 +36,7 @@ class TargetLanguageContractTests(unittest.TestCase):
         self.value = budget.structured_copy(self.packet)
 
     def test_each_copy_string_and_body_item_has_exact_supported_json_safe_pattern(self):
-        expected = r'^[㐀-鿿][^"\\\u0000-\u001f]*$'
+        expected = r'^[㐀-鿿][^"\\\u0000-\u001f\u3040-\u30ff\uff66-\uff9f]*$'
         self.assertEqual(self.module.TARGET_COPY_PATTERN, expected)
         self.assertNotIn("(?", expected)
         self.assertNotIn(r"\x", expected)
@@ -73,11 +73,41 @@ class TargetLanguageContractTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.module.canonical_copy_output(value)
 
-    def test_cjk_leading_japanese_still_reaches_unchanged_kana_gate_and_is_rejected(self):
+    def test_cjk_leading_japanese_is_now_rejected_before_the_unchanged_editorial_gate(self):
         value = copy.deepcopy(self.value)
         value["verifiedCopy"]["summary"] = "日本語" + "アニメの説明です" * 3
-        canonical = self.module.canonical_copy_output(value)
+        with self.assertRaises(ValueError):
+            self.module.canonical_copy_output(value)
+        # The original downstream gate itself is unchanged and still rejects
+        # the same excessive kana when called directly with canonical shape.
+        canonical = copy.deepcopy(value)
+        canonical["verifiedCopy"]["body"] = "\n\n".join(canonical["verifiedCopy"]["body"])
         self.assertIsNone(self.module.valid_output(self.packet, canonical))
+
+    def test_kana_anywhere_in_any_copy_field_is_excluded_without_rewriting(self):
+        for field in self.module.producer.COPY_FIELDS:
+            for kana in ("あ", "ア", "ｱ", "ン", "ｿ"):
+                value = copy.deepcopy(self.value)
+                if field == "body":
+                    value["verifiedCopy"][field][0] += kana
+                else:
+                    value["verifiedCopy"][field] += kana
+                before = copy.deepcopy(value)
+                with self.subTest(field=field, kana=kana), self.assertRaises(ValueError):
+                    self.module.canonical_copy_output(value)
+                self.assertEqual(value, before)
+
+    def test_literal_kana_excluding_pattern_keeps_chinese_and_source_faithful_latin_names(self):
+        for text in ("香港消息，Google 公布已核實產品。", "日本政府公布已核實政策。", "球會 Manchester United 公布消息。"):
+            self.assertIsNotNone(re.fullmatch(self.module.TARGET_COPY_PATTERN, text))
+        for text in ("日本消息：あ", "日本消息：ア", "日本消息：ｱ", "日本消息\n內容", '香港消息"內容'):
+            self.assertIsNone(re.fullmatch(self.module.TARGET_COPY_PATTERN, text))
+
+    def test_final_prompt_forbids_invented_names_to_satisfy_copy_grammar(self):
+        tail = self.module.model_prompt(self.packet, daily_ready=True).split("END_INPUT\n", 1)[1]
+        self.assertIn("不可含平假名、片假名或半形片假名", tail)
+        self.assertIn("不得為符合文字限制而發明譯名", tail)
+        self.assertIn("無法忠實表述時不得編造", tail)
 
     def test_all_required_copy_fields_reject_nonstring_empty_and_not_cjk_leading(self):
         invalid = (None, False, 123, [], {}, (), "", " ", " English", " 香港中文", "\t香港中文", "7香港中文", "「香港中文」", "😀香港中文")

@@ -190,7 +190,7 @@ class TrialTests(unittest.TestCase):
                 store.rows[path]["value"]["failureCode"] = "other-failure"
             with self.subTest(change=change):
                 self.assertEqual(trial.eligible(ROOT, store, EIC, NOW)["reason"],
-                                 "reviewed-failed-serial-predecessor-record-not-proven")
+                                 "reviewed-failed-predecessor-record-not-proven")
 
     def test_exact_failed_run_and_job_are_required_without_writes(self):
         for delta in ({"id": 1}, {"repository": {"full_name": "other/repo"}},
@@ -231,7 +231,7 @@ class TrialTests(unittest.TestCase):
             store = Store(); store.predecessor_run.update(delta)
             with self.subTest(run=delta):
                 self.assertEqual(trial.eligible(ROOT, store, EIC, NOW)["reason"],
-                                 "exact-failed-serial-trial-not-proven")
+                                 "exact-failed-predecessor-trial-not-proven")
                 self.assertEqual(store.creates + store.capacity_writes, [])
         for delta in ({"id": 1}, {"run_id": 1}, {"conclusion": "success"}, {"steps": []}):
             store = Store(); store.predecessor_job.update(delta)

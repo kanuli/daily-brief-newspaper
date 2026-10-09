@@ -33,19 +33,19 @@ FAILED_HEAD = "a9c0fc9c4be514a9e99f297c9c4708e1183b2cfa"
 FAILED_CAPACITY_SHA = "ee98c99c29234da4bdac578705967197a9a68e1c"
 FAILED_CHECKED_AT = "2026-10-09T10:22:40.395030Z"
 MAX_RUNTIME_MINUTES = 20
-PREDECESSOR_CONTRACT = "393d146c2c5431eb3ba02acf9d7e28976a29fd40a9b73c91d5607d18f1f13b47"
-PREDECESSOR_RESULT_SHA = "3e073a0297d092f56b9295040db12316b57d33d7"
-PREDECESSOR_CHILD = "37922091762"
-PREDECESSOR_HEAD = "9152a6d63af0bdc9fcab38057ebed69fc7aa5335"
-PREDECESSOR_JOB = 113792213858
+PREDECESSOR_CONTRACT = "a41728ef57d21ab1777933a7f5e8b17a19c4939dbe3250aa76ed800acf8ebbf9"
+PREDECESSOR_RESULT_SHA = "4117c3238175f52ef6b04746e50322f36bd8be9d"
+PREDECESSOR_CHILD = "37926162046"
+PREDECESSOR_HEAD = "da534291ab3b3017cb25ee87b191ed799392b294"
+PREDECESSOR_JOB = 113806967039
 FALLBACK_BIND_DEADLINE_SECONDS = 660
 # Fixed reviewed BEHAVIOR, not source/HEAD/clock: cosmetic source edits cannot
 # mint another immutable ledger path. Exact reviewed code is a separate check.
 CONTRACT = {
-    "protocol": "ollama-google-gemma-three-independent-bounded-workers-v7", "model": MODEL,
+    "protocol": "ollama-google-gemma-parallel-kana-excluding-copy-grammar-v8", "model": MODEL,
     "modelDeveloper": "Google DeepMind", "ownerPolicy": "non-China-developed-models-only",
     "modelManifestDigest": "b0313423c9448adfab711aacbc9d0b885a390eb31f1145d7f8495d1e6f84f257",
-    "failedSerialPriorTrial": {"run": PREDECESSOR_CHILD, "head": PREDECESSOR_HEAD, "job": PREDECESSOR_JOB},
+    "failedPriorTrial": {"run": PREDECESSOR_CHILD, "head": PREDECESSOR_HEAD, "job": PREDECESSOR_JOB},
     "execution": {"workers": 3, "maxParallel": 3, "deskPartition": "distinct-index-modulo-three",
                   "maxSourceProbesPerWorker": 4, "maxModelCallsPerWorker": 1,
                   "childBindings": 1, "canonicalProducerJobs": 1,
@@ -61,6 +61,8 @@ CONTRACT = {
     "priorFailedProduction": {"run": FAILED_RUN, "job": FAILED_JOB, "head": FAILED_HEAD, "model": FAILED_MODEL},
     "dailyBody": {"visibleMinimum": 100, "visibleMaximum": 1800, "paragraphCharactersMinimum": 50, "paragraphCharactersMaximum": 600},
     "copyLanguageRepresentation": "literal-cjk-leading-single-line-fields-and-body-paragraphs",
+    "copyGrammarExcludes": ["U+3040-U+30FF", "U+FF66-U+FF9F"],
+    "observedGoogleFailure": "CJK-leading-copy-with-excessive-kana-correctly-rejected",
     "modelContextTokens": 32768,
     "truncateInput": False,
     "shiftContext": False,
@@ -77,7 +79,7 @@ CONTRACT = {
     "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged",
 }
 REVIEWED_SOURCES = {
-    "scripts/general_news_local_fallback.py": "98f0976da75b11c4f429dec6c1da9d078b51901211cdd2d440cb950c6eaaf1c1",
+    "scripts/general_news_local_fallback.py": "67ff2bcbf06febc6b6bdb1b2928dfee0cc8b3317615b812419ebcc56e78f4eb7",
     "scripts/parallel_general_news_fallback.py": "c5247c9d38338d37cebada3630feac4b4437cd650f07c1fc2eb03a2a2453aa0c",
     ".github/workflows/general-news-producer.yml": "123e2bda7127f1f79022c979be88a25e95245d76c180f08523e966d5aeb70023",
     "scripts/general_news_verified_producer.py": "b8604594ee18a5f7bc31d68acb0fb175ec752b73dc9f5970e1cd207ca2f37e2d",
@@ -217,7 +219,7 @@ def failed_production_proven(store) -> bool:
 
 
 def failed_predecessor_proven(store) -> bool:
-    """Require the exact spent serial Google trial, never infer from elapsed time."""
+    """Require the exact spent Google trial, never infer from elapsed time."""
     try:
         def read(path):
             return store.json_request(urllib.request.Request(
@@ -267,7 +269,7 @@ def eligible(root: Path, store, owner: dict, now: datetime) -> dict:
         or predecessor["value"].get("childRunId") != PREDECESSOR_CHILD
         or predecessor["value"].get("editorialOutcomeVerified") is not False
         or predecessor["value"].get("failureCode") != "missing-engine-evidence"):
-        return {"eligible": False, "reason": "reviewed-failed-serial-predecessor-record-not-proven"}
+        return {"eligible": False, "reason": "reviewed-failed-predecessor-record-not-proven"}
     if store.read(record_path("claim")) is not None:
         from editorial_trial_observation import observe_pending_trial
         observation = observe_pending_trial(
@@ -286,7 +288,7 @@ def eligible(root: Path, store, owner: dict, now: datetime) -> dict:
     if not failed_production_proven(store):
         return {"eligible": False, "reason": "exact-prior-editorial-production-failure-not-proven"}
     if not failed_predecessor_proven(store):
-        return {"eligible": False, "reason": "exact-failed-serial-trial-not-proven"}
+        return {"eligible": False, "reason": "exact-failed-predecessor-trial-not-proven"}
     return {
         "eligible": True, "owner": "Site Editor-in-Chief",
         "contractRevision": CONTRACT_REVISION, "dispatcherRunId": owner["runId"],
