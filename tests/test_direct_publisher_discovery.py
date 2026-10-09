@@ -62,7 +62,9 @@ class DirectDiscoveryTests(unittest.TestCase):
              patch.object(collector, "http_get", side_effect=existing_provider), \
              patch.object(collector, "direct_feed_get", return_value=feed()) as direct:
             staged = collector.collect({})
-        direct.assert_called_once_with(collector.DIRECT_PUBLISHER_FEEDS["hong-kong"])
+        self.assertEqual(direct.call_count, 2)
+        direct.assert_any_call(collector.DIRECT_PUBLISHER_FEEDS["hong-kong"])
+        direct.assert_any_call(collector.DIRECT_PUBLISHER_FEEDS["finance"])
         self.assertEqual(sum("news.google.com" in url for url in queried), sum(map(len, collector.QUERY_PLAN.values())))
         self.assertIs(staged["discoveryOnly"], True)
         self.assertIs(staged["verificationRequiredBeforePublish"], True)
@@ -75,8 +77,9 @@ class DirectDiscoveryTests(unittest.TestCase):
              patch.object(collector, "http_get", return_value=b"<rss><channel/></rss>"), \
              patch.object(collector, "direct_feed_get", side_effect=TimeoutError("PRIVATE")):
             staged = collector.collect({})
-        self.assertEqual(staged["errors"], [{"desk": "hong-kong", "provider": "RTHK Official RSS",
-                                             "query": "official-publisher-rss", "error": "publisher-feed-unavailable"}])
+        self.assertEqual(staged["errors"], [{"desk": desk, "provider": "RTHK Official RSS",
+                                             "query": "official-publisher-rss", "error": "publisher-feed-unavailable"}
+                                            for desk in ("hong-kong", "finance")])
         self.assertNotIn("PRIVATE", str(staged))
         self.assertEqual(sum(staged["candidateCounts"].values()), 0)
 
@@ -87,6 +90,12 @@ class DirectDiscoveryTests(unittest.TestCase):
         collector.merge_items("hong-kong", rows, merged, set())
         self.assertEqual(len(merged["hong-kong"]), 1)
         self.assertEqual(merged["hong-kong"][old["id"]]["firstSeenAt"], old["firstSeenAt"])
+
+    def test_finance_feed_is_independent_discovery_with_unchanged_source_verification_requirement(self):
+        row = collector.direct_feed_items(feed(), "finance", NOW)[0]
+        self.assertEqual(row["desk"], "finance")
+        self.assertEqual(row["source"], "香港電台")
+        self.assertNotIn("verified", row)
 
 
 if __name__ == "__main__":

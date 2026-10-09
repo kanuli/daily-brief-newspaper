@@ -32,7 +32,10 @@ USER_AGENT = "DailyBriefRollingCollector/1.4 (+https://github.com/kanuli/daily-b
 RETENTION_HOURS = 24
 MAX_PER_DESK = 120
 DIRECT_PUBLISHER_FEEDS = {
-    "hong-kong": "https://rthk.hk/rthk/news/rss/c_expressnews_clocal.xml",
+    # Official rthk.hk feed redirects through HTTP before its HTTPS endpoint.
+    # Pin the independently observed HTTPS publisher endpoint; never downgrade.
+    "hong-kong": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_clocal.xml",
+    "finance": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_cfinance.xml",
 }
 MAX_DIRECT_FEED_BYTES = 131072
 
@@ -46,7 +49,7 @@ def direct_feed_get(url: str) -> bytes:
     class PublisherRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
             parsed = urllib.parse.urlparse(newurl)
-            if (parsed.scheme != "https" or parsed.hostname not in {"rthk.hk", "www.rthk.hk", "news.rthk.hk"}
+            if (parsed.scheme != "https" or parsed.hostname not in {"rthk.hk", "www.rthk.hk", "news.rthk.hk", "rthk9.rthk.hk"}
                 or parsed.path != expected_path or parsed.username or parsed.password
                 or parsed.port not in {None, 443}):
                 raise ValueError("unreviewed-direct-feed-redirect")
