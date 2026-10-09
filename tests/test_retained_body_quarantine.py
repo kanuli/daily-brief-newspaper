@@ -100,6 +100,12 @@ class RetainedBodyQuarantineTests(unittest.TestCase):
         for body, accepted in (("字" * 47 + "\n\n" + "字" * 48, True), ("字" * 47 + "\n\n" + "字" * 47, False), ("A" * 47 + "\n\n" + "B" * 48, True)):
             self.assertEqual(not bool(self.m.retained_body_rejection_reason({"body": body})), accepted)
 
+    def test_merge_code_change_goes_through_site_eic_not_root_leaf_dispatch(self):
+        workflow = (ROOT / ".github/workflows/editor-in-chief-newsroom-assignment.yml").read_text(encoding="utf-8")
+        self.assertIn('      - "scripts/merge_live_into_desk.py"', workflow.split("  workflow_run:")[0])
+        self.assertIn('group: "editor-in-chief-newsroom-assignment"', workflow)
+        self.assertIn("cancel-in-progress: false", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
