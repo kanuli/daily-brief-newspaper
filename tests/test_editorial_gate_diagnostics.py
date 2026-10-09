@@ -26,7 +26,7 @@ def load_functions(path):
     source = path.read_text(encoding="utf-8")
     tree = ast.parse(source)
     wanted_functions = {"clean", "allowed_numbers", "valid_output", "editorial_gate_diagnostics", "copy_output_schema", "canonical_copy_output", "main"}
-    wanted_constants = {"NUM_RE", "CJK_RE", "KANA_RE", "BANNED_PUBLIC", "MAX_SOURCE_PROBES", "MAX_MODEL_CALLS", "SOURCE_DIAGNOSTIC_CODES"}
+    wanted_constants = {"NUM_RE", "CJK_RE", "KANA_RE", "BANNED_PUBLIC", "MAX_SOURCE_PROBES", "MAX_MODEL_CALLS", "SOURCE_DIAGNOSTIC_CODES", "TARGET_COPY_PATTERN", "COPY_LANGUAGE_REPRESENTATION_ERRORS"}
     nodes = [node for node in tree.body if (
         isinstance(node, ast.FunctionDef) and node.name in wanted_functions
     ) or (

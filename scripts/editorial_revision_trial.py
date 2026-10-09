@@ -30,20 +30,26 @@ FAILED_RUN = "37805090332"
 FAILED_CAPACITY_SHA = "3c2541d5c9ff3619b49abdcef4c1333bbc259275"
 FAILED_CHECKED_AT = "2026-10-08T16:03:29.435752Z"
 MAX_RUNTIME_MINUTES = 20
-PREDECESSOR_CONTRACT = "cc1cc061851a1a4f4224e77dae3a76cbc0f5dbf608be4a452734b2afb9090852"
-PREDECESSOR_RESULT_SHA = "e979e4a822fe7bc79f71ada74d4b871a2c739bee"
-PREDECESSOR_CHILD = "37883760357"
+PREDECESSOR_CONTRACT = "7952ffe860b26e951b1a980dfc0f8260dd7721f92cc3170b53547f62291b64ef"
+PREDECESSOR_RESULT_SHA = "2ea6997f6078196eff7949d7a7ec8a001793b8ac"
+PREDECESSOR_CHILD = "37885330986"
 FALLBACK_BIND_DEADLINE_SECONDS = 660
 # Fixed reviewed BEHAVIOR, not source/HEAD/clock: cosmetic source edits cannot
 # mint another immutable ledger path. Exact reviewed code is a separate check.
 CONTRACT = {
-    "protocol": "ollama-availability-aware-source-and-paragraph-copy-v3", "model": MODEL,
+    "protocol": "ollama-hk-language-preserving-bounded-copy-v4", "model": MODEL,
     "candidateIdentity": "exact-candidate-id-enum",
     "copyFields": ["title", "dek", "summary", "body", "context", "why", "watchNext"],
     "copyFieldsRequired": True, "copyStringsNonempty": True,
     "bodyRepresentation": "two-or-three-source-paragraphs-serialized-with-double-newline",
     "predecessorContract": PREDECESSOR_CONTRACT,
-    "observedPredecessorFailure": "source-probe-no-direct-source-text-for-first-three",
+    "observedPredecessorFailure": "accessible-english-sources-yielded-zero-cjk-copy-and-third-body-format-failed",
+    "copyLanguageRepresentation": "literal-cjk-leading-single-line-fields-and-body-paragraphs",
+    "modelContextTokens": 32768,
+    "truncateInput": False,
+    "shiftContext": False,
+    "trustedSystemInstructions": True,
+    "localeInstructionPosition": "original-prefix-plus-trusted-after-input-reminder",
     "sourceSelection": {
         "mode": "availability-aware-round-robin-v1", "maxCandidatesPerDesk": 4,
         "maxSourceProbes": 12, "maxModelCalls": 3, "maxAcceptedPerDesk": 1,
@@ -54,7 +60,7 @@ CONTRACT = {
     "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged",
 }
 REVIEWED_SOURCES = {
-    "scripts/general_news_local_fallback.py": "698862ea88aea5ab26cb06d391c9d639e0230d62cfea370f39c1536bf97471c0",
+    "scripts/general_news_local_fallback.py": "0f9f74f5582fcf4188e7ca7bd603f98ee425df215acba4a1a2c106781ea91524",
     "scripts/general_news_verified_producer.py": "b8604594ee18a5f7bc31d68acb0fb175ec752b73dc9f5970e1cd207ca2f37e2d",
     "scripts/general_news_verification_robot.py": "5e60639ab28729975e8f8543efe669b2e11af77e7667913f13b1e33a3dd1b6f5",
 }

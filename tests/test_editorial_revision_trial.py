@@ -148,7 +148,7 @@ class TrialTests(unittest.TestCase):
     def test_reviewed_sources_exact(self):
         self.assertTrue(trial.reviewed_code(ROOT))
 
-    def test_paragraph_revision_requires_the_exact_failed_predecessor_proof(self):
+    def test_current_revision_requires_the_exact_failed_predecessor_proof(self):
         path = f"{trial.TRIAL_ROOT}/{trial.PREDECESSOR_CONTRACT}.result.json"
         for change in ("missing", "sha", "success", "other-child"):
             store = Store()
@@ -164,7 +164,7 @@ class TrialTests(unittest.TestCase):
                 self.assertEqual(trial.eligible(ROOT, store, EIC, NOW)["reason"],
                                  "reviewed-predecessor-failure-not-proven")
 
-    def test_meaningful_paragraph_revision_preserves_spent_v1_records(self):
+    def test_meaningful_current_revision_preserves_spent_predecessor_records(self):
         store = Store()
         old_claim = f"{trial.TRIAL_ROOT}/{trial.PREDECESSOR_CONTRACT}.claim.json"
         store.rows[old_claim] = {"sha": "immutable-old-claim", "value": {"remainingAttempts": 0}}

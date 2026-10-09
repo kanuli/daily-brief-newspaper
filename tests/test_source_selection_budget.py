@@ -102,7 +102,7 @@ class SourceSelectionBudgetTests(unittest.TestCase):
 
         def model(prompt, **kwargs):
             models.append((prompt, kwargs))
-            source_packet = json.loads(prompt.split("INPUT:\n", 1)[1])
+            source_packet = json.JSONDecoder().raw_decode(prompt.split("INPUT:\n", 1)[1])[0]
             return model_behavior(source_packet, kwargs) if model_behavior else structured_copy(source_packet)
 
         args = ["fallback", "SYNTHETIC_REQUEST", "--facts", "NEVER_WRITTEN_FACTS", "--copies", "NEVER_WRITTEN_COPIES"]

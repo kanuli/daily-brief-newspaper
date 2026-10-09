@@ -15,8 +15,8 @@ from unittest.mock import patch
 import test_editorial_gate_diagnostics as gate
 
 NAMESPACE = gate.OBS
-FUNCTIONS = {"copy_output_schema", "canonical_copy_output", "model_prompt", "ollama_json"}
-CONSTANTS = {"MODEL_URL", "MODEL_NAME", "CODE_FENCE_RE"}
+FUNCTIONS = {"copy_output_schema", "canonical_copy_output", "model_prompt", "ollama_json", "model_runtime_metadata"}
+CONSTANTS = {"MODEL_URL", "MODEL_NAME", "CODE_FENCE_RE", "MODEL_CONTEXT", "TARGET_COPY_PATTERN", "MODEL_SYSTEM"}
 NAMESPACE["urllib"] = types.SimpleNamespace(request=urllib.request)
 NAMESPACE["math"] = math
 nodes = [node for node in gate.TREE.body if (
@@ -75,11 +75,12 @@ class StructuredContractTests(unittest.TestCase):
             if field == "body":
                 body = copy["properties"][field]
                 self.assertEqual(body["type"], "array")
-                self.assertEqual(body["items"], {"type": "string", "minLength": 1})
+                self.assertEqual(body["items"], {"type": "string", "minLength": 1, "pattern": NAMESPACE["TARGET_COPY_PATTERN"]})
                 self.assertEqual((body["minItems"], body["maxItems"]), (2, 3))
             else:
                 self.assertEqual(copy["properties"][field]["type"], "string")
                 self.assertEqual(copy["properties"][field]["minLength"], 1)
+                self.assertEqual(copy["properties"][field]["pattern"], NAMESPACE["TARGET_COPY_PATTERN"])
 
     def test_invalid_identity_does_not_get_repaired_or_guessed(self):
         for value in (None, "", 123, False):
@@ -114,7 +115,10 @@ class StructuredContractTests(unittest.TestCase):
         self.assertEqual(body["model"], "qwen2.5:1.5b")
         self.assertEqual(body["format"], schema)
         self.assertIs(body["stream"], False)
-        self.assertEqual(body["options"], {"temperature": 0.05, "top_p": 0.7, "num_predict": 1700})
+        self.assertIs(body["truncate"], False)
+        self.assertIs(body["shift"], False)
+        self.assertEqual(body["system"], NAMESPACE["MODEL_SYSTEM"])
+        self.assertEqual(body["options"], {"temperature": 0.05, "top_p": 0.7, "num_predict": 1700, "num_ctx": 32768})
         self.assertEqual(response.call_args.kwargs["timeout"], 240)
 
     def test_ignored_schema_does_not_bypass_existing_identity_gate(self):
@@ -126,11 +130,12 @@ class StructuredContractTests(unittest.TestCase):
         self.assertEqual(returned["candidateId"], "unrelated")
         self.assertIsNone(NAMESPACE["valid_output"](packet, NAMESPACE["canonical_copy_output"](returned)))
 
-    def test_schema_has_no_unverified_regex_or_editorial_acceptance_override(self):
+    def test_schema_literal_range_has_no_lookaround_or_editorial_acceptance_override(self):
         schema = NAMESPACE["copy_output_schema"](packet_fixture())
         body = schema["properties"]["verifiedCopy"]["properties"]["body"]
         self.assertNotIn("pattern", body)
-        self.assertNotIn("pattern", body["items"])
+        self.assertEqual(body["items"]["pattern"], r'^[㐀-鿿][^"\\\u0000-\u001f]*$')
+        self.assertNotIn("(?", body["items"]["pattern"])
         self.assertIn("distinct source-grounded", body["description"])
         packet, value = gate.fixture()
         value["verifiedCopy"]["body"] = "合成單段文字" * 40
@@ -142,7 +147,7 @@ class StructuredContractTests(unittest.TestCase):
         for count in (2, 3):
             with self.subTest(paragraphs=count):
                 _, value = structured_fixture(count)
-                value["verifiedCopy"]["body"][0] = "  " + value["verifiedCopy"]["body"][0] + "  "
+                value["verifiedCopy"]["body"][0] += "  "
                 original = copy.deepcopy(value)
                 canonical = NAMESPACE["canonical_copy_output"](value)
                 expected = copy.deepcopy(original)
@@ -201,15 +206,21 @@ class StructuredContractTests(unittest.TestCase):
                 field: (["短段", "另段"] if field == "body" else "短文")
                 for field in gate.COPY_FIELDS
             })),
-            ("kana", lambda v: v["verifiedCopy"].update(summary="ア" * 9)),
+            ("kana", lambda v: v["verifiedCopy"].update(summary="合成" + "ア" * 9)),
         )
         for reason, mutate in cases:
             with self.subTest(reason=reason):
                 packet, value = structured_fixture()
                 mutate(value)
-                canonical = NAMESPACE["canonical_copy_output"](value)
-                self.assertIsNone(gate.BASE["valid_output"](packet, canonical))
-                self.assertIsNone(NAMESPACE["valid_output"](packet, canonical))
+                original_representation = copy.deepcopy(value)
+                original_representation["verifiedCopy"]["body"] = "\n\n".join(value["verifiedCopy"]["body"])
+                self.assertIsNone(gate.BASE["valid_output"](packet, original_representation))
+                try:
+                    canonical = NAMESPACE["canonical_copy_output"](value)
+                except ValueError:
+                    self.assertEqual(reason, "missing-copy")
+                else:
+                    self.assertIsNone(NAMESPACE["valid_output"](packet, canonical))
 
     def test_unsupported_schema_is_not_retried_with_unconstrained_json(self):
         schema = NAMESPACE["copy_output_schema"](packet_fixture())
