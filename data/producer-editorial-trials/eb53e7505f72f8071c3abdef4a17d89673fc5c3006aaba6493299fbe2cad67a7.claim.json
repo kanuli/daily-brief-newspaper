@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "owner": "Site Editor-in-Chief",
+  "scope": "single-reviewed-editorial-code-trial",
+  "contractRevision": "eb53e7505f72f8071c3abdef4a17d89673fc5c3006aaba6493299fbe2cad67a7",
+  "contract": {
+    "protocol": "ollama-structured-copy-v1",
+    "model": "qwen2.5:1.5b",
+    "candidateIdentity": "exact-candidate-id-enum",
+    "copyFields": [
+      "title",
+      "dek",
+      "summary",
+      "body",
+      "context",
+      "why",
+      "watchNext"
+    ],
+    "copyFieldsRequired": true,
+    "copyStringsNonempty": true,
+    "factsMinimum": 2,
+    "factsMaximum": 5,
+    "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged"
+  },
+  "reviewedSources": {
+    "scripts/general_news_local_fallback.py": "adb7c10ef30d63a11a001819413d06448c0f9accc0214e146cbeb19b55953e6e",
+    "scripts/general_news_verified_producer.py": "b8604594ee18a5f7bc31d68acb0fb175ec752b73dc9f5970e1cd207ca2f37e2d",
+    "scripts/general_news_verification_robot.py": "5e60639ab28729975e8f8543efe669b2e11af77e7667913f13b1e33a3dd1b6f5"
+  },
+  "claimedAt": "2026-10-09T04:14:18.209729Z",
+  "expiresAt": "2026-10-09T04:34:18.209729Z",
+  "dispatcherRunId": "37882866364",
+  "assignmentId": "839840eadf9aadf9",
+  "attempt": 1,
+  "maxAttempts": 1,
+  "remainingAttempts": 0,
+  "priorCapacitySHA": "3c2541d5c9ff3619b49abdcef4c1333bbc259275",
+  "priorCapacity": {
+    "schemaVersion": 1,
+    "producer": "General News Verified Producer",
+    "checkedAt": "2026-10-08T16:03:29.435752Z",
+    "status": "LOCAL_FALLBACK_FAILED",
+    "reason": "GitHub Copilot quota/capacity exhausted; GitHub-native local fallback attempted but produced no publishable verified output",
+    "blockedUntil": null,
+    "recoveryOwner": "automation:Newsroom Publisher",
+    "localFallbackModel": "qwen2.5:1.5b",
+    "workflowRunId": "37805090332"
+  },
+  "priorDraftId": "general-news-20261007-1954-hkt",
+  "publicationPermissionGranted": false
+}
