@@ -10,12 +10,18 @@ def step(text, name):
 
 
 class DisallowedModelStopTests(unittest.TestCase):
-    def test_news_qwen_restore_and_execution_are_unconditionally_disabled(self):
+    def test_news_workflow_can_run_only_reviewed_google_model_not_qwen(self):
         text = (ROOT / ".github/workflows/general-news-producer.yml").read_text(encoding="utf-8")
         for name in ("Cache open-source local fallback model", "Run open-source local capacity fallback"):
             block = step(text, name)
             self.assertEqual(block.count("if:"), 1)
-            self.assertIn("if: ${{ false }}", block)
+            executable = "\n".join(line for line in block.splitlines() if not line.lstrip().startswith("#"))
+            self.assertNotIn("qwen", executable.lower())
+        self.assertIn("ollama pull gemma3:4b-it-qat", text)
+        self.assertNotIn("ollama pull qwen", text)
+        self.assertIn("LOCAL_MODEL_IDENTITY_NOT_REVIEWED", text)
+        self.assertIn("b0313423c9448adfab711aacbc9d0b885a390eb31f1145d7f8495d1e6f84f257", text)
+        self.assertLess(text.index("LOCAL_MODEL_IDENTITY_NOT_REVIEWED"), text.index('timeout --signal=KILL'))
 
     def test_infrastructure_qwen_claim_restore_run_and_finalization_are_disabled(self):
         text = (ROOT / ".github/workflows/editor-in-chief-newsroom-assignment.yml").read_text(encoding="utf-8")

@@ -248,17 +248,17 @@ jobs:
           fi
 
       - name: Cache open-source local fallback model
-        # Owner withdrew authorization for Qwen. Do not restore or execute it.
-        if: ${{ false }}
+        # Only the reviewed Google model is allowed. No Qwen restore or fallback.
+        if: steps.pending.outputs.pending != 'true' && steps.prepare.outputs.candidate_count != '0' && (steps.verify.outputs.capacity_exhausted == 'true' || steps.copy.outputs.capacity_exhausted == 'true')
         uses: actions/cache@v4
         with:
           path: ~/.ollama/models
-          key: ollama-qwen2.5-7b-v1
+          key: ollama-google-gemma3-4b-qat-b0313423c944-v1
 
       - name: Run open-source local capacity fallback
         id: local_fallback
         continue-on-error: true
-        if: ${{ false }}
+        if: steps.pending.outputs.pending != 'true' && steps.prepare.outputs.candidate_count != '0' && (steps.verify.outputs.capacity_exhausted == 'true' || steps.copy.outputs.capacity_exhausted == 'true')
         shell: bash
         run: |
           set -euo pipefail
@@ -288,7 +288,18 @@ jobs:
           if available_kib < 10 * 1024 * 1024 or free_bytes < 8 * 1024 ** 3:
               raise SystemExit('LOCAL_MODEL_RESOURCES_INSUFFICIENT')
           PY
-          ollama pull qwen2.5:7b
+          ollama pull gemma3:4b-it-qat
+          python - <<'PY'
+          import json
+          import urllib.request
+          with urllib.request.urlopen('http://127.0.0.1:11434/api/tags', timeout=5) as response:
+              models = json.load(response).get('models', [])
+          matching = [row for row in models if isinstance(row, dict) and row.get('name') == 'gemma3:4b-it-qat']
+          expected = 'b0313423c9448adfab711aacbc9d0b885a390eb31f1145d7f8495d1e6f84f257'
+          if len(matching) != 1 or matching[0].get('digest') != expected:
+              raise SystemExit('LOCAL_MODEL_IDENTITY_NOT_REVIEWED')
+          print('LOCAL_MODEL_IDENTITY_VERIFIED developer=Google-DeepMind model=gemma3:4b-it-qat digest=' + expected)
+          PY
           fallback_seconds=$(python -c 'import math, sys, time; deadline=float(sys.argv[1]); remaining=min(600, math.floor(deadline-time.time())); assert math.isfinite(deadline) and remaining > 0; print(remaining)' '${{ steps.trial_guard.outputs.fallback_deadline_unix }}')
           ordinary_copy_args=(--daily-ready-copy)
           set +e
@@ -302,7 +313,7 @@ jobs:
           set -e
           if [ "$rc" -eq 0 ]; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
-            echo "GENERAL_NEWS_LOCAL_CAPACITY_FALLBACK_OK model=qwen2.5:7b"
+            echo "GENERAL_NEWS_LOCAL_CAPACITY_FALLBACK_OK model=gemma3:4b-it-qat"
             exit 0
           fi
           cat /tmp/ollama.log >&2 || true
@@ -370,7 +381,7 @@ jobs:
                       else None
                   )
               ),
-              "localFallbackModel": "qwen2.5:7b" if (local_fallback_ok or status == "LOCAL_FALLBACK_FAILED") else None,
+              "localFallbackModel": "gemma3:4b-it-qat" if (local_fallback_ok or status == "LOCAL_FALLBACK_FAILED") else None,
               "workflowRunId": os.environ.get("GITHUB_RUN_ID"),
           }
           Path("/tmp/producer-capacity.json").write_text(
@@ -488,7 +499,7 @@ jobs:
 
       - name: Report degraded local fallback
         if: steps.capacity.outputs.status == 'DEGRADED_LOCAL_FALLBACK'
-        run: echo "GENERAL_NEWS_PRODUCER_DEGRADED localFallback=qwen2.5:7b"
+        run: echo "GENERAL_NEWS_PRODUCER_DEGRADED localFallback=gemma3:4b-it-qat"
 
       - name: Finalize reviewed trial from exact persisted draft or preserve failed capacity
         if: always() && steps.trial_guard.outputs.active == 'true'

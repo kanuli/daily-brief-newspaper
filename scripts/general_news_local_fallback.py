@@ -6,7 +6,7 @@ The fallback remains fail-closed:
 1. choose a small set of trusted-source candidates already selected by newsroom;
 2. locate the underlying story with free Bing News RSS search;
 3. fetch the actual source page and extract readable source text;
-4. ask a local Qwen model to write HK Traditional Chinese using ONLY that text;
+4. ask a local Google Gemma model to write HK Traditional Chinese using ONLY that text;
 5. enforce numeric, process-language, length and evidence gates;
 6. emit the exact facts.raw/copy.raw schema consumed by the canonical merge gate.
 
@@ -40,7 +40,7 @@ from googlenewsdecoder import gnewsdecoder
 import general_news_verified_producer as producer
 
 MODEL_URL = "http://127.0.0.1:11434/api/generate"
-MODEL_NAME = "qwen2.5:7b"
+MODEL_NAME = "gemma3:4b-it-qat"
 MODEL_CONTEXT = 32768
 TARGET_COPY_PATTERN = r'^[㐀-鿿][^"\\\u0000-\u001f]*$'
 COPY_LANGUAGE_REPRESENTATION_ERRORS = frozenset({
@@ -582,13 +582,17 @@ def model_runtime_metadata(payload: Any) -> dict[str, Any]:
 
 
 def ollama_json(prompt: str, *, schema: dict[str, Any], timeout: float = 240) -> dict[str, Any]:
+    # Owner authorizes only this reviewed Google model; never a Qwen fallback.
+    if MODEL_NAME != "gemma3:4b-it-qat":
+        raise ValueError("model disallowed by owner policy")
     if not math.isfinite(timeout) or not 0 < timeout <= 240:
         raise ValueError("invalid model timeout")
     body = json.dumps(
         {
             "model": MODEL_NAME,
-            "system": MODEL_SYSTEM,
-            "prompt": prompt,
+            # Gemma 3 has no native system role. Google specifies putting
+            # trusted instructions in the initial user prompt instead.
+            "prompt": MODEL_SYSTEM + "\n\n" + prompt,
             "stream": False,
             "truncate": False,
             "shift": False,

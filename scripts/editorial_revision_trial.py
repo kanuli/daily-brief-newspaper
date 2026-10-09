@@ -25,7 +25,7 @@ from probe_general_news_fallback_capability import (
 
 DRAFT_PATH = "data/prepublish.json"
 TRIAL_ROOT = "data/producer-editorial-trials"
-MODEL = "qwen2.5:7b"
+MODEL = "gemma3:4b-it-qat"
 FAILED_MODEL = "qwen2.5:1.5b"
 FAILED_RUN = "37916836587"
 FAILED_JOB = 113774991335
@@ -33,14 +33,19 @@ FAILED_HEAD = "a9c0fc9c4be514a9e99f297c9c4708e1183b2cfa"
 FAILED_CAPACITY_SHA = "ee98c99c29234da4bdac578705967197a9a68e1c"
 FAILED_CHECKED_AT = "2026-10-09T10:22:40.395030Z"
 MAX_RUNTIME_MINUTES = 20
-PREDECESSOR_CONTRACT = "93e667e53906bc85a5a549633c3b0efa8044ae3aa6f83f8eeb4ea27660a72cd3"
-PREDECESSOR_RESULT_SHA = "3f8546e7ebcebd7a6e5aca8db80db89ad16a6f4b"
-PREDECESSOR_CHILD = "37911303424"
+PREDECESSOR_CONTRACT = "709150ca26cc60f925c9acc4e23507bac16ee4dadc41a8ba8cb53ac816cf75f0"
+PREDECESSOR_RESULT_SHA = "04a09fb4efa3ab709b69977bd963f5191b8c3146"
+PREDECESSOR_CHILD = "37920281031"
+PREDECESSOR_HEAD = "511fae968eef1e6bed3db3a46ff9c30bb07d74be"
+PREDECESSOR_JOB = 113786294114
 FALLBACK_BIND_DEADLINE_SECONDS = 660
 # Fixed reviewed BEHAVIOR, not source/HEAD/clock: cosmetic source edits cannot
 # mint another immutable ledger path. Exact reviewed code is a separate check.
 CONTRACT = {
-    "protocol": "ollama-larger-model-daily-ready-copy-v5", "model": MODEL,
+    "protocol": "ollama-google-gemma-daily-ready-copy-v6", "model": MODEL,
+    "modelDeveloper": "Google DeepMind", "ownerPolicy": "non-China-developed-models-only",
+    "modelManifestDigest": "b0313423c9448adfab711aacbc9d0b885a390eb31f1145d7f8495d1e6f84f257",
+    "cancelledPriorTrial": {"run": PREDECESSOR_CHILD, "head": PREDECESSOR_HEAD, "job": PREDECESSOR_JOB},
     "candidateIdentity": "exact-candidate-id-enum",
     "copyFields": ["title", "dek", "summary", "body", "context", "why", "watchNext"],
     "copyFieldsRequired": True, "copyStringsNonempty": True,
@@ -53,7 +58,8 @@ CONTRACT = {
     "modelContextTokens": 32768,
     "truncateInput": False,
     "shiftContext": False,
-    "trustedSystemInstructions": True,
+    "trustedPolicyInstructions": True, "nativeSystemRole": False,
+    "trustedInstructionTransport": "initial-user-prompt-plus-final-after-input-reminder",
     "localeInstructionPosition": "original-prefix-plus-trusted-after-input-reminder",
     "sourceSelection": {
         "mode": "availability-aware-round-robin-v1", "maxCandidatesPerDesk": 4,
@@ -65,7 +71,7 @@ CONTRACT = {
     "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged",
 }
 REVIEWED_SOURCES = {
-    "scripts/general_news_local_fallback.py": "194d8f5c3d4fa597de600a57ef82e23b0dc21f2e783527b6e244072cc9db668e",
+    "scripts/general_news_local_fallback.py": "1f7321cd488af42b77705d584c80ebc6fc635aed60d1e95b1dcdced50feaa17b",
     "scripts/general_news_verified_producer.py": "b8604594ee18a5f7bc31d68acb0fb175ec752b73dc9f5970e1cd207ca2f37e2d",
     "scripts/general_news_verification_robot.py": "5e60639ab28729975e8f8543efe669b2e11af77e7667913f13b1e33a3dd1b6f5",
 }
@@ -109,7 +115,7 @@ def producer_engine(verify_ok: str, copy_ok: str, local_ok: str) -> dict:
     if copilot == local:
         raise ProbeFailure("trial-engine", "missing-or-conflicting-engine-evidence")
     return {
-        "verifiedEngine": "LOCAL_QWEN" if local else "COPILOT",
+        "verifiedEngine": "LOCAL_GEMMA" if local else "COPILOT",
         "copilotVerificationSucceeded": verify_ok == "true",
         "copilotCopySucceeded": copy_ok == "true",
         "localFallbackSucceeded": local,
@@ -202,6 +208,37 @@ def failed_production_proven(store) -> bool:
         return False
 
 
+def cancelled_predecessor_proven(store) -> bool:
+    """Owner withdrawal is not model failure; require exact cancellation proof."""
+    try:
+        def read(path):
+            return store.json_request(urllib.request.Request(
+                f"https://api.github.com/repos/{REPOSITORY}/actions/runs/{PREDECESSOR_CHILD}{path}",
+                headers=store.headers(), method="GET"))
+        run = read("")
+        if (not isinstance(run, dict) or type(run.get("id")) is not int
+            or str(run["id"]) != PREDECESSOR_CHILD or run.get("repository", {}).get("full_name") != REPOSITORY
+            or run.get("name") != "General News Verified Producer"
+            or run.get("path") != ".github/workflows/general-news-producer.yml"
+            or run.get("head_branch") != "main" or run.get("head_sha") != PREDECESSOR_HEAD
+            or run.get("event") != "workflow_dispatch" or type(run.get("run_attempt")) is not int
+            or run["run_attempt"] != 1 or run.get("status") != "completed" or run.get("conclusion") != "cancelled"):
+            return False
+        jobs = read("/jobs?per_page=100").get("jobs")
+        if not isinstance(jobs, list):
+            return False
+        matching = [job for job in jobs if isinstance(job, dict) and type(job.get("id")) is int and job["id"] == PREDECESSOR_JOB]
+        if len(matching) != 1:
+            return False
+        job = matching[0]
+        return (job.get("run_id") == int(PREDECESSOR_CHILD) and job.get("name") == "produce"
+                and job.get("status") == "completed" and job.get("conclusion") == "cancelled"
+                and any(isinstance(step, dict) and step.get("name") == "Run open-source local capacity fallback"
+                        and step.get("conclusion") == "cancelled" for step in job.get("steps", [])))
+    except Exception:
+        return False
+
+
 def eligible(root: Path, store, owner: dict, now: datetime) -> dict:
     if not reviewed_code(root):
         return {"eligible": False, "reason": "unreviewed-code"}
@@ -218,10 +255,11 @@ def eligible(root: Path, store, owner: dict, now: datetime) -> dict:
     checked_clock(capacity["value"]["checkedAt"], now)
     predecessor = store.read(f"{TRIAL_ROOT}/{PREDECESSOR_CONTRACT}.result.json")
     if (not predecessor or predecessor["sha"] != PREDECESSOR_RESULT_SHA
-        or predecessor["value"].get("status") != "VERIFIED_NEW_DRAFT"
+        or predecessor["value"].get("status") != "EDITORIAL_TRIAL_FAILED"
         or predecessor["value"].get("childRunId") != PREDECESSOR_CHILD
-        or predecessor["value"].get("editorialOutcomeVerified") is not True):
-        return {"eligible": False, "reason": "reviewed-predecessor-success-not-proven"}
+        or predecessor["value"].get("editorialOutcomeVerified") is not False
+        or predecessor["value"].get("failureCode") != "missing-engine-evidence"):
+        return {"eligible": False, "reason": "reviewed-cancelled-predecessor-record-not-proven"}
     if store.read(record_path("claim")) is not None:
         from editorial_trial_observation import observe_pending_trial
         observation = observe_pending_trial(
@@ -239,6 +277,8 @@ def eligible(root: Path, store, owner: dict, now: datetime) -> dict:
         }
     if not failed_production_proven(store):
         return {"eligible": False, "reason": "exact-prior-editorial-production-failure-not-proven"}
+    if not cancelled_predecessor_proven(store):
+        return {"eligible": False, "reason": "exact-owner-disallowed-trial-cancellation-not-proven"}
     return {
         "eligible": True, "owner": "Site Editor-in-Chief",
         "contractRevision": CONTRACT_REVISION, "dispatcherRunId": owner["runId"],
@@ -437,7 +477,7 @@ def finish(root: Path, store, state: dict, draft: dict | None, child: dict, now:
         return False
     claimed = state["claim"]
     capacity = copy.deepcopy(claimed["priorCapacity"])
-    local = result["verifiedEngine"] == "LOCAL_QWEN"
+    local = result["verifiedEngine"] == "LOCAL_GEMMA"
     capacity.update(status="DEGRADED_LOCAL_FALLBACK" if local else "AVAILABLE", checkedAt=iso(now), blockedUntil=None,
                     reason=("Existing strict producer created and persisted a new verified local-fallback draft; Copilot quota is not restored"
                             if local else "Existing strict Copilot verification and copy created and persisted a new verified draft; structured local-copy trial path was not used"),

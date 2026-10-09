@@ -37,8 +37,8 @@ class Store:
             trial.DRAFT_PATH: {"sha": "old-draft-sha", "value": {"draftId": "old-draft"}},
             f"{trial.TRIAL_ROOT}/{trial.PREDECESSOR_CONTRACT}.result.json": {
                 "sha": trial.PREDECESSOR_RESULT_SHA,
-                "value": {"status": "VERIFIED_NEW_DRAFT", "childRunId": trial.PREDECESSOR_CHILD,
-                          "editorialOutcomeVerified": True},
+                "value": {"status": "EDITORIAL_TRIAL_FAILED", "childRunId": trial.PREDECESSOR_CHILD,
+                          "editorialOutcomeVerified": False, "failureCode": "missing-engine-evidence"},
             },
         }
         self.capacity_writes = []
@@ -54,6 +54,11 @@ class Store:
             "status": "completed", "conclusion": "failure",
             "steps": [{"name": "Fail non-capacity verification/copy errors", "conclusion": "failure"}],
         }
+        self.cancelled_run = {**self.failed_run, "id": int(trial.PREDECESSOR_CHILD),
+                              "head_sha": trial.PREDECESSOR_HEAD, "conclusion": "cancelled"}
+        self.cancelled_job = {**self.failed_job, "id": trial.PREDECESSOR_JOB,
+                              "run_id": int(trial.PREDECESSOR_CHILD), "conclusion": "cancelled",
+                              "steps": [{"name": "Run open-source local capacity fallback", "conclusion": "cancelled"}]}
 
     def ledger_ready(self):
         return True
@@ -62,6 +67,11 @@ class Store:
         return {"User-Agent": "synthetic-observer-test"}
 
     def json_request(self, request):
+        cancelled_url = f"/actions/runs/{trial.PREDECESSOR_CHILD}"
+        if request.full_url.endswith(cancelled_url):
+            return copy.deepcopy(self.cancelled_run)
+        if request.full_url.endswith(cancelled_url + "/jobs?per_page=100"):
+            return {"jobs": [copy.deepcopy(self.cancelled_job)]}
         failed_url = f"/actions/runs/{trial.FAILED_RUN}"
         if request.full_url.endswith(failed_url):
             return copy.deepcopy(self.failed_run)
@@ -164,21 +174,23 @@ class TrialTests(unittest.TestCase):
     def test_reviewed_sources_exact(self):
         self.assertTrue(trial.reviewed_code(ROOT))
 
-    def test_current_revision_requires_the_exact_successful_predecessor_proof(self):
+    def test_current_revision_requires_the_exact_cancelled_predecessor_record(self):
         path = f"{trial.TRIAL_ROOT}/{trial.PREDECESSOR_CONTRACT}.result.json"
-        for change in ("missing", "sha", "failed", "other-child"):
+        for change in ("missing", "sha", "success", "other-child", "failure-code"):
             store = Store()
             if change == "missing":
                 store.rows.pop(path)
             elif change == "sha":
                 store.rows[path]["sha"] = "different-proof"
-            elif change == "failed":
-                store.rows[path]["value"].update(status="EDITORIAL_TRIAL_FAILED", editorialOutcomeVerified=False)
-            else:
+            elif change == "success":
+                store.rows[path]["value"].update(status="VERIFIED_NEW_DRAFT", editorialOutcomeVerified=True)
+            elif change == "other-child":
                 store.rows[path]["value"]["childRunId"] = "another-child"
+            else:
+                store.rows[path]["value"]["failureCode"] = "other-failure"
             with self.subTest(change=change):
                 self.assertEqual(trial.eligible(ROOT, store, EIC, NOW)["reason"],
-                                 "reviewed-predecessor-success-not-proven")
+                                 "reviewed-cancelled-predecessor-record-not-proven")
 
     def test_exact_failed_run_and_job_are_required_without_writes(self):
         for delta in ({"id": 1}, {"repository": {"full_name": "other/repo"}},
@@ -204,13 +216,28 @@ class TrialTests(unittest.TestCase):
         self.assertEqual(store.creates + store.capacity_writes, [])
 
     def test_new_model_is_not_the_failed_small_model_and_claim_is_bound(self):
-        self.assertEqual(trial.MODEL, "qwen2.5:7b")
+        self.assertEqual(trial.MODEL, "gemma3:4b-it-qat")
         self.assertNotEqual(trial.MODEL, trial.FAILED_MODEL)
         store = Store(); state = claimed(store)
         self.assertEqual(state["claim"]["failedProduction"], trial.CONTRACT["priorFailedProduction"])
         store.rows[trial.record_path("claim")]["value"]["failedProduction"]["run"] = "another"
         with self.assertRaises(trial.ProbeFailure):
             trial.bind(ROOT, store, trial.CONTRACT_REVISION, EIC["runId"], CHILD, NOW)
+
+    def test_exact_owner_disallowed_cancellation_is_required_before_new_model_admission(self):
+        for delta in ({"id": 1}, {"head_sha": "other"}, {"head_branch": "other"},
+                      {"run_attempt": True}, {"run_attempt": 2}, {"status": "in_progress"},
+                      {"conclusion": "success"}, {"conclusion": "failure"}):
+            store = Store(); store.cancelled_run.update(delta)
+            with self.subTest(run=delta):
+                self.assertEqual(trial.eligible(ROOT, store, EIC, NOW)["reason"],
+                                 "exact-owner-disallowed-trial-cancellation-not-proven")
+                self.assertEqual(store.creates + store.capacity_writes, [])
+        for delta in ({"id": 1}, {"run_id": 1}, {"conclusion": "success"}, {"steps": []}):
+            store = Store(); store.cancelled_job.update(delta)
+            with self.subTest(job=delta):
+                self.assertFalse(trial.eligible(ROOT, store, EIC, NOW)["eligible"])
+                self.assertEqual(store.creates + store.capacity_writes, [])
 
     def test_meaningful_current_revision_preserves_spent_predecessor_records(self):
         store = Store()

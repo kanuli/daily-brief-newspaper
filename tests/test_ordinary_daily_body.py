@@ -65,9 +65,11 @@ class OrdinaryDailyBodyTests(unittest.TestCase):
         import sys
         sys.path.insert(0, str(budget.ROOT / "scripts"))
         import editorial_revision_trial as trial
-        self.assertEqual(trial.PREDECESSOR_CONTRACT, "93e667e53906bc85a5a549633c3b0efa8044ae3aa6f83f8eeb4ea27660a72cd3")
+        self.assertEqual(trial.PREDECESSOR_CONTRACT, "709150ca26cc60f925c9acc4e23507bac16ee4dadc41a8ba8cb53ac816cf75f0")
         self.assertNotEqual(trial.CONTRACT_REVISION, trial.PREDECESSOR_CONTRACT)
-        self.assertEqual(trial.CONTRACT["model"], "qwen2.5:7b")
+        self.assertEqual(trial.CONTRACT["model"], "gemma3:4b-it-qat")
+        self.assertEqual(trial.CONTRACT["ownerPolicy"], "non-China-developed-models-only")
+        self.assertFalse(trial.CONTRACT["nativeSystemRole"])
         self.assertEqual(trial.CONTRACT["dailyBody"]["visibleMinimum"], 100)
         self.assertEqual(trial.CONTRACT["sourceSelection"]["maxModelCalls"], 3)
         self.assertEqual(trial.CONTRACT["gatePolicy"], "existing-valid-output-and-canonical-merge-unchanged")
@@ -75,9 +77,9 @@ class OrdinaryDailyBodyTests(unittest.TestCase):
 
     def test_existing_runner_resources_are_checked_before_larger_model_pull(self):
         workflow = (budget.ROOT / ".github/workflows/general-news-producer.yml").read_text(encoding="utf-8")
-        self.assertIn("ollama-qwen2.5-7b-v1", workflow)
+        self.assertIn("ollama-google-gemma3-4b-qat-b0313423c944-v1", workflow)
         self.assertIn("LOCAL_MODEL_RESOURCES_INSUFFICIENT", workflow)
-        self.assertLess(workflow.index("LOCAL_MODEL_RESOURCES_INSUFFICIENT"), workflow.index("ollama pull qwen2.5:7b"))
+        self.assertLess(workflow.index("LOCAL_MODEL_RESOURCES_INSUFFICIENT"), workflow.index("ollama pull gemma3:4b-it-qat"))
         self.assertNotIn("ollama pull qwen2.5:1.5b", workflow)
 
     def test_short_model_body_is_rejected_without_writes_and_same_call_budget(self):

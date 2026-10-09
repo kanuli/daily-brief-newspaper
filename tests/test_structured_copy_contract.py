@@ -55,7 +55,7 @@ class FakeResponse:
         return None
 
     def read(self):
-        return json.dumps({"model": "qwen2.5:7b", "done": True, "response": json.dumps(self.value)}, ensure_ascii=False).encode("utf-8")
+        return json.dumps({"model": "gemma3:4b-it-qat", "done": True, "response": json.dumps(self.value)}, ensure_ascii=False).encode("utf-8")
 
 
 class StructuredContractTests(unittest.TestCase):
@@ -112,12 +112,13 @@ class StructuredContractTests(unittest.TestCase):
         request = response.call_args.args[0]
         body = json.loads(request.data)
         self.assertEqual(request.full_url, "http://127.0.0.1:11434/api/generate")
-        self.assertEqual(body["model"], "qwen2.5:7b")
+        self.assertEqual(body["model"], "gemma3:4b-it-qat")
         self.assertEqual(body["format"], schema)
         self.assertIs(body["stream"], False)
         self.assertIs(body["truncate"], False)
         self.assertIs(body["shift"], False)
-        self.assertEqual(body["system"], NAMESPACE["MODEL_SYSTEM"])
+        self.assertNotIn("system", body)
+        self.assertEqual(body["prompt"], NAMESPACE["MODEL_SYSTEM"] + "\n\nNON-NEWS SYNTHETIC TEST")
         self.assertEqual(body["options"], {"temperature": 0.05, "top_p": 0.7, "num_predict": 1700, "num_ctx": 32768})
         self.assertEqual(response.call_args.kwargs["timeout"], 240)
 
