@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import general_news_verified_producer as producer
+from desk_freshness_policy import PUBLIC_DESK_FRESHNESS_HOURS, editorial_story_time
 
 HKT = timezone(timedelta(hours=8))
 SOFT_TARGET_HOURS = {
@@ -154,8 +155,26 @@ def candidate_score(row: dict[str, Any]) -> tuple[int, float]:
     return points, stamp.timestamp()
 
 
+def public_freshness_priority(desk_data: dict[str, Any], desk: str, now: datetime) -> int:
+    """Schedule hard-breached desks first; do not alter any freshness verdict.
+
+    Three independent workers retain the same four probes/one model call each.
+    A merely soft-stale World desk must not consume Finance's worker before its
+    third direct candidate when Finance has breached the real public SLA.
+    """
+    slug = PUBLIC_DESK[desk]
+    desks = desk_data.get("desks") if isinstance(desk_data.get("desks"), dict) else {}
+    rows = desks.get(slug) if isinstance(desks.get(slug), list) else []
+    stamps = [editorial_story_time(row, now=now) for row in rows if isinstance(row, dict)]
+    newest = max((stamp for stamp in stamps if stamp is not None), default=None)
+    hard_breach = (newest is None or newest > now
+                   or (now - newest).total_seconds() > PUBLIC_DESK_FRESHNESS_HOURS[slug] * 3600)
+    return 0 if hard_breach else 1
+
+
 def prepare_request(staging: dict[str, Any], desk_data: dict[str, Any], live_data: dict[str, Any], now: datetime) -> dict[str, Any]:
     stale = soft_stale_desks(desk_data, now)
+    stale.sort(key=lambda desk: public_freshness_priority(desk_data, desk, now))
     urls, titles = existing_identity(desk_data, live_data)
     selected: list[dict[str, Any]] = []
     desks = staging.get("desks") if isinstance(staging.get("desks"), dict) else {}
