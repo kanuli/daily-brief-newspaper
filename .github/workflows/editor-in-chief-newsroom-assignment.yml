@@ -112,6 +112,8 @@ jobs:
       # No news discovery, article/draft writes, publication or leaf dispatch here.
       - name: Site Editor-in-Chief claims bounded infrastructure capability probe
         id: capability_claim
+        # Owner explicitly disallowed Qwen; retain the immutable old ledger.
+        if: ${{ false }}
         timeout-minutes: 1
         env:
           GH_TOKEN: ${{ github.token }}
@@ -123,7 +125,7 @@ jobs:
             --github-output "$GITHUB_OUTPUT"
 
       - name: Restore existing local fallback model for infrastructure probe
-        if: steps.capability_claim.outputs.claimed == 'true'
+        if: ${{ false }}
         timeout-minutes: 2
         continue-on-error: true
         uses: actions/cache@v4
@@ -132,7 +134,7 @@ jobs:
           key: ollama-qwen2.5-1.5b-v1
 
       - name: Check repaired dependencies and synthetic local-model readiness only
-        if: steps.capability_claim.outputs.claimed == 'true'
+        if: ${{ false }}
         timeout-minutes: 5
         continue-on-error: true
         shell: bash
@@ -142,7 +144,7 @@ jobs:
             --result /tmp/eic-capability-result.json
 
       - name: Preserve immutable capability history and fresh runtime-only verdict
-        if: always() && steps.capability_claim.outputs.claimed == 'true'
+        if: ${{ false }}
         timeout-minutes: 1
         env:
           GH_TOKEN: ${{ github.token }}

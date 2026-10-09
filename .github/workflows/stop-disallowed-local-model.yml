@@ -1,0 +1,38 @@
+name: Stop owner-disallowed Qwen trial
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/stop-disallowed-local-model.yml]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  stop-exact-trial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Cancel only the exact Qwen trial disallowed by the owner
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            if (`${owner}/${repo}` !== 'kanuli/daily-brief-newspaper') {
+              throw new Error('Unexpected repository; no cancellation authorized');
+            }
+            const run_id = 37920281031;
+            const { data: run } = await github.rest.actions.getWorkflowRun({ owner, repo, run_id });
+            if (run.id !== run_id || run.name !== 'General News Verified Producer'
+                || run.path !== '.github/workflows/general-news-producer.yml'
+                || run.head_sha !== '511fae968eef1e6bed3db3a46ff9c30bb07d74be'
+                || run.run_attempt !== 1 || run.event !== 'workflow_dispatch') {
+              throw new Error('Exact Qwen trial identity not proven; no cancellation authorized');
+            }
+            if (run.status === 'completed') {
+              core.info(`OWNER_DISALLOWED_TRIAL_ALREADY_TERMINAL conclusion=${run.conclusion}`);
+              return;
+            }
+            await github.rest.actions.cancelWorkflowRun({ owner, repo, run_id });
+            core.info(`OWNER_DISALLOWED_QWEN_CANCELLATION_REQUESTED run=${run_id}`);

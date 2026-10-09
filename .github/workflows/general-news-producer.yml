@@ -248,7 +248,8 @@ jobs:
           fi
 
       - name: Cache open-source local fallback model
-        if: steps.pending.outputs.pending != 'true' && steps.prepare.outputs.candidate_count != '0' && (steps.verify.outputs.capacity_exhausted == 'true' || steps.copy.outputs.capacity_exhausted == 'true')
+        # Owner withdrew authorization for Qwen. Do not restore or execute it.
+        if: ${{ false }}
         uses: actions/cache@v4
         with:
           path: ~/.ollama/models
@@ -257,7 +258,7 @@ jobs:
       - name: Run open-source local capacity fallback
         id: local_fallback
         continue-on-error: true
-        if: steps.pending.outputs.pending != 'true' && steps.prepare.outputs.candidate_count != '0' && (steps.verify.outputs.capacity_exhausted == 'true' || steps.copy.outputs.capacity_exhausted == 'true')
+        if: ${{ false }}
         shell: bash
         run: |
           set -euo pipefail
