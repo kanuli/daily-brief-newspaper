@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "owner": "Site Editor-in-Chief",
+  "scope": "single-reviewed-editorial-code-trial",
+  "contractRevision": "93e667e53906bc85a5a549633c3b0efa8044ae3aa6f83f8eeb4ea27660a72cd3",
+  "contract": {
+    "protocol": "ollama-hk-language-preserving-bounded-copy-v4",
+    "model": "qwen2.5:1.5b",
+    "candidateIdentity": "exact-candidate-id-enum",
+    "copyFields": [
+      "title",
+      "dek",
+      "summary",
+      "body",
+      "context",
+      "why",
+      "watchNext"
+    ],
+    "copyFieldsRequired": true,
+    "copyStringsNonempty": true,
+    "bodyRepresentation": "two-or-three-source-paragraphs-serialized-with-double-newline",
+    "predecessorContract": "7952ffe860b26e951b1a980dfc0f8260dd7721f92cc3170b53547f62291b64ef",
+    "observedPredecessorFailure": "accessible-english-sources-yielded-zero-cjk-copy-and-third-body-format-failed",
+    "copyLanguageRepresentation": "literal-cjk-leading-single-line-fields-and-body-paragraphs",
+    "modelContextTokens": 32768,
+    "truncateInput": false,
+    "shiftContext": false,
+    "trustedSystemInstructions": true,
+    "localeInstructionPosition": "original-prefix-plus-trusted-after-input-reminder",
+    "sourceSelection": {
+      "mode": "availability-aware-round-robin-v1",
+      "maxCandidatesPerDesk": 4,
+      "maxSourceProbes": 12,
+      "maxModelCalls": 3,
+      "maxAcceptedPerDesk": 1,
+      "sourceWorkerTimeoutSeconds": 35,
+      "sharedFallbackSeconds": 600,
+      "bindDeadlineSeconds": 660
+    },
+    "factsMinimum": 2,
+    "factsMaximum": 5,
+    "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged"
+  },
+  "reviewedSources": {
+    "scripts/general_news_local_fallback.py": "0f9f74f5582fcf4188e7ca7bd603f98ee425df215acba4a1a2c106781ea91524",
+    "scripts/general_news_verified_producer.py": "b8604594ee18a5f7bc31d68acb0fb175ec752b73dc9f5970e1cd207ca2f37e2d",
+    "scripts/general_news_verification_robot.py": "5e60639ab28729975e8f8543efe669b2e11af77e7667913f13b1e33a3dd1b6f5"
+  },
+  "claimedAt": "2026-10-09T09:26:37.774410Z",
+  "expiresAt": "2026-10-09T09:46:37.774410Z",
+  "dispatcherRunId": "37911243191",
+  "assignmentId": "82dc341f7c1cf87d",
+  "attempt": 1,
+  "maxAttempts": 1,
+  "remainingAttempts": 0,
+  "priorCapacitySHA": "3c2541d5c9ff3619b49abdcef4c1333bbc259275",
+  "priorCapacity": {
+    "schemaVersion": 1,
+    "producer": "General News Verified Producer",
+    "checkedAt": "2026-10-08T16:03:29.435752Z",
+    "status": "LOCAL_FALLBACK_FAILED",
+    "reason": "GitHub Copilot quota/capacity exhausted; GitHub-native local fallback attempted but produced no publishable verified output",
+    "blockedUntil": null,
+    "recoveryOwner": "automation:Newsroom Publisher",
+    "localFallbackModel": "qwen2.5:1.5b",
+    "workflowRunId": "37805090332"
+  },
+  "predecessorResultSHA": "2ea6997f6078196eff7949d7a7ec8a001793b8ac",
+  "priorDraftId": "general-news-20261007-1954-hkt",
+  "publicationPermissionGranted": false
+}
