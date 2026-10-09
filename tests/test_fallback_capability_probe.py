@@ -18,6 +18,7 @@ PROBE_PATH = ROOT / "scripts/probe_general_news_fallback_capability.py"
 spec = importlib.util.spec_from_file_location("capability_probe", PROBE_PATH)
 probe = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe)
+actual_revision = probe.revision
 OLD_WORKFLOW_BLOB = "fcdfc29ba29ef57be3ff2f9dd795c9649bd3fcc8"
 PREVIOUS_REVIEWED_REVISION = "6de962d26310ac95b62ae2c1e1bf2a7163d4571eb11eeb049a7591a5518e446e"
 
@@ -38,9 +39,10 @@ class MemoryStore:
             "sha": "old-capacity-sha",
             "value": {
                 "status": "LOCAL_FALLBACK_FAILED",
+                "capabilityOnly": True,
                 "checkedAt": "2026-10-07T12:17:33.596598Z",
-                "reason": "Original decoder import error and Copilot quota exhausted",
-                "workflowRunId": "37619701121",
+                "reason": "Synthetic infrastructure-only decoder capability failure fixture",
+                "workflowRunId": "synthetic-runtime-probe",
             },
         }
         self.ready = True
@@ -67,6 +69,14 @@ class MemoryStore:
 
 
 class CapabilityProbeTests(unittest.TestCase):
+    def setUp(self):
+        # These fake-store tests exercise a matching historical infrastructure
+        # revision. The newly reviewed editorial interface must not reset that
+        # real runtime fingerprint or obtain another infrastructure attempt.
+        revision_patch = patch.object(probe, "revision", return_value=probe.REVIEWED_REVISION)
+        revision_patch.start()
+        self.addCleanup(revision_patch.stop)
+
     def claimed(self, td):
         store = MemoryStore()
         path = Path(td) / "claim.json"
@@ -80,7 +90,13 @@ class CapabilityProbeTests(unittest.TestCase):
         )
 
     def test_exact_reviewed_revision_matches_current_fix(self):
-        self.assertEqual(probe.revision(ROOT), probe.REVIEWED_REVISION)
+        self.assertEqual(probe.REVIEWED_REVISION,
+                         "eb3707b28647cbb1a78a306446df9f4c7422f951dd1b63fbd851e5d9289c9a1e")
+        self.assertNotEqual(actual_revision(ROOT), probe.REVIEWED_REVISION)
+        with tempfile.TemporaryDirectory() as td, patch.object(probe, "revision", side_effect=actual_revision):
+            store = MemoryStore()
+            self.assertFalse(probe.prepare(ROOT, store, Path(td) / "not-created.json")["claimed"])
+            self.assertEqual(store.ledger, {})
 
     def test_meaningful_checker_repair_gets_new_attempt_without_erasing_old_failure(self):
         store = MemoryStore()
@@ -103,11 +119,36 @@ class CapabilityProbeTests(unittest.TestCase):
             for name in probe.REVISION_FILES:
                 (root / name).parent.mkdir(parents=True, exist_ok=True)
                 (root / name).write_bytes((ROOT / name).read_bytes())
-            original = probe.revision(root)
+            original = actual_revision(root)
             (root / "data").mkdir()
             (root / "data/live.json").write_text('{"updated":"new article"}', encoding="utf-8")
             (root / "HEAD").write_text("different-main-head", encoding="utf-8")
-            self.assertEqual(probe.revision(root), original)
+            self.assertEqual(actual_revision(root), original)
+
+    def test_actual_editorial_failure_is_not_an_infrastructure_retry(self):
+        store = MemoryStore()
+        store.capacity["value"].pop("capabilityOnly")
+        before = copy.deepcopy(store.capacity)
+        with tempfile.TemporaryDirectory() as td:
+            destination = Path(td) / "not-created.json"
+            planned = probe.prepare(ROOT, store, destination)
+            self.assertEqual(planned["reason"], "actual-producer-failure-requires-editorial-review")
+            self.assertFalse(destination.exists())
+        self.assertEqual(store.ledger, {})
+        self.assertEqual(store.capacity, before)
+
+    def test_runtime_available_cannot_clear_an_actual_editorial_failure(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, state = self.claimed(td)
+            state["priorCapacity"].pop("capabilityOnly")
+            store.ledger[probe.claim_path(probe.REVIEWED_REVISION)]["value"] = copy.deepcopy(state)
+            before = copy.deepcopy(store.capacity)
+            result = self.good_result(state)
+            destination = Path(td) / "not-created.json"
+            self.assertFalse(probe.finalize(store, state, result, destination))
+            self.assertEqual(store.cas_calls, 0)
+            self.assertEqual(store.capacity, before)
+            self.assertFalse(destination.exists())
 
     def test_unreviewed_revision_cannot_claim_or_run(self):
         store = MemoryStore()
@@ -414,9 +455,13 @@ class CapabilityProbeTests(unittest.TestCase):
         self.assertNotIn("data/prepublish.json", source)
 
     def test_existing_classification_dispatch_and_gates_unchanged(self):
-        workflow = (ROOT / ".github/workflows/editor-in-chief-newsroom-assignment.yml").read_text(encoding="utf-8")
+        current = (ROOT / ".github/workflows/editor-in-chief-newsroom-assignment.yml").read_text(encoding="utf-8")
+        workflow = (ROOT / "tests/fixtures/original_eic_assignment.yml").read_text(encoding="utf-8")
         start = workflow.index("      # Infrastructure only: one immutable attempt")
         end = workflow.index("      - name: Run current newsroom checks", start)
+        current_start = current.index("      # Infrastructure only: one immutable attempt")
+        current_end = current.index("      - name: Run current newsroom checks", current_start)
+        self.assertEqual(current[current_start:current_end], workflow[start:end])
         restored = workflow[:start] + workflow[end:]
         for path in (
             "scripts/requirements-general-news-fallback.txt",
@@ -435,3 +480,4 @@ class CapabilityProbeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -18,7 +18,6 @@ on:
       - "scripts/requirements-general-news-fallback.txt"
       - "scripts/check_general_news_fallback_dependencies.py"
       - "scripts/probe_general_news_fallback_capability.py"
-      - "scripts/editorial_revision_trial.py"
       - "scripts/validate_desk_freshness.py"
       - "scripts/validate_stock_news.py"
       - "scripts/validate_publication_current.py"
@@ -38,7 +37,6 @@ on:
       - "Daily Japanese vocab"
       - "Today Daily Recovery"
       - "Deploy Daily Brief to GitHub Pages"
-      - "Verify Public Pages Publication Snapshot"
       - "Publish Canto Nano Female Cantonese News Voice"
     types: [completed]
   schedule:
@@ -68,8 +66,6 @@ jobs:
           fetch-depth: 0
 
       - name: Collect independent newsroom evidence and prior assignment outcome
-        env:
-          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -78,8 +74,6 @@ jobs:
             /tmp/prepublish.json \
             /tmp/producer-capacity.json \
             /tmp/page-news-sentinel.json \
-            /tmp/pages-live-status.json \
-            /tmp/pages-deployment.json \
             /tmp/editor-status.json \
             /tmp/previous-assignments.json
 
@@ -92,13 +86,6 @@ jobs:
 
           git fetch -q origin page-sentinel-status:refs/remotes/origin/page-sentinel-status || true
           git show origin/page-sentinel-status:data/page-news-sentinel-status.json > /tmp/page-news-sentinel.json 2>/dev/null || echo '{}' > /tmp/page-news-sentinel.json
-
-          git fetch -q origin pages-status:refs/remotes/origin/pages-status || true
-          git show origin/pages-status:data/pages-live-status.json > /tmp/pages-live-status.json 2>/dev/null || echo '{}' > /tmp/pages-live-status.json
-
-          # Read actual completed deployment evidence; dispatch is not proof.
-          gh run list --repo "${GITHUB_REPOSITORY}" --workflow pages.yml --status success --limit 1 \
-            --json databaseId,conclusion,updatedAt > /tmp/pages-deployment.json || echo '[]' > /tmp/pages-deployment.json
 
           git fetch -q origin editor-status:refs/remotes/origin/editor-status || true
           git show origin/editor-status:data/editor-in-chief-status.json > /tmp/editor-status.json 2>/dev/null || echo '{}' > /tmp/editor-status.json
@@ -195,8 +182,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          GH_TOKEN='${{ github.token }}' python scripts/editorial_revision_trial.py inspect \
-            --root . --permit /tmp/eic-editorial-trial-permit.json
           python -m py_compile scripts/newsroom_control_plane.py
           python scripts/newsroom_control_plane.py \
             --registry config/newsroom-robots.json \
@@ -206,9 +191,6 @@ jobs:
             --freshness /tmp/desk-freshness.json \
             --editor-status /tmp/editor-status.json \
             --sentinel /tmp/page-news-sentinel.json \
-            --pages-status /tmp/pages-live-status.json \
-            --pages-deployment /tmp/pages-deployment.json \
-            --editorial-trial /tmp/eic-editorial-trial-permit.json \
             --previous-assignments /tmp/previous-assignments.json \
             --latest data/latest.json \
             --live data/live.json \
@@ -303,16 +285,6 @@ jobs:
               args+=(-f "$key=$value")
             done < <(jq -r '.dispatchInputs // {} | to_entries[] | [.key,(.value|tostring)] | @tsv' <<<"$assignment")
 
-            if [ "$status" = "reviewed-editorial-trial" ]; then
-              if ! python scripts/editorial_revision_trial.py claim --root . \
-                --permit /tmp/eic-editorial-trial-permit.json --assignment-json "$assignment" \
-                --state /tmp/eic-editorial-trial-claim.json; then
-                printf '{"assignmentId":"%s","robot":"%s","workflow":"%s","dispatched":false,"reason":"editorial-trial-claim-denied"}\n' \
-                  "$assignment_id" "$robot" "$wf" >> /tmp/editor-news-execution.jsonl
-                continue
-              fi
-            fi
-
             if gh "${args[@]}"; then
               printf '{"assignmentId":"%s","robot":"%s","workflow":"%s","mode":"%s","faultClass":"%s","dispatched":true,"reason":"assigned-by-editor-in-chief","outcomeVerification":"required-next-cycle"}\n' \
                 "$assignment_id" "$robot" "$wf" "$mode" "$fault" >> /tmp/editor-news-execution.jsonl
@@ -382,4 +354,3 @@ jobs:
             exit 1
           fi
           echo "EDITOR_IN_CHIEF_NEWSROOM_ASSIGNMENT_PASS"
-

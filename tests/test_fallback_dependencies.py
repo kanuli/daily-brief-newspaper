@@ -2,6 +2,7 @@
 """Offline regression tests; never run source discovery or publication."""
 from __future__ import annotations
 
+import ast
 import contextlib
 import hashlib
 import importlib.util
@@ -79,12 +80,30 @@ class DependencyRegressionTests(unittest.TestCase):
     def test_workflow_only_changes_install_and_adds_offline_check(self):
         changed = (ROOT / ".github" / "workflows" / "general-news-producer.yml").read_text(encoding="utf-8")
         self.assertEqual(changed.count(NEW_INSTALL), 1)
-        original = changed.replace(NEW_INSTALL, OLD_INSTALL).encode("utf-8")
+        # The separately reviewed editorial trial adds immutable ownership and
+        # exact persisted-draft proof; the dependency contract stays unchanged.
+        baseline = (ROOT / "tests/fixtures/original_general_news_producer.yml").read_text(encoding="utf-8")
+        self.assertEqual(baseline.count(NEW_INSTALL), 1)
+        original = baseline.replace(NEW_INSTALL, OLD_INSTALL).encode("utf-8")
         self.assertEqual(git_blob_sha(original), ORIGINAL_WORKFLOW_BLOB)
+        for constraint in ("--available-tools='view,web_search,web_fetch'", "--available-tools='view'",
+                           "scripts/general_news_verification_robot.py merge", "scripts/general_news_verification_robot.py produce"):
+            self.assertIn(constraint, baseline)
+            self.assertIn(constraint, changed)
 
     def test_source_and_editorial_gates_are_byte_identical(self):
-        raw = (ROOT / "scripts" / "general_news_local_fallback.py").read_bytes()
-        self.assertEqual(git_blob_sha(raw), ORIGINAL_FALLBACK_BLOB)
+        baseline_path = ROOT / "tests/fixtures/original_local_fallback_gates.py"
+        self.assertEqual(git_blob_sha(baseline_path.read_bytes()), ORIGINAL_FALLBACK_BLOB)
+        baseline = baseline_path.read_text(encoding="utf-8")
+        current = (ROOT / "scripts/general_news_local_fallback.py").read_text(encoding="utf-8")
+        names = {"trusted", "choose", "safe_http_url", "fetch", "bing_search", "decoded_candidate_url",
+                 "extract_source_page", "source_packet", "allowed_numbers", "valid_output"}
+        def functions(source):
+            return {node.name: ast.get_source_segment(source, node)
+                    for node in ast.parse(source).body
+                    if isinstance(node, ast.FunctionDef) and node.name in names}
+        self.assertEqual(set(functions(baseline)), names)
+        self.assertEqual(functions(current), functions(baseline))
 
     def test_supported_api_smoke_is_offline(self):
         self.assertEqual(self.run_check(), check.EXPECTED_VERSIONS)
@@ -144,3 +163,4 @@ class DependencyRegressionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

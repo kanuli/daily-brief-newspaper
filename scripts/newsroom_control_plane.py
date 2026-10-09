@@ -455,6 +455,19 @@ def apply_previous_outcomes(
         prior = previous_rows.get(row["robot"])
         row["attempt"] = 1
         row["outcomeBefore"] = snapshot
+        if row.get("status") == "reviewed-editorial-trial":
+            # This is a different reviewed behavior, with its own durable,
+            # create-only semantic claim. The prior normal-path retry counter
+            # is audit evidence, not authority to consume the new trial budget.
+            if prior:
+                row["previousOutcome"] = {
+                    "cycleId": previous.get("cycleId"),
+                    "progress": made_progress(row["robot"], prior.get("outcomeBefore") or {}, snapshot),
+                    "mode": prior.get("mode"),
+                    "attempt": prior.get("attempt", 1),
+                    "evaluation": "reviewed-semantic-trial-separate-from-prior-path",
+                }
+            continue
         if str(row.get("status") or "").startswith("external-failover"):
             prior_attempt = int((prior or {}).get("attempt") or 1)
             before_live = ((prior or {}).get("outcomeBefore") or {}).get("liveLastUpdated")
@@ -562,6 +575,7 @@ def main() -> int:
     ap.add_argument("--sentinel", required=True)
     ap.add_argument("--pages-status", default="/tmp/pages-live-status.json")
     ap.add_argument("--pages-deployment")
+    ap.add_argument("--editorial-trial", help="Site EIC inspected one-trial admission; immutable claim is still required")
     ap.add_argument("--previous-assignments")
     ap.add_argument("--latest", default="data/latest.json")
     ap.add_argument("--live", default="data/live.json")
@@ -592,6 +606,7 @@ def main() -> int:
     if not isinstance(pages, dict):
         pages = {}
     previous = load(args.previous_assignments, {})
+    trial_permit = load(args.editorial_trial, {})
     latest = load(args.latest, {})
     live = load(args.live, {})
     desk = load(args.desk, {})
@@ -933,6 +948,19 @@ def main() -> int:
     snapshot["staleDesks"] = sorted(stale_desks)
 
     if producer_blocked:
+        from editorial_revision_trial import CONTRACT_REVISION, FAILED_CAPACITY_SHA
+        trial_checked = parse_iso(trial_permit.get("checkedAt")) if isinstance(trial_permit, dict) else None
+        trial_eligible = bool(
+            isinstance(trial_permit, dict) and trial_permit.get("eligible") is True
+            and trial_permit.get("owner") == "Site Editor-in-Chief"
+            and trial_permit.get("contractRevision") == CONTRACT_REVISION
+            and trial_permit.get("capacitySHA") == FAILED_CAPACITY_SHA
+            and trial_permit.get("priorCapacity") == producer_capacity
+            and trial_permit.get("capacityRemainsFailed") is True
+            and trial_permit.get("publicationPermissionGranted") is False
+            and str(trial_permit.get("dispatcherRunId") or "").isdigit()
+            and trial_checked is not None and 0 <= (now - trial_checked).total_seconds() <= 300
+        )
         hkt_now = now.astimezone(HKT)
         active_live_hour = hkt_now.hour in {0, 6, 7} or 9 <= hkt_now.hour <= 23
         live_stamp = parse_iso(snapshot.get("liveLastUpdated"))
@@ -957,6 +985,18 @@ def main() -> int:
 
         for row in plan:
             if row.get("robot") != "general-producer":
+                continue
+            if trial_eligible and producer_capacity.get("status") == "LOCAL_FALLBACK_FAILED":
+                row.update(
+                    faultClass="reviewed-editorial-code-trial", status="reviewed-editorial-trial",
+                    dispatchable=True, blockedBy=[], requiresExternalPublisher=False,
+                    reason="Site EIC permits one reviewed structured-copy revision trial; failed capacity remains held and immutable claim/child binding precede production",
+                    dispatchInputs={"editorial_trial_contract": CONTRACT_REVISION,
+                                    "editorial_trial_dispatcher_run": trial_permit["dispatcherRunId"]},
+                    verifyNextCycle=["immutable claim and single child binding exist",
+                                     "strict producer creates and persists genuinely new VERIFIED_DRAFT",
+                                     "failed capacity changes only after exact persisted draft proof"],
+                )
                 continue
             row["faultClass"] = "producer-capacity-exhausted"
             row["status"] = "external-failover"

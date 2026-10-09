@@ -197,6 +197,11 @@ def prepare(root: Path, store, state_path: Path) -> dict:
     capacity = store.read(CAPACITY_PATH)
     if not capacity or capacity["value"].get("status") not in BLOCKED_STATUSES:
         return {"claimed": False, "reason": "capacity-is-not-blocked"}
+    if (capacity["value"].get("status") == "LOCAL_FALLBACK_FAILED"
+        and capacity["value"].get("capabilityOnly") is not True):
+        # Actual producer output rejection is not an infrastructure capability
+        # verdict. A synthetic probe must never erase it or grant another trial.
+        return {"claimed": False, "reason": "actual-producer-failure-requires-editorial-review"}
     if store.read(claim_path(probe_revision)) is not None:
         return {"claimed": False, "reason": "one-attempt-budget-already-consumed"}
     state = {
@@ -473,6 +478,9 @@ def finalize(store, state: dict, result: dict, capacity_path: Path) -> bool:
     if parse_stamp(result["checkedAt"], "finalize") < parse_stamp(state.get("claimedAt"), "finalize"):
         raise ProbeFailure("finalize", "result-predates-claim")
     store.create(result_path(probe_revision), result)
+    if (state["priorCapacity"].get("status") == "LOCAL_FALLBACK_FAILED"
+        and state["priorCapacity"].get("capabilityOnly") is not True):
+        return False
     capacity = copy.deepcopy(state["priorCapacity"])
     # Full old evidence lives in the immutable claim. Do not grow recursive
     # histories in the single current-status object on a future reviewed repair.

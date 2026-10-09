@@ -2,15 +2,6 @@ name: General News Verified Producer
 
 on:
   workflow_dispatch:
-    inputs:
-      editorial_trial_contract:
-        description: "Immutable reviewed Site EIC trial contract (not a force override)"
-        required: false
-        type: string
-      editorial_trial_dispatcher_run:
-        description: "Owning Site EIC dispatcher run; claim and child binding are mandatory"
-        required: false
-        type: string
 
 permissions:
   contents: write
@@ -31,27 +22,6 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-
-      - name: Bind one immutable Site EIC editorial trial before source or model work
-        id: trial_guard
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TRIAL_CONTRACT: ${{ inputs.editorial_trial_contract }}
-          TRIAL_DISPATCHER: ${{ inputs.editorial_trial_dispatcher_run }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/editorial_revision_trial.py bind --root . \
-            --contract "$TRIAL_CONTRACT" --dispatcher "$TRIAL_DISPATCHER" \
-            --state /tmp/eic-editorial-trial-state.json --github-output "$GITHUB_OUTPUT"
-          if [ -s /tmp/eic-editorial-trial-state.json ]; then
-            # Preserve the exact reviewed validator code before the later
-            # prepublish-branch checkout replaces the main working tree.
-            mkdir -p /tmp/eic-editorial-reviewed/scripts
-            cp scripts/editorial_revision_trial.py scripts/probe_general_news_fallback_capability.py \
-              scripts/general_news_local_fallback.py scripts/general_news_verified_producer.py \
-              scripts/general_news_verification_robot.py /tmp/eic-editorial-reviewed/scripts/
-          fi
 
       - name: Load the latest discovery reservoir
         shell: bash
@@ -294,7 +264,7 @@ jobs:
 
       - name: Record producer capacity outcome
         id: capacity
-        if: always() && steps.trial_guard.outcome == 'success' && steps.trial_guard.outputs.active != 'true' && steps.pending.outputs.pending != 'true' && steps.prepare.outputs.candidate_count != '0'
+        if: always() && steps.pending.outputs.pending != 'true' && steps.prepare.outputs.candidate_count != '0'
         env:
           VERIFY_OK: ${{ steps.verify.outputs.ok }}
           VERIFY_CAPACITY: ${{ steps.verify.outputs.capacity_exhausted }}
@@ -366,7 +336,7 @@ jobs:
           cat /tmp/producer-capacity.json
 
       - name: Persist producer capacity telemetry
-        if: always() && steps.trial_guard.outcome == 'success' && steps.trial_guard.outputs.active != 'true' && steps.pending.outputs.pending != 'true' && steps.prepare.outputs.candidate_count != '0'
+        if: always() && steps.pending.outputs.pending != 'true' && steps.prepare.outputs.candidate_count != '0'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -435,17 +405,9 @@ jobs:
 
       - name: Persist the verified draft on the isolated prepublish branch
         if: steps.pending.outputs.pending != 'true' && steps.producer.outputs.publishable == 'true'
-        env:
-          VERIFY_OK: ${{ steps.verify.outputs.ok }}
-          COPY_OK: ${{ steps.copy.outputs.ok }}
-          LOCAL_FALLBACK_OK: ${{ steps.local_fallback.outputs.ok }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ '${{ steps.trial_guard.outputs.active }}' = 'true' ]; then
-            GH_TOKEN='${{ github.token }}' python scripts/editorial_revision_trial.py stamp-draft --root . \
-              --state /tmp/eic-editorial-trial-state.json --draft /tmp/general-news-prepublish.json
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin prepublish-news
@@ -472,19 +434,6 @@ jobs:
       - name: Report degraded local fallback
         if: steps.capacity.outputs.status == 'DEGRADED_LOCAL_FALLBACK'
         run: echo "GENERAL_NEWS_PRODUCER_DEGRADED localFallback=qwen2.5:1.5b"
-
-      - name: Finalize reviewed trial from exact persisted draft or preserve failed capacity
-        if: always() && steps.trial_guard.outputs.active == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERIFY_OK: ${{ steps.verify.outputs.ok }}
-          COPY_OK: ${{ steps.copy.outputs.ok }}
-          LOCAL_FALLBACK_OK: ${{ steps.local_fallback.outputs.ok }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          python /tmp/eic-editorial-reviewed/scripts/editorial_revision_trial.py finish --root /tmp/eic-editorial-reviewed \
-            --state /tmp/eic-editorial-trial-state.json --draft /tmp/general-news-prepublish.json
 
       - name: Report producer capacity failover
         if: steps.capacity.outputs.blocked == 'true'

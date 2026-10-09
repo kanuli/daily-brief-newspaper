@@ -286,45 +286,13 @@ def source_packet(candidate: dict[str, Any]) -> dict[str, str] | None:
     }
 
 
-def copy_output_schema(packet: dict[str, str]) -> dict[str, Any]:
-    """Constrain formatting only; the existing editorial gate stays authoritative."""
-    candidate_id = packet.get("candidateId")
-    if not isinstance(candidate_id, str) or not candidate_id:
-        raise ValueError("structured copy requires exact nonempty candidate identity")
-    properties = {
-        field: {"type": "string", "minLength": 1}
-        for field in producer.COPY_FIELDS
-    }
-    # Avoid claiming regex grammar support from an untested runner version.
-    # Paragraph breaks are still strictly required by valid_output unchanged.
-    properties["body"]["description"] = (
-        "Two or three source-grounded prose paragraphs separated by two newline characters."
-    )
-    return {
-        "type": "object",
-        "properties": {
-            "candidateId": {"type": "string", "enum": [candidate_id]},
-            "facts": {
-                "type": "array", "items": {"type": "string", "minLength": 1},
-                "minItems": 2, "maxItems": 5,
-            },
-            "verifiedCopy": {
-                "type": "object", "properties": properties,
-                "required": list(producer.COPY_FIELDS), "additionalProperties": False,
-            },
-        },
-        "required": ["candidateId", "facts", "verifiedCopy"],
-        "additionalProperties": False,
-    }
-
-
-def ollama_json(prompt: str, *, schema: dict[str, Any]) -> dict[str, Any]:
+def ollama_json(prompt: str) -> dict[str, Any]:
     body = json.dumps(
         {
             "model": MODEL_NAME,
             "prompt": prompt,
             "stream": False,
-            "format": schema,
+            "format": "json",
             "options": {"temperature": 0.05, "top_p": 0.7, "num_predict": 1700},
         },
         ensure_ascii=False,
@@ -360,11 +328,11 @@ def model_prompt(packet: dict[str, str]) -> str:
         "寫成自然香港繁體中文新聞稿，不要出現『來源顯示』『本報核實』『資料不足』"
         "『只根據』等流程語句。移除標題尾部媒體名稱。body 2至3段，至少120個中文字。\n"
         "facts 要列2至5項簡潔、可由 SOURCE_TEXT 直接支持的事實。\n"
-        "只輸出符合 OUTPUT_SCHEMA 的 JSON，不得省略必要欄位。candidateId 必須原樣等於 "
-        + json.dumps(packet["candidateId"], ensure_ascii=False)
-        + "，不要使用省略符或改寫識別碼。body 的段落必須以兩個換行字元分隔。\n"
-        + "OUTPUT_SCHEMA:\n" + json.dumps(copy_output_schema(packet), ensure_ascii=False) + "\n"
-        + "INPUT:\n" + json.dumps(safe, ensure_ascii=False)
+        "只輸出 JSON：{\"candidateId\":\"...\",\"facts\":[\"...\",\"...\"],"
+        "\"verifiedCopy\":{\"title\":\"...\",\"dek\":\"...\",\"summary\":\"...\","
+        "\"body\":\"第一段\\n\\n第二段\",\"context\":\"...\","
+        "\"why\":\"...\",\"watchNext\":\"...\"}}\n"
+        "INPUT:\n" + json.dumps(safe, ensure_ascii=False)
     )
 
 
@@ -402,54 +370,6 @@ def valid_output(packet: dict[str, str], value: dict[str, Any]) -> tuple[list[st
     return facts[:5], copy
 
 
-def editorial_gate_diagnostics(packet: dict[str, str], value: dict[str, Any]) -> dict[str, Any]:
-    """Observer only: fixed codes/counts, never copy/source text or acceptance."""
-    reasons: list[str] = []
-    if clean(value.get("candidateId")) != packet["candidateId"]:
-        reasons.append("candidate-id-mismatch")
-    facts = [HK.convert(clean(x)) for x in (value.get("facts") or []) if clean(x)]
-    if len(facts) < 2:
-        reasons.append("insufficient-facts")
-    copy_raw = value.get("verifiedCopy")
-    if not isinstance(copy_raw, dict):
-        reasons.append("copy-object-missing")
-        copy_raw = {}
-    copy = {
-        field: HK.convert(str(copy_raw.get(field) or "").strip())
-        for field in producer.COPY_FIELDS
-    }
-    missing = [field for field in producer.COPY_FIELDS if not copy[field]]
-    if missing:
-        reasons.append("missing-copy-fields")
-    public = " ".join(list(copy.values()) + facts)
-    numeric_mismatch_count = len(set(NUM_RE.findall(public)) - allowed_numbers(packet))
-    if numeric_mismatch_count:
-        reasons.append("ungrounded-numeric-token")
-    if producer.PROCESS_FILLER.search(public):
-        reasons.append("process-language")
-    if BANNED_PUBLIC.search(public):
-        reasons.append("banned-public-language")
-    if "\n\n" not in copy["body"]:
-        reasons.append("body-paragraph-break-missing")
-    copy_text = " ".join(copy.values())
-    cjk_count = len(CJK_RE.findall(copy_text))
-    kana_count = len(KANA_RE.findall(copy_text))
-    if cjk_count < 120:
-        reasons.append("copy-too-short")
-    if kana_count > 8:
-        reasons.append("excessive-japanese-kana")
-    return {
-        "reasonCodes": reasons or ["unknown-rejection"],
-        "factCount": len(facts),
-        "missingCopyFields": missing,
-        "copyFieldCharacters": {field: len(copy[field]) for field in producer.COPY_FIELDS},
-        "copyCjkCharacters": cjk_count,
-        "copyKanaCharacters": kana_count,
-        "bodyParagraphBreakCount": copy["body"].count("\n\n"),
-        "ungroundedNumericTokenCount": numeric_mismatch_count,
-    }
-
-
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("request", type=Path)
@@ -468,30 +388,19 @@ def main() -> int:
         try:
             packet = source_packet(candidate)
         except Exception as exc:
-            diagnostic = {"candidateId": cid, "stage": "source-probe", "error": type(exc).__name__}
-            if isinstance(exc, ET.ParseError):
-                # The locator RSS parse is the only ElementTree parse here.
-                diagnostic["reasonCode"] = "locator-rss-invalid-xml"
-            diagnostics.append(diagnostic)
+            diagnostics.append({"candidateId": cid, "stage": "source-probe", "error": type(exc).__name__})
             continue
         if not packet:
             diagnostics.append({"candidateId": cid, "stage": "source-probe", "error": "no-direct-source-text"})
             continue
         try:
-            model = ollama_json(model_prompt(packet), schema=copy_output_schema(packet))
+            model = ollama_json(model_prompt(packet))
             checked = valid_output(packet, model)
         except Exception as exc:
             diagnostics.append({"candidateId": cid, "stage": "model", "error": type(exc).__name__})
             continue
         if not checked:
-            diagnostic = {"candidateId": cid, "stage": "editorial-gate", "error": "rejected"}
-            try:
-                diagnostic.update(editorial_gate_diagnostics(packet, model))
-            except Exception as exc:
-                # Observation must never change the existing editorial verdict.
-                diagnostic["reasonCodes"] = ["diagnostic-unavailable"]
-                diagnostic["diagnosticError"] = type(exc).__name__
-            diagnostics.append(diagnostic)
+            diagnostics.append({"candidateId": cid, "stage": "editorial-gate", "error": "rejected"})
             continue
 
         facts, copy = checked
@@ -534,5 +443,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
