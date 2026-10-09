@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "owner": "Site Editor-in-Chief",
+  "scope": "single-reviewed-editorial-code-trial",
+  "contractRevision": "393d146c2c5431eb3ba02acf9d7e28976a29fd40a9b73c91d5607d18f1f13b47",
+  "contract": {
+    "protocol": "ollama-google-gemma-daily-ready-copy-v6",
+    "model": "gemma3:4b-it-qat",
+    "modelDeveloper": "Google DeepMind",
+    "ownerPolicy": "non-China-developed-models-only",
+    "modelManifestDigest": "b0313423c9448adfab711aacbc9d0b885a390eb31f1145d7f8495d1e6f84f257",
+    "cancelledPriorTrial": {
+      "run": "37920281031",
+      "head": "511fae968eef1e6bed3db3a46ff9c30bb07d74be",
+      "job": 113786294114
+    },
+    "candidateIdentity": "exact-candidate-id-enum",
+    "copyFields": [
+      "title",
+      "dek",
+      "summary",
+      "body",
+      "context",
+      "why",
+      "watchNext"
+    ],
+    "copyFieldsRequired": true,
+    "copyStringsNonempty": true,
+    "bodyRepresentation": "two-or-three-source-paragraphs-serialized-with-double-newline",
+    "predecessorContract": "709150ca26cc60f925c9acc4e23507bac16ee4dadc41a8ba8cb53ac816cf75f0",
+    "observedPriorProductionFailure": "three-small-model-completions-rejected-for-kana-or-supplied-paragraph-representation",
+    "priorFailedProduction": {
+      "run": "37916836587",
+      "job": 113774991335,
+      "head": "a9c0fc9c4be514a9e99f297c9c4708e1183b2cfa",
+      "model": "qwen2.5:1.5b"
+    },
+    "dailyBody": {
+      "visibleMinimum": 100,
+      "visibleMaximum": 1800,
+      "paragraphCharactersMinimum": 50,
+      "paragraphCharactersMaximum": 600
+    },
+    "copyLanguageRepresentation": "literal-cjk-leading-single-line-fields-and-body-paragraphs",
+    "modelContextTokens": 32768,
+    "truncateInput": false,
+    "shiftContext": false,
+    "trustedPolicyInstructions": true,
+    "nativeSystemRole": false,
+    "trustedInstructionTransport": "initial-user-prompt-plus-final-after-input-reminder",
+    "localeInstructionPosition": "original-prefix-plus-trusted-after-input-reminder",
+    "sourceSelection": {
+      "mode": "availability-aware-round-robin-v1",
+      "maxCandidatesPerDesk": 4,
+      "maxSourceProbes": 12,
+      "maxModelCalls": 3,
+      "maxAcceptedPerDesk": 1,
+      "sourceWorkerTimeoutSeconds": 35,
+      "sharedFallbackSeconds": 600,
+      "bindDeadlineSeconds": 660
+    },
+    "factsMinimum": 2,
+    "factsMaximum": 5,
+    "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged"
+  },
+  "reviewedSources": {
+    "scripts/general_news_local_fallback.py": "1f7321cd488af42b77705d584c80ebc6fc635aed60d1e95b1dcdced50feaa17b",
+    "scripts/general_news_verified_producer.py": "b8604594ee18a5f7bc31d68acb0fb175ec752b73dc9f5970e1cd207ca2f37e2d",
+    "scripts/general_news_verification_robot.py": "5e60639ab28729975e8f8543efe669b2e11af77e7667913f13b1e33a3dd1b6f5"
+  },
+  "claimedAt": "2026-10-09T11:10:18.593678Z",
+  "expiresAt": "2026-10-09T11:30:18.593678Z",
+  "dispatcherRunId": "37922027401",
+  "assignmentId": "2a791ecc6c81a666",
+  "attempt": 1,
+  "maxAttempts": 1,
+  "remainingAttempts": 0,
+  "priorCapacitySHA": "ee98c99c29234da4bdac578705967197a9a68e1c",
+  "priorCapacity": {
+    "schemaVersion": 1,
+    "producer": "General News Verified Producer",
+    "checkedAt": "2026-10-09T10:22:40.395030Z",
+    "status": "LOCAL_FALLBACK_FAILED",
+    "reason": "GitHub Copilot quota/capacity exhausted; GitHub-native local fallback attempted but produced no publishable verified output",
+    "blockedUntil": null,
+    "recoveryOwner": "automation:Newsroom Publisher",
+    "localFallbackModel": "qwen2.5:1.5b",
+    "workflowRunId": "37916836587"
+  },
+  "predecessorResultSHA": "04a09fb4efa3ab709b69977bd963f5191b8c3146",
+  "failedProduction": {
+    "run": "37916836587",
+    "job": 113774991335,
+    "head": "a9c0fc9c4be514a9e99f297c9c4708e1183b2cfa",
+    "model": "qwen2.5:1.5b"
+  },
+  "priorDraftId": "general-news-20261009-1805-hkt",
+  "publicationPermissionGranted": false
+}
