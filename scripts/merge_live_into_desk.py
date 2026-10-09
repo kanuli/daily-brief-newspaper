@@ -61,24 +61,23 @@ def body_measure(value):
 
 
 def normalize_retained_story(story):
-    if not isinstance(story, dict):
-        return story
-    body = str(story.get("body") or "").strip()
-    if body_measure(body) >= MIN_BODY_MEASURE:
-        return story
-    additions = []
-    existing = re.sub(r"\s+", "", body)
-    for key in ("context", "why"):
-        text = str(story.get(key) or "").strip()
-        if text and re.sub(r"\s+", "", text) not in existing:
-            additions.append(text)
-            existing += re.sub(r"\s+", "", text)
-        candidate = body + ("\n\n" if body and additions else "") + " ".join(additions)
-        if body_measure(candidate) >= MIN_BODY_MEASURE:
-            break
-    if additions:
-        story["body"] = body + ((" " if "\n\n" in body else "\n\n")) + " ".join(additions)
+    # Merging is not copy generation: never append other fields to reach a
+    # length gate. Invalid retained bodies are preserved outside public desks.
     return story
+
+
+def retained_body_rejection_reason(story):
+    """Mirror the unchanged public body gate, without repairing its input."""
+    if not isinstance(story, dict):
+        return "not an object"
+    body = story.get("body")
+    if not isinstance(body, str) or not body.strip():
+        return "missing body"
+    if len([p for p in re.split(r"\n\s*\n", body) if p.strip()]) < 2:
+        return "body lacks 2 paragraphs"
+    if body_measure(body) < MIN_BODY_MEASURE:
+        return "body below original public minimum"
+    return ""
 
 
 def desk_slugs(item):
@@ -116,6 +115,8 @@ def live_item_rejection_reason(item):
     paras = [p.strip() for p in re.split(r"\n\s*\n", item["body"]) if p.strip()]
     if len(paras) < 2:
         return "body lacks 2 paragraphs"
+    if body_measure(item["body"]) < MIN_BODY_MEASURE:
+        return "body below original public minimum"
     public = " ".join(str(item.get(k, "")) for k in (
         "title", "dek", "summary", "body", "context", "why", "watchNext"
     ))
@@ -233,6 +234,14 @@ def main():
     desk = load(DESK)
     desks = desk.setdefault("desks", {})
     expired_cross_posts = []
+    quarantined = desk.setdefault("quarantinedStories", [])
+    if not isinstance(quarantined, list):
+        raise SystemExit("retained-story quarantine must be an array")
+    quarantine_keys = {
+        (entry.get("desk"), story_identity(entry.get("story") or {}))
+        for entry in quarantined if isinstance(entry, dict)
+    }
+    newly_quarantined = []
 
     raw_live_items = [item for item in live.get("items", []) if isinstance(item, dict)]
     live_items = []
@@ -277,6 +286,16 @@ def main():
                 continue
             if not keep_on_desk(raw, slug):
                 expired_cross_posts.append((slug, str(raw.get("id") or raw.get("title") or "unknown")))
+                continue
+            reason = retained_body_rejection_reason(raw)
+            if reason:
+                key = (slug, story_identity(raw))
+                if key not in quarantine_keys:
+                    quarantined.append({"desk": slug, "reason": reason,
+                                        "quarantinedAt": datetime.now(timezone.utc).isoformat(),
+                                        "story": copy.deepcopy(raw)})
+                    quarantine_keys.add(key)
+                newly_quarantined.append((slug, str(raw.get("id") or "unknown"), reason))
                 continue
             normalized = normalize_retained_story(copy.deepcopy(raw))
             normalized["deskSlugs"] = list(routed_slugs(normalized))
@@ -369,6 +388,8 @@ def main():
     # passed all schema/depth/routing gates above before the atomic replace.
     atomic_write_json(DESK, desk)
     atomic_write_json(LIVE, live)
+    for slug, item_id, reason in newly_quarantined:
+        print("ROLLING DESK QUARANTINED RETAINED ITEM", slug, item_id, reason)
     if quarantined_live_items:
         for item_id, reason in quarantined_live_items:
             print("ROLLING DESK QUARANTINED LIVE ITEM", item_id, reason)
@@ -379,3 +400,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
