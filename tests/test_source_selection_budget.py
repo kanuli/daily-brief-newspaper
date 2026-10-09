@@ -92,7 +92,7 @@ class SourceSelectionBudgetTests(unittest.TestCase):
     def response(self, value, returncode=0):
         return types.SimpleNamespace(returncode=returncode, stdout=json.dumps(value, ensure_ascii=False), stderr="PRIVATE-WORKER-ERROR")
 
-    def run_main(self, data, source_behavior, model_behavior=None, *, deadline=None):
+    def run_main(self, data, source_behavior, model_behavior=None, *, deadline=None, daily_ready=False):
         calls, models, writes = [], [], []
 
         def source_run(command, **kwargs):
@@ -108,6 +108,8 @@ class SourceSelectionBudgetTests(unittest.TestCase):
         args = ["fallback", "SYNTHETIC_REQUEST", "--facts", "NEVER_WRITTEN_FACTS", "--copies", "NEVER_WRITTEN_COPIES"]
         if deadline is not None:
             args += ["--deadline-unix=" + deadline]
+        if daily_ready:
+            args += ["--daily-ready-copy"]
         error = None
         with patch.object(sys, "argv", args), patch.object(self.module, "load", return_value=data), \
                 patch.object(self.module.subprocess, "run", side_effect=source_run), \

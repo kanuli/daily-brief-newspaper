@@ -60,7 +60,7 @@ CONTRACT = {
     "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged",
 }
 REVIEWED_SOURCES = {
-    "scripts/general_news_local_fallback.py": "0f9f74f5582fcf4188e7ca7bd603f98ee425df215acba4a1a2c106781ea91524",
+    "scripts/general_news_local_fallback.py": "164d0b6cfc47382b4470f7a4bcde00c8605c55d300fd8ccf5bfc9061ecb1707e",
     "scripts/general_news_verified_producer.py": "b8604594ee18a5f7bc31d68acb0fb175ec752b73dc9f5970e1cd207ca2f37e2d",
     "scripts/general_news_verification_robot.py": "5e60639ab28729975e8f8543efe669b2e11af77e7667913f13b1e33a3dd1b6f5",
 }
