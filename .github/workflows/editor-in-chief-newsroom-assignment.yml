@@ -67,6 +67,8 @@ jobs:
           fetch-depth: 0
 
       - name: Collect independent newsroom evidence and prior assignment outcome
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -76,6 +78,7 @@ jobs:
             /tmp/producer-capacity.json \
             /tmp/page-news-sentinel.json \
             /tmp/pages-live-status.json \
+            /tmp/pages-deployment.json \
             /tmp/editor-status.json \
             /tmp/previous-assignments.json
 
@@ -91,6 +94,10 @@ jobs:
 
           git fetch -q origin pages-status:refs/remotes/origin/pages-status || true
           git show origin/pages-status:data/pages-live-status.json > /tmp/pages-live-status.json 2>/dev/null || echo '{}' > /tmp/pages-live-status.json
+
+          # Read actual completed deployment evidence; dispatch is not proof.
+          gh run list --repo "${GITHUB_REPOSITORY}" --workflow pages.yml --status success --limit 1 \
+            --json databaseId,conclusion,updatedAt > /tmp/pages-deployment.json || echo '[]' > /tmp/pages-deployment.json
 
           git fetch -q origin editor-status:refs/remotes/origin/editor-status || true
           git show origin/editor-status:data/editor-in-chief-status.json > /tmp/editor-status.json 2>/dev/null || echo '{}' > /tmp/editor-status.json
@@ -197,6 +204,7 @@ jobs:
             --editor-status /tmp/editor-status.json \
             --sentinel /tmp/page-news-sentinel.json \
             --pages-status /tmp/pages-live-status.json \
+            --pages-deployment /tmp/pages-deployment.json \
             --previous-assignments /tmp/previous-assignments.json \
             --latest data/latest.json \
             --live data/live.json \

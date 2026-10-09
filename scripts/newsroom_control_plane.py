@@ -175,7 +175,7 @@ def make_cycle_id(now: datetime) -> str:
     return now.strftime("%Y%m%dT%H%M%SZ")
 
 
-def public_probe_evidence(pages: dict[str, Any], now: datetime) -> dict[str, Any]:
+def public_probe_evidence(pages: dict[str, Any], now: datetime, required_after: datetime | None = None) -> dict[str, Any]:
     """Dispatch is not observation; invalid clocks cannot renew a budget."""
     stamp = parse_iso(pages.get("checkedAt"))
     genuine_clock = stamp is not None and stamp <= now
@@ -184,9 +184,10 @@ def public_probe_evidence(pages: dict[str, Any], now: datetime) -> dict[str, Any
     return {
         "publicProbeCheckedAt": normalized,
         "publicProbeAgeMinutes": age,
-        "publicProbeFresh": age is not None and age <= 30.0,
+        "publicProbeFresh": age is not None and age <= 30.0 and (required_after is None or stamp >= required_after),
         "publicProbeMatch": pages.get("match") is True,
         "publicProbeBudgetKey": normalized or "invalid-public-probe",
+        "publicProbeRequiredAfterAt": required_after.isoformat().replace("+00:00", "Z") if required_after else None,
     }
 
 
@@ -225,6 +226,7 @@ def public_probe_recovery(previous: dict[str, Any], evidence: dict[str, Any]) ->
         "dispatchedAt": dispatched_at,
         "lastObservationAt": evidence["publicProbeCheckedAt"] if advanced else prior.get("lastObservationAt"),
         "freshObservation": evidence["publicProbeFresh"],
+        "requiredAfterAt": evidence["publicProbeRequiredAfterAt"],
         "requiresEditorReplan": bool(same_key and prior.get("requiresEditorReplan")),
     }
 
@@ -238,7 +240,7 @@ def assign_public_observation(
         return
     add_assignment(
         plan, robots, "public-probe", "public-probe-stale",
-        "public observation is missing, invalid or older than 30 minutes; verify HTTP outcomes without deploying or changing news",
+        "public observation is missing, invalid, older than 30 minutes or predates the latest successful deployment; verify HTTP outcomes without deploying or changing news",
     )
     row = next(item for item in plan if item["robot"] == "public-probe")
     row["probeBudgetKey"] = recovery["budgetKey"]
@@ -559,6 +561,7 @@ def main() -> int:
     ap.add_argument("--editor-status", required=True)
     ap.add_argument("--sentinel", required=True)
     ap.add_argument("--pages-status", default="/tmp/pages-live-status.json")
+    ap.add_argument("--pages-deployment")
     ap.add_argument("--previous-assignments")
     ap.add_argument("--latest", default="data/latest.json")
     ap.add_argument("--live", default="data/live.json")
@@ -613,7 +616,18 @@ def main() -> int:
         vocab_ok=vocab_ok,
     )
     producer_blocked = producer_capacity_blocked(producer_capacity, now)
-    probe_evidence = public_probe_evidence(pages, now)
+    # A successful deployment is not an independent observation. Retain the
+    # latest real deployment clock across blocked/unassigned cycles; neither
+    # missing metadata nor regressing/future clocks can erase this obligation.
+    prior_probe = previous.get("publicProbeRecovery") or {}
+    deployment_rows = load(args.pages_deployment, [])
+    deployment_clocks = [parse_iso(prior_probe.get("requiredAfterAt"))] if isinstance(prior_probe, dict) else []
+    if isinstance(deployment_rows, list):
+        deployment_clocks += [parse_iso(row.get("updatedAt")) for row in deployment_rows
+                              if isinstance(row, dict) and row.get("conclusion") == "success"]
+    valid_deployments = [clock for clock in deployment_clocks if clock is not None and clock <= now]
+    required_after = max(valid_deployments) if valid_deployments else None
+    probe_evidence = public_probe_evidence(pages, now, required_after)
     snapshot.update(probe_evidence)
     probe_recovery = public_probe_recovery(previous, probe_evidence)
     snapshot["producerCapacityStatus"] = producer_capacity.get("status")
@@ -896,7 +910,7 @@ def main() -> int:
         and f.get("severity") == "critical"
         for f in (editor.get("findings") or [])
     )
-    if sentinel_requires_deployment(sentinel, str(robots["pages"]["workflow"])) or page_fault:
+    if sentinel_requires_deployment(sentinel, str(robots["pages"]["workflow"])) or (page_fault and probe_evidence["publicProbeFresh"]):
         add_assignment(
             plan,
             robots,

@@ -46,6 +46,7 @@ def base_files():
         "editor": {"findings": [], "repairPlan": [], "voiceWorkflowAudit": {"coverageComplete": True}},
         "sentinel": {"checkedAt": NOW_ISO, "persistentFailedPages": []},
         "pages_status": {"checkedAt": NOW_ISO, "match": True},
+        "pages_deployment": [],
         "previous": {},
         "latest": {"date": "2026-10-06"},
         "live": {"lastUpdated": NOW_ISO},
@@ -91,6 +92,8 @@ def run_case(
                 str(paths["sentinel"]),
                 "--pages-status",
                 str(paths["pages_status"]),
+                "--pages-deployment",
+                str(paths["pages_deployment"]),
                 "--previous-assignments",
                 str(paths["previous"]),
                 "--latest",
@@ -599,6 +602,40 @@ assert observer["workflow"] == "pages-probe.yml"
 assert observer["readOnlyObservation"] is True
 assert observer["faultClasses"] == ["public-probe-stale"]
 assert observer["maxRuntimeMinutes"] == 5
-print("NEWSROOM_CONTROL_PLANE_V2_TESTS_OK routing_regressions=11 public_probe_regressions=17")
+def post_deployment(d):
+    d["pages_status"] = {"checkedAt": (NOW - timedelta(minutes=5)).isoformat(), "match": False}
+    d["pages_deployment"] = [{"conclusion": "success", "updatedAt": (NOW - timedelta(minutes=1)).isoformat()}]
+    d["editor"]["findings"] = [{"code": "PUBLIC_STOCK_NOT_PROPAGATED", "area": "pages", "severity": "critical"}]
+
+r = run_case(mutate=post_deployment)
+assert {x["robot"] for x in r["assignments"]} == {"public-probe"}, r
+assert r["healthy"] is False, r
+assert r["publicProbeRecovery"]["requiredAfterAt"] == (NOW - timedelta(minutes=1)).isoformat().replace("+00:00", "Z"), r
+post = r
+post_row = probe_row(post)
+
+def deployment_obligation_survives(d):
+    post_deployment(d)
+    d["pages_deployment"] = [{"conclusion": "success", "updatedAt": "2030-01-01T00:00:00Z"}]
+    d["previous"] = dict(post)
+    d["previous"]["execution"] = [{"assignmentId": post_row["assignmentId"], "workflow": "pages-probe.yml", "dispatched": True}]
+
+r = run_case(mutate=deployment_obligation_survives)
+assert probe_row(r)["dispatchable"] is False, r
+assert r["publicProbeRecovery"]["requiredAfterAt"] == post["publicProbeRecovery"]["requiredAfterAt"], r
+assert r["healthy"] is False, r
+
+def deployment_observed(d):
+    deployment_obligation_survives(d)
+    d["pages_status"] = {"checkedAt": NOW_ISO, "match": True}
+    d["editor"]["findings"] = []
+
+r = run_case(mutate=deployment_observed)
+assert r["healthy"] is True, r
+assert r["assignments"] == [], r
+assert r["publicProbeRecovery"]["dispatchesUsed"] == 0, r
+assert "--pages-deployment /tmp/pages-deployment.json" in workflow
+assert "--json databaseId,conclusion,updatedAt" in workflow
+print("NEWSROOM_CONTROL_PLANE_V2_TESTS_OK routing_regressions=11 public_probe_regressions=20")
 
 
