@@ -24,14 +24,14 @@ class OrdinaryDailyBodyTests(unittest.TestCase):
         schema = self.module.copy_output_schema(self.packet, daily_ready=True)
         pattern = schema["properties"]["verifiedCopy"]["properties"]["body"]["items"]["pattern"]
         self.assertNotIn("(?", pattern)
-        for length in (49, 601):
+        for length in (59, 111, 600):
             self.assertIsNone(re.fullmatch(pattern, "中" * length))
-        for length in (50, 100, 600):
+        for length in (60, 90, 110):
             self.assertIsNotNone(re.fullmatch(pattern, "中" * length))
         for text in ("A" * 100, "中" * 99 + '"', "中" * 99 + "\\", "中" * 99 + "\n"):
             self.assertIsNone(re.fullmatch(pattern, text))
         self.assertEqual(schema["properties"]["verifiedCopy"]["properties"]["body"]["minItems"], 2)
-        self.assertEqual(schema["properties"]["verifiedCopy"]["properties"]["body"]["maxItems"], 3)
+        self.assertEqual(schema["properties"]["verifiedCopy"]["properties"]["body"]["maxItems"], 2)
 
     def test_visible_body_boundaries_and_short_world_manu_shapes(self):
         for length in (59, 95, 99, 1801):
@@ -66,7 +66,7 @@ class OrdinaryDailyBodyTests(unittest.TestCase):
         import sys
         sys.path.insert(0, str(budget.ROOT / "scripts"))
         import editorial_revision_trial as trial
-        self.assertEqual(trial.PREDECESSOR_CONTRACT, "a41728ef57d21ab1777933a7f5e8b17a19c4939dbe3250aa76ed800acf8ebbf9")
+        self.assertEqual(trial.PREDECESSOR_CONTRACT, "d7b9d06009cce4c0e81dfcd89e5f5cbe6e5f0d583051211bbc229fbcbdaaaaf9")
         self.assertNotEqual(trial.CONTRACT_REVISION, trial.PREDECESSOR_CONTRACT)
         self.assertEqual(trial.CONTRACT["model"], "gemma3:4b-it-qat")
         self.assertEqual(trial.CONTRACT["ownerPolicy"], "non-China-developed-models-only")

@@ -42,6 +42,7 @@ import general_news_verified_producer as producer
 MODEL_URL = "http://127.0.0.1:11434/api/generate"
 MODEL_NAME = "gemma3:4b-it-qat"
 MODEL_CONTEXT = 32768
+COMPACT_FIELD_LIMITS = {"title": 40, "dek": 60, "summary": 80, "context": 60, "why": 50, "watchNext": 50}
 TARGET_COPY_PATTERN = r'^[㐀-鿿][^"\\\u0000-\u001f\u3040-\u30ff\uff66-\uff9f]*$'
 COPY_LANGUAGE_REPRESENTATION_ERRORS = frozenset({
     "copy fields must satisfy the Chinese-leading string contract",
@@ -509,13 +510,16 @@ def copy_output_schema(packet: dict[str, str], *, daily_ready: bool = False) -> 
     if daily_ready:
         # Supported literal bounded repetition, not a lookahead or a repair.
         # The deterministic visible-character gate below remains authoritative.
-        properties["body"]["items"]["pattern"] = TARGET_COPY_PATTERN.replace("*$", "{49,599}$")
+        for field, maximum in COMPACT_FIELD_LIMITS.items():
+            properties[field]["pattern"] = TARGET_COPY_PATTERN.replace("*$", "{0," + str(maximum - 1) + "}$")
+        properties["body"]["items"]["pattern"] = TARGET_COPY_PATTERN.replace("*$", "{59,109}$")
+        properties["body"]["minItems"] = properties["body"]["maxItems"] = 2
         properties["body"]["description"] += (
-            " Each paragraph must contain 50 to 600 characters of actual "
+            " Exactly two paragraphs, each 60 to 110 characters of actual "
             "source-supported prose; the complete body must pass Daily's "
             "100 to 1800 visible-character gate without padding or repetition."
         )
-    return {
+    schema = {
         "type": "object",
         "properties": {
             "candidateId": {"type": "string", "enum": [candidate_id]},
@@ -531,6 +535,9 @@ def copy_output_schema(packet: dict[str, str], *, daily_ready: bool = False) -> 
         "required": ["candidateId", "facts", "verifiedCopy"],
         "additionalProperties": False,
     }
+    if daily_ready:
+        schema["properties"]["facts"]["items"]["maxLength"] = 100
+    return schema
 
 
 def canonical_copy_output(value: dict[str, Any]) -> dict[str, Any]:
@@ -654,7 +661,9 @@ def model_prompt(packet: dict[str, str], *, daily_ready: bool = False) -> str:
         "每一段只含單段文字、不含換行；各段必須有不同且由來源支持的新聞重點。"
         "不得為滿足語言或段落格式而填充、重複、拆句湊段、編造事實或改變原意。\n"
         + ("正常新聞稿亦須可用於 Daily：body 正文合計至少100個非空白字元、最多1800個，"
-           "每段50至600字元。只用來源支持的不同事實寫完整自然段落；不能靠其他欄位字數、"
+           "正文只寫兩段，每段60至110字元，合計120至220字元。寫精簡但完整的新聞，"
+           "facts 每項最多100字元；title最多40、dek最多60、summary最多80、context最多60、"
+           "why及watchNext各最多50字元。只用來源支持的不同事實寫完整自然段落；不能靠其他欄位字數、"
            "空白、重複或填充補足正文。來源不足時不得編造。\n" if daily_ready else "")
         + "OUTPUT_SCHEMA 的 verifiedCopy 字串不可含平假名、片假名或半形片假名，"
         "必須用忠於來源的自然香港繁體中文表述。姓名、機構及產品名稱必須忠於來源；"
@@ -665,6 +674,14 @@ def model_prompt(packet: dict[str, str], *, daily_ready: bool = False) -> str:
 def daily_body_ready(copy: dict[str, str]) -> bool:
     """Additional ordinary-production gate; never pads or edits model copy."""
     return 100 <= len(re.sub(r"\s+", "", copy["body"])) <= 1800
+
+
+def compact_copy_ready(facts: list[str], copy: dict[str, str]) -> bool:
+    """Additional generation-shape guard; never truncates, pads or rewrites."""
+    paragraphs = copy["body"].split("\n\n")
+    return (len(paragraphs) == 2 and all(60 <= len(row) <= 110 for row in paragraphs)
+            and all(len(copy[field]) <= maximum for field, maximum in COMPACT_FIELD_LIMITS.items())
+            and all(len(fact) <= 100 for fact in facts))
 
 
 def allowed_numbers(packet: dict[str, str]) -> set[str]:
@@ -844,6 +861,10 @@ def main() -> int:
             diagnostics.append({"candidateId": cid, "stage": "daily-body-gate",
                                 "error": "rejected", "reasonCodes": ["daily-body-visible-length-invalid"],
                                 "bodyVisibleCharacters": len(re.sub(r"\s+", "", copy["body"]))})
+            continue
+        if args.daily_ready_copy and not compact_copy_ready(facts, copy):
+            diagnostics.append({"candidateId": cid, "stage": "compact-copy-gate",
+                                "error": "rejected", "reasonCodes": ["bounded-copy-representation-invalid"]})
             continue
         verified.append(
             {

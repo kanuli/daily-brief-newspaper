@@ -33,16 +33,16 @@ FAILED_HEAD = "a9c0fc9c4be514a9e99f297c9c4708e1183b2cfa"
 FAILED_CAPACITY_SHA = "ee98c99c29234da4bdac578705967197a9a68e1c"
 FAILED_CHECKED_AT = "2026-10-09T10:22:40.395030Z"
 MAX_RUNTIME_MINUTES = 20
-PREDECESSOR_CONTRACT = "a41728ef57d21ab1777933a7f5e8b17a19c4939dbe3250aa76ed800acf8ebbf9"
-PREDECESSOR_RESULT_SHA = "4117c3238175f52ef6b04746e50322f36bd8be9d"
-PREDECESSOR_CHILD = "37926162046"
-PREDECESSOR_HEAD = "da534291ab3b3017cb25ee87b191ed799392b294"
-PREDECESSOR_JOB = 113806967039
+PREDECESSOR_CONTRACT = "d7b9d06009cce4c0e81dfcd89e5f5cbe6e5f0d583051211bbc229fbcbdaaaaf9"
+PREDECESSOR_RESULT_SHA = "c16b990abb36d15b46b6f2379c370058009fb7a9"
+PREDECESSOR_CHILD = "37927400735"
+PREDECESSOR_HEAD = "63cef443a88954de2c7176615658899d8e2b2b8e"
+PREDECESSOR_JOB = 113811863526
 FALLBACK_BIND_DEADLINE_SECONDS = 660
 # Fixed reviewed BEHAVIOR, not source/HEAD/clock: cosmetic source edits cannot
 # mint another immutable ledger path. Exact reviewed code is a separate check.
 CONTRACT = {
-    "protocol": "ollama-google-gemma-parallel-kana-excluding-copy-grammar-v8", "model": MODEL,
+    "protocol": "ollama-google-gemma-parallel-compact-bounded-daily-copy-v9", "model": MODEL,
     "modelDeveloper": "Google DeepMind", "ownerPolicy": "non-China-developed-models-only",
     "modelManifestDigest": "b0313423c9448adfab711aacbc9d0b885a390eb31f1145d7f8495d1e6f84f257",
     "failedPriorTrial": {"run": PREDECESSOR_CHILD, "head": PREDECESSOR_HEAD, "job": PREDECESSOR_JOB},
@@ -59,7 +59,10 @@ CONTRACT = {
     "predecessorContract": PREDECESSOR_CONTRACT,
     "observedPriorProductionFailure": "three-small-model-completions-rejected-for-kana-or-supplied-paragraph-representation",
     "priorFailedProduction": {"run": FAILED_RUN, "job": FAILED_JOB, "head": FAILED_HEAD, "model": FAILED_MODEL},
-    "dailyBody": {"visibleMinimum": 100, "visibleMaximum": 1800, "paragraphCharactersMinimum": 50, "paragraphCharactersMaximum": 600},
+    "dailyBody": {"visibleMinimum": 100, "visibleMaximum": 1800, "paragraphCharactersMinimum": 60, "paragraphCharactersMaximum": 110},
+    "boundedCopy": {"paragraphs": 2, "factCharactersMaximum": 100,
+                    "fieldCharacterLimits": {"title": 40, "dek": 60, "summary": 80, "context": 60, "why": 50, "watchNext": 50},
+                    "policy": "source-faithful-concise-copy-no-truncation-padding-or-output-repair"},
     "copyLanguageRepresentation": "literal-cjk-leading-single-line-fields-and-body-paragraphs",
     "copyGrammarExcludes": ["U+3040-U+30FF", "U+FF66-U+FF9F"],
     "observedGoogleFailure": "CJK-leading-copy-with-excessive-kana-correctly-rejected",
@@ -79,7 +82,7 @@ CONTRACT = {
     "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged",
 }
 REVIEWED_SOURCES = {
-    "scripts/general_news_local_fallback.py": "67ff2bcbf06febc6b6bdb1b2928dfee0cc8b3317615b812419ebcc56e78f4eb7",
+    "scripts/general_news_local_fallback.py": "1ece7a0f4ef48444fce4b4c4cdc153b60a08d7f05c610d3fb3ac69ecae182dda",
     "scripts/parallel_general_news_fallback.py": "c5247c9d38338d37cebada3630feac4b4437cd650f07c1fc2eb03a2a2453aa0c",
     ".github/workflows/general-news-producer.yml": "123e2bda7127f1f79022c979be88a25e95245d76c180f08523e966d5aeb70023",
     "scripts/general_news_verified_producer.py": "b8604594ee18a5f7bc31d68acb0fb175ec752b73dc9f5970e1cd207ca2f37e2d",

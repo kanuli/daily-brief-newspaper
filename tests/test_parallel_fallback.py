@@ -235,7 +235,7 @@ class ParallelTests(unittest.TestCase):
             self.assertEqual(fallback.MAX_SOURCE_PROBES, 4)
             self.assertEqual(fallback.MAX_MODEL_CALLS, 1)
             pattern = models[0]["schema"]["properties"]["verifiedCopy"]["properties"]["body"]["items"]["pattern"]
-            self.assertIn("{49,599}", pattern)
+            self.assertIn("{59,109}", pattern)
             result = parallel.read(directory / "fragment.json")
             self.assertTrue(result["ok"])
             self.assertEqual(result["planDigest"], parallel.digest(plan))

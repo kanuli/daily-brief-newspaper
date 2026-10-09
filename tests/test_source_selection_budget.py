@@ -72,7 +72,7 @@ def structured_copy(source_packet):
         "candidateId": source_packet["candidateId"],
         "facts": ["合成測試事實甲", "合成測試事實乙"],
         "verifiedCopy": {
-            field: (["合成第一段" * 30, "合成第二段" * 30] if field == "body" else "合成測試文字" * 10)
+            field: (["合成第一段" * 18, "合成第二段" * 18] if field == "body" else "合成測試文字" * 4)
             for field in ("title", "dek", "summary", "body", "context", "why", "watchNext")
         },
     }
