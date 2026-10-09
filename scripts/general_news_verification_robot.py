@@ -142,6 +142,11 @@ def candidate_score(row: dict[str, Any]) -> tuple[int, float]:
     points = 0
     if producer.TRUSTED_SOURCE.search(source):
         points += 4
+    if (source == "中央通訊社" and row.get("provider") in {"CNA Official RSS", "CNA Official Japan Topic"}
+        and row.get("desk") in {"asia", "japan"}
+        and (row.get("provider") != "CNA Official Japan Topic" or row.get("desk") == "japan")
+        and re.fullmatch(r"https://www\.cna\.com\.tw/news/aopl/[0-9]{12}\.aspx", clean(row.get("url")))):
+        points += 8
     if re.search(r"official|government|gov\.|ministry|police|court|commission|Reuters|AP|BBC|NHK|共同|政府|警方|法院|官方", f"{source} {title}", re.I):
         points += 3
     # A bounded, official direct-feed route is a better source-access candidate

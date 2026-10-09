@@ -106,9 +106,10 @@ class DependencyRegressionTests(unittest.TestCase):
                     for node in ast.parse(source).body
                     if isinstance(node, ast.FunctionDef) and node.name in names}
         self.assertEqual(set(functions(baseline)), names)
-        from reviewed_rthk_parser_delta import original_extraction_except_reviewed_parser
+        from reviewed_rthk_parser_delta import original_extraction_except_reviewed_parser, original_trust_except_user_approved_cna
         current_functions = functions(current)
         current_functions["extract_source_page"] = original_extraction_except_reviewed_parser(current_functions["extract_source_page"])
+        current_functions["trusted"] = original_trust_except_user_approved_cna(current_functions["trusted"])
         self.assertEqual(current_functions, functions(baseline))
 
     def test_supported_api_smoke_is_offline(self):

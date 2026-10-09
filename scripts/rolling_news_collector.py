@@ -24,6 +24,7 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,9 @@ DIRECT_PUBLISHER_FEEDS = {
     "ai-tech": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_cfinance.xml",
 }
 MAX_DIRECT_FEED_BYTES = 131072
+CNA_INTERNATIONAL_FEED = "https://feeds.feedburner.com/rsscna/intworld"
+CNA_JAPAN_TOPIC = "https://www.cna.com.tw/tag/2850/"
+MAX_CNA_TOPIC_BYTES = 262144
 DIRECT_WORLD_TITLE = re.compile(r"美國|英國|法國|德國|俄羅斯|俄軍|烏克蘭|烏軍|歐盟|歐洲|北約|聯合國|加拿大|澳洲|巴西|墨西哥|阿根廷|南非|蘇丹")
 DIRECT_ASIA_TITLE = re.compile(r"亞洲|中國|內地|台灣|南韓|北韓|韓國|新加坡|馬來西亞|泰國|越南|印尼|菲律賓|印度|巴基斯坦|孟加拉|斯里蘭卡|中東|以色列|伊朗|伊拉克|加沙")
 DIRECT_JAPAN_TITLE = re.compile(r"日本|東京|日圓|高市|岸田|石破|自民黨")
@@ -112,6 +116,13 @@ def direct_feed_items(payload: bytes, desk: str, discovered: datetime) -> list[d
 
 def reviewed_direct_discovery(row: dict[str, Any], desk: str) -> bool:
     """Preference only for the exact bounded direct-feed metadata contract."""
+    if (desk in {"asia", "japan"} and row.get("desk") == desk
+        and row.get("provider") in {"CNA Official RSS", "CNA Official Japan Topic"} and row.get("source") == "中央通訊社"
+        and (row.get("provider") != "CNA Official Japan Topic" or desk == "japan")
+        and parse_date(str(row.get("publishedAt") or "")) is not None
+        and re.fullmatch(r"https://www\.cna\.com\.tw/news/aopl/[0-9]{12}\.aspx", str(row.get("url") or ""))
+        and direct_title_routed(str(row.get("title") or ""), desk)):
+        return True
     return bool(
         desk in DIRECT_PUBLISHER_FEEDS and row.get("desk") == desk
         and row.get("provider") == "RTHK Official RSS" and row.get("source") == "香港電台"
@@ -119,6 +130,102 @@ def reviewed_direct_discovery(row: dict[str, Any], desk: str) -> bool:
         and re.fullmatch(r"https://news\.rthk\.hk/rthk/ch/component/k2/\d+-\d{8}\.htm", str(row.get("url") or ""))
         and direct_title_routed(str(row.get("title") or ""), desk)
     )
+
+
+def cna_feed_get(url: str = CNA_INTERNATIONAL_FEED) -> bytes:
+    """User-approved noncommercial RSS; no redirect or unbounded response."""
+    if url not in {CNA_INTERNATIONAL_FEED, CNA_JAPAN_TOPIC}:
+        raise ValueError("unreviewed-cna-discovery-route")
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            raise ValueError("unreviewed-cna-feed-redirect")
+
+    request = urllib.request.Request(url,
+                                    headers={"User-Agent": USER_AGENT, "Accept": "application/rss+xml,text/html"})
+    limit = MAX_CNA_TOPIC_BYTES if url == CNA_JAPAN_TOPIC else MAX_DIRECT_FEED_BYTES
+    with urllib.request.build_opener(NoRedirect()).open(request, timeout=10) as response:
+        payload = response.read(limit + 1)
+    if len(payload) > limit:
+        raise ValueError("cna-feed-too-large")
+    return payload
+
+
+def cna_feed_items(payload: bytes, desk: str, discovered: datetime) -> list[dict[str, Any]]:
+    """Only attributed headline/link/date metadata, never RSS summaries or copy."""
+    if desk not in {"asia", "japan"}:
+        raise ValueError("unreviewed-cna-desk")
+    result = []
+    for row in rss_items(payload, "中央通訊社", desk, "official-cna-international-rss", discovered):
+        published = parse_date(str(row.get("publishedAt") or ""))
+        if (published is None or published > discovered
+            or not re.fullmatch(r"https://www\.cna\.com\.tw/news/aopl/[0-9]{12}\.aspx", row["url"])
+            or not direct_title_routed(row["title"], desk)):
+            continue
+        row["source"] = "中央通訊社"
+        row["provider"] = "CNA Official RSS"
+        result.append(row)
+    return result
+
+
+def cna_japan_topic_items(payload: bytes, discovered: datetime) -> list[dict[str, Any]]:
+    """Official Japan tag: only a list row's own h2/link/explicit datetime.
+
+    This fixed publisher route covers older still-current Japan headlines which
+    have scrolled out of its 20-item international RSS. No search date inference,
+    snippets, article bodies, pagination, model calls or root-authored stories.
+    """
+    class TopicRows(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.row = None
+            self.in_heading = False
+            self.rows = []
+
+        def handle_starttag(self, tag, attrs):
+            values = dict(attrs)
+            if tag == "li":
+                self.row = {"url": "", "title": "", "date": ""}
+                self.in_heading = False
+            if self.row is None:
+                return
+            if tag == "a" and re.fullmatch(r"/news/aopl/[0-9]{12}\.aspx", str(values.get("href") or "")):
+                if not self.row["url"]:
+                    self.row["url"] = "https://www.cna.com.tw" + values["href"]
+            if tag == "h2":
+                self.in_heading = True
+            if tag == "time":
+                self.row["date"] = values.get("datetime") or ""
+
+        def handle_data(self, data):
+            if self.row is not None and self.in_heading:
+                self.row["title"] += data
+
+        def handle_endtag(self, tag):
+            if tag == "h2":
+                self.in_heading = False
+            if tag == "li" and self.row is not None:
+                if all(self.row.values()) and len(self.rows) < 40:
+                    self.rows.append(self.row)
+                self.row = None
+                self.in_heading = False
+
+    parser = TopicRows()
+    parser.feed(payload.decode("utf-8", errors="strict"))
+    result = []
+    for row in parser.rows:
+        if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:Z|[+-][0-9]{2}:[0-9]{2})", row["date"]):
+            continue
+        published = parse_date(row["date"])
+        title = clean_text(row["title"])
+        if (published is None or published > discovered
+            or not candidate_is_fresh("japan", published, discovered)
+            or not direct_title_routed(title, "japan")):
+            continue
+        result.append({"id": candidate_id("japan", title), "desk": "japan", "title": title,
+                       "url": row["url"], "source": "中央通訊社", "provider": "CNA Official Japan Topic",
+                       "query": "official-cna-japan-topic", "publishedAt": iso(published),
+                       "firstSeenAt": iso(discovered), "lastSeenAt": iso(discovered)})
+    return result
 
 # These are discovery-pool floors, never publication targets or caps. If the
 # primary provider returns fewer unique candidates than the floor, broaden via
@@ -557,6 +664,34 @@ def collect(existing: dict[str, Any], mode: str = "normal") -> dict[str, Any]:
             except Exception:
                 errors.append({"desk": desk, "provider": "RTHK Official RSS",
                                "query": "official-publisher-rss", "error": "publisher-feed-unavailable"})
+
+        if desk in {"asia", "japan"}:
+            query_audit[desk]["cnaPublisherQueries"] = 1
+            query_audit[desk]["cnaPublisherItems"] = 0
+            try:
+                if CNA_INTERNATIONAL_FEED not in direct_payloads:
+                    direct_payloads[CNA_INTERNATIONAL_FEED] = None
+                    direct_payloads[CNA_INTERNATIONAL_FEED] = cna_feed_get()
+                payload = direct_payloads[CNA_INTERNATIONAL_FEED]
+                if payload is None:
+                    raise ValueError("publisher-feed-unavailable")
+                items = cna_feed_items(payload, desk, started)
+                query_audit[desk]["cnaPublisherItems"] = len(items)
+                merge_items(desk, items, merged, discovered_this_run)
+            except Exception:
+                errors.append({"desk": desk, "provider": "CNA Official RSS",
+                               "query": "official-cna-international-rss", "error": "publisher-feed-unavailable"})
+
+        if desk == "japan":
+            query_audit[desk]["cnaJapanTopicQueries"] = 1
+            query_audit[desk]["cnaJapanTopicItems"] = 0
+            try:
+                items = cna_japan_topic_items(cna_feed_get(CNA_JAPAN_TOPIC), started)
+                query_audit[desk]["cnaJapanTopicItems"] = len(items)
+                merge_items(desk, items, merged, discovered_this_run)
+            except Exception:
+                errors.append({"desk": desk, "provider": "CNA Official Japan Topic",
+                               "query": "official-cna-japan-topic", "error": "publisher-feed-unavailable"})
 
         for query in queries:
             try:

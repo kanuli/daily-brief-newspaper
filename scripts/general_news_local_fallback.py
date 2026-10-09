@@ -119,7 +119,13 @@ def trusted(candidate: dict[str, Any]) -> bool:
         return False
     if producer.BAD_TEXT.search(title) or producer.LOW_VALUE.search(title):
         return False
-    if not producer.TRUSTED_SOURCE.search(source):
+    approved_cna = (
+        source == "中央通訊社" and candidate.get("provider") in {"CNA Official RSS", "CNA Official Japan Topic"}
+        and candidate.get("desk") in {"asia", "japan"}
+        and (candidate.get("provider") != "CNA Official Japan Topic" or candidate.get("desk") == "japan")
+        and re.fullmatch(r"https://www\.cna\.com\.tw/news/aopl/[0-9]{12}\.aspx", url)
+    )
+    if not producer.TRUSTED_SOURCE.search(source) and not approved_cna:
         return False
     desk = clean(candidate.get("desk"))
     if desk == "manchester-united" and not producer.MAN_UTD_NEWS.search(title):
@@ -297,6 +303,16 @@ class RthkArticleBodyParser(HTMLParser):
             self.parts.append(data)
 
 
+class CnaArticleBodyParser(RthkArticleBodyParser):
+    """Only the exact article paragraph container, not ads, donation or metadata."""
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "div" and not self.skip:
+            if self.depth or dict(attrs).get("class") == "paragraph":
+                self.depth += 1
+            return
+        super().handle_starttag(tag, attrs)
+
+
 def decoded_candidate_url(candidate: dict[str, Any]) -> str | None:
     raw = clean(candidate.get("url"))
     if not raw:
@@ -326,7 +342,8 @@ def extract_source_page(url: str) -> tuple[str, str] | None:
             and not parsed.query and not parsed.fragment
             and re.fullmatch(r"/rthk/ch/component/k2/[0-9]+-[0-9]{8}\.htm", parsed.path)
         )
-        parser = RthkArticleBodyParser() if reviewed_rthk else ArticleTextParser()
+        reviewed_cna = bool(re.fullmatch(r"https://www\.cna\.com\.tw/news/aopl/[0-9]{12}\.aspx", final_url))
+        parser = RthkArticleBodyParser() if reviewed_rthk else CnaArticleBodyParser() if reviewed_cna else ArticleTextParser()
         parser.feed(text)
         chunks = parser.meta + parser.parts
         source_text = clean(" ".join(chunks))

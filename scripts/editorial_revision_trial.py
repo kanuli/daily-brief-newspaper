@@ -99,12 +99,12 @@ CONTRACT = {
     "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged",
 }
 REVIEWED_SOURCES = {
-    "scripts/general_news_local_fallback.py": "6c60ee527518aa3d40df8d7ff0ebc21d79da51f137936fb90c7d97467282d26b",
+    "scripts/general_news_local_fallback.py": "745b43ab161e1428998cbf46df08fb7e9cd343607067fd57b3d638589172d649",
     "scripts/parallel_general_news_fallback.py": "c5247c9d38338d37cebada3630feac4b4437cd650f07c1fc2eb03a2a2453aa0c",
     ".github/workflows/general-news-producer.yml": "1caacbf6c61e90accf2f1c53a51aeeb132180afc082641b5e480c574480ae932",
     "scripts/owned_general_news_runtime.py": "f1522b4d906d34c9a6e8c2bd9a2c9f7b8f69c7d298c9b91eb6d0dbacf107a1db",
     "scripts/general_news_verified_producer.py": "b8604594ee18a5f7bc31d68acb0fb175ec752b73dc9f5970e1cd207ca2f37e2d",
-    "scripts/general_news_verification_robot.py": "7dca8d56a9de97a6c1e143af3699f85fd8be277a7bc85ed441271f3fbbf38062",
+    "scripts/general_news_verification_robot.py": "dbf75d73ac48c9caf18d8bae7857dd174b9cac9e274614f23ee26ad180b0fb81",
 }
 
 

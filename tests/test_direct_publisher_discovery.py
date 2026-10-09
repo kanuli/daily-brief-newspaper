@@ -21,6 +21,12 @@ def feed(*, link=LINK, date="Fri, 09 Oct 2026 22:00:00 +0800", title="SYNTHETIC 
 
 
 class DirectDiscoveryTests(unittest.TestCase):
+    def setUp(self):
+        # Existing RTHK regressions must never make a new live publisher call.
+        mocked = patch.object(collector, "cna_feed_get", return_value=b"<rss><channel/></rss>")
+        mocked.start()
+        self.addCleanup(mocked.stop)
+
     def test_metadata_has_direct_publisher_identity_but_no_copy_or_description(self):
         rows = collector.direct_feed_items(feed(), "hong-kong", NOW)
         self.assertEqual(len(rows), 1)

@@ -15,7 +15,7 @@ import sys
 import types
 import unittest
 from unittest.mock import patch
-from reviewed_rthk_parser_delta import original_extraction_except_reviewed_parser
+from reviewed_rthk_parser_delta import original_extraction_except_reviewed_parser, original_trust_except_user_approved_cna
 
 ROOT = Path(__file__).resolve().parents[1]
 PROPOSAL = ROOT / "scripts/general_news_local_fallback.py"
@@ -142,6 +142,8 @@ class SourceSelectionBudgetTests(unittest.TestCase):
                 current = ast.get_source_segment(SOURCE, new)
                 if name == "extract_source_page":
                     current = original_extraction_except_reviewed_parser(current)
+                if name == "trusted":
+                    current = original_trust_except_user_approved_cna(current)
                 self.assertEqual(ast.get_source_segment(BASE_SOURCE, old), current)
 
     def test_round_robin_reaches_second_hong_kong_at_attempt_twelve(self):
