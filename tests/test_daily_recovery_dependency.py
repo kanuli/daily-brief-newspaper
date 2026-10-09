@@ -66,7 +66,7 @@ class DailyDependencyTests(unittest.TestCase):
         self.assertFalse((self.data / f"{TARGET}.json").exists())
         return evidence
 
-    def classify(self, previous=None, structural=False):
+    def classify(self, previous=None, structural=False, producer_ready=False):
         import newsroom_control_plane as control
         # Synthetic isolated DATA only. Production continues to use the
         # unchanged canonical builder and repository DATA directory.
@@ -80,6 +80,10 @@ class DailyDependencyTests(unittest.TestCase):
             "stocks": {"generatedAt": NOW.isoformat(), "lastCheckedAt": NOW.isoformat()},
             "tts": {},
         }
+        if producer_ready:
+            fixtures["freshness"] = {"desks": {"world": {"fresh": False, "dailySynced": True, "newestAgeHours": 40}}}
+            fixtures["staging"]["desks"] = {"world": [{"publishedAt": NOW.isoformat()}]}
+            fixtures["producer-capacity"] = {"status": "DEGRADED_LOCAL_FALLBACK"}
         argv = ["newsroom_control_plane.py", "--registry", str(ROOT / "config/newsroom-robots.json")]
         for name, value in fixtures.items():
             path = self.data / (name + ".json")
@@ -104,6 +108,35 @@ class DailyDependencyTests(unittest.TestCase):
         self.assertEqual(rows["daily-recovery"]["status"], "awaiting-daily-prerequisite")
         self.assertTrue(rows["desk-merge"]["dispatchable"])
         self.assertNotIn("daily-recovery", rows["desk-merge"].get("blockedBy", []))
+
+    def test_isolated_production_cannot_starve_a_new_live_desk_checkpoint(self):
+        self.desk["generatedAt"] = (NOW - timedelta(days=1)).isoformat()
+        result = self.classify(producer_ready=True)
+        rows = {row["robot"]: row for row in result["assignments"]}
+        self.assertIs(rows["general-producer"]["dispatchable"], True)
+        self.assertIs(rows["desk-merge"]["dispatchable"], True)
+        self.assertIs(rows["daily-recovery"]["dispatchable"], False)
+        self.assertNotIn("general-producer", rows["desk-merge"].get("blockedBy", []))
+        self.assertIs(result["healthy"], False)
+
+    def test_real_main_writers_still_exclude_desk_merge(self):
+        import newsroom_control_plane as control
+        for writer in ("live-publisher", "daily-recovery"):
+            with self.subTest(writer=writer):
+                desk_row = {"robot": "desk-merge", "status": "assigned", "dispatchable": True}
+                rows = [desk_row, {"robot": writer, "status": "assigned", "dispatchable": True},
+                        {"robot": "general-producer", "status": "assigned", "dispatchable": True}]
+                control.block_downstream_races(rows)
+                self.assertEqual(desk_row["blockedBy"], [writer])
+                self.assertIs(desk_row["dispatchable"], False)
+                self.assertEqual(desk_row["status"], "blocked")
+
+    def test_canonical_producer_git_writes_are_isolated(self):
+        text = (ROOT / ".github/workflows/general-news-producer.yml").read_text(encoding="utf-8")
+        pushes = [line.strip() for line in text.splitlines() if "git push" in line]
+        self.assertEqual(pushes, ["if git push origin HEAD:prepublish-news; then"])
+        self.assertIn('git checkout -B prepublish-news origin/prepublish-news', text)
+        self.assertIn('-f branch="prepublish-news"', text)
 
     def test_actual_classifier_budget_survives_confirmed_and_held_cycles(self):
         result = self.classify()

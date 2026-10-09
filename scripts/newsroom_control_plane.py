@@ -556,7 +556,11 @@ def apply_previous_outcomes(
 def block_downstream_races(plan: list[dict[str, Any]]) -> None:
     by_id = {row["robot"]: row for row in plan}
     if "desk-merge" in by_id:
-        blockers = [x for x in ("daily-recovery", "general-producer", "live-publisher") if x in by_id and by_id[x].get("dispatchable")]
+        # The verified producer writes only the isolated prepublish branch.
+        # It cannot race a main Live -> Desk checkpoint and must not starve it.
+        # Daily recovery and Live publication really do write main; retain
+        # those writer exclusions and every existing publication validator.
+        blockers = [x for x in ("daily-recovery", "live-publisher") if x in by_id and by_id[x].get("dispatchable")]
         if blockers:
             row = by_id["desk-merge"]
             row["blockedBy"] = blockers
@@ -876,11 +880,12 @@ def main() -> int:
                 blockedBy=[], reason="current-daily-structural-fault-not-repairable-by-stale-edition-builder",
             )
 
-    # A newer Live snapshot with no upstream writer currently assigned belongs to Desk Merge.
+    # A newer Live snapshot with no main publication writer belongs to Desk
+    # Merge, even while independent production works on isolated prepublish.
     live_dt = parse_iso(live.get("lastUpdated"))
     desk_dt = parse_iso(desk.get("generatedAt") or desk.get("lastUpdated"))
     if live_dt and (desk_dt is None or live_dt > desk_dt) and not any(
-        row["robot"] in {"general-producer", "live-publisher", "daily-recovery"}
+        row["robot"] in {"live-publisher", "daily-recovery"}
         and row.get("dispatchable")
         for row in plan
     ):

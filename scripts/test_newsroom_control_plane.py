@@ -193,6 +193,16 @@ assert "general-producer" in robots, r
 assert "desk-merge" not in robots, r
 assert "collector" not in robots, r
 
+def isolated_producer_with_new_live(d):
+    stale_with_candidates(d)
+    d["desk"]["generatedAt"] = (NOW - timedelta(hours=1)).isoformat()
+
+r = run_case(mutate=isolated_producer_with_new_live)
+rows = {x["robot"]: x for x in r["assignments"]}
+assert rows["general-producer"]["dispatchable"] is True, r
+assert rows["desk-merge"]["dispatchable"] is True, r
+assert "general-producer" not in rows["desk-merge"].get("blockedBy", []), r
+
 def pending(d):
     stale_with_candidates(d)
     d["prepublish"] = {
@@ -636,6 +646,7 @@ assert r["assignments"] == [], r
 assert r["publicProbeRecovery"]["dispatchesUsed"] == 0, r
 assert "--pages-deployment /tmp/pages-deployment.json" in workflow
 assert "--json databaseId,conclusion,updatedAt" in workflow
-print("NEWSROOM_CONTROL_PLANE_V2_TESTS_OK routing_regressions=11 public_probe_regressions=20")
+print("NEWSROOM_CONTROL_PLANE_V2_TESTS_OK routing_regressions=12 public_probe_regressions=20")
+
 
 
