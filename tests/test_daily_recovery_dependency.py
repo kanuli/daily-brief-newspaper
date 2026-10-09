@@ -238,6 +238,50 @@ class DailyDependencyTests(unittest.TestCase):
         self.desk["generatedAt"] = self.live["lastUpdated"]
         self.assertFalse(self.inspect()["ready"])
 
+    def test_completed_strict_draft_after_missed_live_slot_is_valid_input(self):
+        self.live["lastUpdated"] = (NOW - timedelta(minutes=9)).isoformat()
+        self.desk["generatedAt"] = self.live["lastUpdated"]
+        self.live["coverage"]["verifiedDraftCreatedAt"] = (NOW - timedelta(minutes=1)).isoformat()
+        evidence = self.inspect()
+        self.assertTrue(evidence["ready"], evidence)
+        result = self.classify()
+        daily = next(row for row in result["assignments"] if row["robot"] == "daily-recovery")
+        self.assertTrue(daily["dispatchable"])
+
+    def test_missed_live_slot_does_not_admit_future_verification(self):
+        self.live["lastUpdated"] = (NOW - timedelta(minutes=9)).isoformat()
+        self.desk["generatedAt"] = self.live["lastUpdated"]
+        self.live["coverage"]["verifiedDraftCreatedAt"] = (NOW + timedelta(minutes=1)).isoformat()
+        evidence = self.inspect()
+        self.assertFalse(evidence["ready"])
+        self.assertEqual(evidence["reason"], "await-current-verified-live-source")
+
+    def test_missed_live_slot_still_requires_eight_daily_safe_stories(self):
+        self.live["lastUpdated"] = (NOW - timedelta(minutes=9)).isoformat()
+        self.desk["generatedAt"] = self.live["lastUpdated"]
+        for rows in self.desk["desks"].values():
+            for row in rows:
+                row["body"] = "too short"
+        for slug, count in (("world", 2), ("asia", 2), ("hong-kong", 2), ("japan", 1)):
+            for row in self.desk["desks"][slug][:count]:
+                row["body"] = "合法測試內容" * 12 + "\n\n" + "來源測試內容" * 12
+        evidence = self.inspect()
+        self.assertFalse(evidence["ready"])
+        self.assertEqual(evidence["selectedCount"], 7)
+
+    def test_missed_live_slot_does_not_renew_spent_material_budget(self):
+        evidence = self.inspect()
+        state, _ = daily_budget({}, evidence)
+        state["epochs"][0]["dispatchesUsed"] = 3
+        self.live["lastUpdated"] = (NOW - timedelta(minutes=9)).isoformat()
+        self.desk["generatedAt"] = self.live["lastUpdated"]
+        after = self.inspect()
+        self.assertTrue(after["ready"], after)
+        self.assertEqual(evidence["inputKey"], after["inputKey"])
+        kept, decision = daily_budget({"dailyRecoveryInput": state}, after)
+        self.assertFalse(decision["dispatchable"])
+        self.assertEqual(kept["epochs"][0]["dispatchesUsed"], 3)
+
     def test_future_story_timestamps_do_not_meet_floor(self):
         for rows in self.desk["desks"].values():
             for row in rows:

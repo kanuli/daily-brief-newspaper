@@ -121,7 +121,11 @@ def inspect_daily_dependency(*, now, desk, live, builder, integrity_state, integ
         evidence["reason"] = "await-current-hard-depth-complete-desk"
     elif live_at is None or live_at > now or live_at.astimezone(HKT).date().isoformat() < target:
         evidence["reason"] = "await-genuine-current-live"
-    elif not coverage_ok or verified_at is None or verified_at > live_at or verified_at.astimezone(HKT).date().isoformat() < target:
+    # The canonical producer can legitimately target a missed Live slot nine
+    # minutes before draft completion. That slot is not the verification clock.
+    # Require the actual strict draft verification to have completed by this
+    # observation, while retaining current-edition, source/copy and Desk gates.
+    elif not coverage_ok or verified_at is None or verified_at > now or verified_at.astimezone(HKT).date().isoformat() < target:
         evidence["reason"] = "await-current-verified-live-source"
     else:
         try:
