@@ -111,7 +111,7 @@ class StructuredContractTests(unittest.TestCase):
         response.assert_called_once()
         request = response.call_args.args[0]
         body = json.loads(request.data)
-        self.assertEqual(request.full_url, "http://127.0.0.1:11434/api/generate")
+        self.assertEqual(request.full_url, "http://127.0.0.1:11435/api/generate")
         self.assertEqual(body["model"], "gemma3:4b-it-qat")
         self.assertEqual(body["format"], schema)
         self.assertIs(body["stream"], False)

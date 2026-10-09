@@ -205,10 +205,26 @@ jobs:
           python -m pip install --disable-pip-version-check --quiet -r scripts/requirements-general-news-fallback.txt
           python scripts/check_general_news_fallback_dependencies.py
           curl -fsSL https://ollama.com/install.sh | sh
-          nohup ollama serve >/tmp/ollama.log 2>&1 &
+          # The installer starts its own service on 11434. Do not accidentally
+          # query that daemon while our failed startup hides its runtime logs.
+          export OLLAMA_HOST=127.0.0.1:11435
+          export OLLAMA_MODELS="$HOME/.ollama/models"
+          if curl -fsS http://127.0.0.1:11435/api/version >/dev/null 2>&1; then
+            echo "LOCAL_MODEL_OWNED_PORT_ALREADY_OCCUPIED" >&2
+            exit 1
+          fi
+          env -i PATH="$PATH" HOME="$HOME" OLLAMA_HOST="$OLLAMA_HOST" \
+            OLLAMA_MODELS="$OLLAMA_MODELS" OLLAMA_NUM_PARALLEL=1 \
+            OLLAMA_MAX_LOADED_MODELS=1 OLLAMA_CONTEXT_LENGTH=32768 \
+            ollama serve >/tmp/ollama.log 2>&1 &
+          owned_pid=$!
+          trap 'kill "$owned_pid" 2>/dev/null || true' EXIT
           ready=false
           for attempt in $(seq 1 20); do
-            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+            if ! kill -0 "$owned_pid" 2>/dev/null; then
+              break
+            fi
+            if curl -fsS http://127.0.0.1:11435/api/tags >/dev/null 2>&1; then
               ready=true
               break
             fi
@@ -232,7 +248,7 @@ jobs:
           python - <<'PY'
           import json
           import urllib.request
-          with urllib.request.urlopen('http://127.0.0.1:11434/api/tags', timeout=5) as response:
+          with urllib.request.urlopen('http://127.0.0.1:11435/api/tags', timeout=5) as response:
               models = json.load(response).get('models', [])
           matching = [row for row in models if isinstance(row, dict) and row.get('name') == 'gemma3:4b-it-qat']
           expected = 'b0313423c9448adfab711aacbc9d0b885a390eb31f1145d7f8495d1e6f84f257'
@@ -240,6 +256,8 @@ jobs:
               raise SystemExit('LOCAL_MODEL_IDENTITY_NOT_REVIEWED')
           print('LOCAL_MODEL_IDENTITY_VERIFIED developer=Google-DeepMind model=gemma3:4b-it-qat digest=' + expected)
           PY
+          python scripts/owned_general_news_runtime.py \
+            --deadline-unix '${{ steps.authorization.outputs.deadline_unix }}'
           fallback_seconds=$(python -c 'import math, sys, time; deadline=float(sys.argv[1]); remaining=min(600, math.floor(deadline-time.time())); assert math.isfinite(deadline) and remaining > 0; print(remaining)' '${{ steps.authorization.outputs.deadline_unix }}')
           set +e
           timeout --signal=KILL "${fallback_seconds}s" \
@@ -299,6 +317,7 @@ jobs:
           cp scripts/editorial_revision_trial.py scripts/probe_general_news_fallback_capability.py \
             scripts/general_news_local_fallback.py scripts/general_news_verified_producer.py \
             scripts/general_news_verification_robot.py scripts/parallel_general_news_fallback.py \
+            scripts/owned_general_news_runtime.py \
             /tmp/eic-editorial-reviewed/scripts/
           mkdir -p /tmp/eic-editorial-reviewed/.github/workflows
           cp .github/workflows/general-news-producer.yml /tmp/eic-editorial-reviewed/.github/workflows/

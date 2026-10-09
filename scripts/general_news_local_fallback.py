@@ -39,7 +39,7 @@ from googlenewsdecoder import gnewsdecoder
 
 import general_news_verified_producer as producer
 
-MODEL_URL = "http://127.0.0.1:11434/api/generate"
+MODEL_URL = "http://127.0.0.1:11435/api/generate"
 MODEL_NAME = "gemma3:4b-it-qat"
 MODEL_CONTEXT = 32768
 COMPACT_FIELD_LIMITS = {"title": 40, "dek": 60, "summary": 80, "context": 60, "why": 50, "watchNext": 50}
