@@ -461,7 +461,14 @@ class CapabilityProbeTests(unittest.TestCase):
         end = workflow.index("      - name: Run current newsroom checks", start)
         current_start = current.index("      # Infrastructure only: one immutable attempt")
         current_end = current.index("      - name: Run current newsroom checks", current_start)
-        self.assertEqual(current[current_start:current_end], workflow[start:end])
+        # The owner explicitly withdrew Qwen authorization. Execution guards
+        # may change to false; all other original infrastructure code is fixed.
+        def without_execution_guards(block):
+            return "\n".join(line for line in block.splitlines()
+                             if not line.strip().startswith("if:")
+                             and "Owner explicitly disallowed Qwen" not in line)
+        self.assertEqual(without_execution_guards(current[current_start:current_end]),
+                         without_execution_guards(workflow[start:end]))
         restored = workflow[:start] + workflow[end:]
         for path in (
             "scripts/requirements-general-news-fallback.txt",
