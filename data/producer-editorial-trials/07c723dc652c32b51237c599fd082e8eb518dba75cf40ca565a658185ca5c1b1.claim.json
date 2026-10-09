@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "owner": "Site Editor-in-Chief",
+  "scope": "single-reviewed-editorial-code-trial",
+  "contractRevision": "07c723dc652c32b51237c599fd082e8eb518dba75cf40ca565a658185ca5c1b1",
+  "contract": {
+    "protocol": "ollama-google-gemma-owned-preloaded-runtime-v10",
+    "model": "gemma3:4b-it-qat",
+    "modelDeveloper": "Google DeepMind",
+    "ownerPolicy": "non-China-developed-models-only",
+    "modelManifestDigest": "b0313423c9448adfab711aacbc9d0b885a390eb31f1145d7f8495d1e6f84f257",
+    "failedPriorTrial": {
+      "run": "37929159669",
+      "head": "7f54ec37a109a671709c680215f788363d819400",
+      "job": 113818207153
+    },
+    "runtimeOwnership": {
+      "loopbackPort": 11435,
+      "daemon": "one-worker-owned-clean-environment-process",
+      "modelStore": "explicit-cache-matching-model-directory",
+      "parallelRequests": 1,
+      "loadedModels": 1,
+      "warmup": "empty-prompt-load-only-no-generated-tokens",
+      "warmupSeconds": 60,
+      "budget": "inside-original-shared-deadline-no-renewal",
+      "proof": "exact-loaded-model-digest-and-observed-resource-scalars",
+      "observedFailure": "installer-daemon-port-conflict-obscured-runtime-plus-two-240-second-timeouts"
+    },
+    "execution": {
+      "workers": 3,
+      "maxParallel": 3,
+      "deskPartition": "distinct-index-modulo-three",
+      "maxSourceProbesPerWorker": 4,
+      "maxModelCallsPerWorker": 1,
+      "childBindings": 1,
+      "canonicalProducerJobs": 1,
+      "sourcePlan": "exact-run-code-request-staging-and-state-digests",
+      "deadline": "fixed-shared-plan-deadline-no-worker-renewal",
+      "enginePolicy": "reviewed-Google-local-only-no-unpinned-Copilot"
+    },
+    "candidateIdentity": "exact-candidate-id-enum",
+    "copyFields": [
+      "title",
+      "dek",
+      "summary",
+      "body",
+      "context",
+      "why",
+      "watchNext"
+    ],
+    "copyFieldsRequired": true,
+    "copyStringsNonempty": true,
+    "bodyRepresentation": "two-or-three-source-paragraphs-serialized-with-double-newline",
+    "predecessorContract": "0b11f893f0d2f188ecf03b4e81f803cc0612d70064e43b41ca0059bb97602c17",
+    "observedPriorProductionFailure": "three-small-model-completions-rejected-for-kana-or-supplied-paragraph-representation",
+    "priorFailedProduction": {
+      "run": "37916836587",
+      "job": 113774991335,
+      "head": "a9c0fc9c4be514a9e99f297c9c4708e1183b2cfa",
+      "model": "qwen2.5:1.5b"
+    },
+    "dailyBody": {
+      "visibleMinimum": 100,
+      "visibleMaximum": 1800,
+      "paragraphCharactersMinimum": 60,
+      "paragraphCharactersMaximum": 110
+    },
+    "boundedCopy": {
+      "paragraphs": 2,
+      "factCharactersMaximum": 100,
+      "fieldCharacterLimits": {
+        "title": 40,
+        "dek": 60,
+        "summary": 80,
+        "context": 60,
+        "why": 50,
+        "watchNext": 50
+      },
+      "policy": "source-faithful-concise-copy-no-truncation-padding-or-output-repair"
+    },
+    "copyLanguageRepresentation": "literal-cjk-leading-single-line-fields-and-body-paragraphs",
+    "copyGrammarExcludes": [
+      "U+3040-U+30FF",
+      "U+FF66-U+FF9F"
+    ],
+    "observedGoogleFailure": "CJK-leading-copy-with-excessive-kana-correctly-rejected",
+    "modelContextTokens": 32768,
+    "truncateInput": false,
+    "shiftContext": false,
+    "trustedPolicyInstructions": true,
+    "nativeSystemRole": false,
+    "trustedInstructionTransport": "initial-user-prompt-plus-final-after-input-reminder",
+    "localeInstructionPosition": "original-prefix-plus-trusted-after-input-reminder",
+    "sourceSelection": {
+      "mode": "availability-aware-round-robin-v1",
+      "maxCandidatesPerDesk": 4,
+      "maxSourceProbes": 12,
+      "maxModelCalls": 3,
+      "maxAcceptedPerDesk": 1,
+      "sourceWorkerTimeoutSeconds": 35,
+      "sharedFallbackSeconds": 600,
+      "bindDeadlineSeconds": 660
+    },
+    "factsMinimum": 2,
+    "factsMaximum": 5,
+    "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged"
+  },
+  "reviewedSources": {
+    "scripts/general_news_local_fallback.py": "3d945b79500cbb913d2cdd26f8f0863bbe955e1700d9bd0883b5b7879a48a183",
+    "scripts/parallel_general_news_fallback.py": "c5247c9d38338d37cebada3630feac4b4437cd650f07c1fc2eb03a2a2453aa0c",
+    ".github/workflows/general-news-producer.yml": "1caacbf6c61e90accf2f1c53a51aeeb132180afc082641b5e480c574480ae932",
+    "scripts/owned_general_news_runtime.py": "f1522b4d906d34c9a6e8c2bd9a2c9f7b8f69c7d298c9b91eb6d0dbacf107a1db",
+    "scripts/general_news_verified_producer.py": "b8604594ee18a5f7bc31d68acb0fb175ec752b73dc9f5970e1cd207ca2f37e2d",
+    "scripts/general_news_verification_robot.py": "5e60639ab28729975e8f8543efe669b2e11af77e7667913f13b1e33a3dd1b6f5"
+  },
+  "claimedAt": "2026-10-09T15:18:31.486317Z",
+  "expiresAt": "2026-10-09T15:38:31.486317Z",
+  "dispatcherRunId": "37950672377",
+  "assignmentId": "d472ccd77448a854",
+  "attempt": 1,
+  "maxAttempts": 1,
+  "remainingAttempts": 0,
+  "priorCapacitySHA": "ee98c99c29234da4bdac578705967197a9a68e1c",
+  "priorCapacity": {
+    "schemaVersion": 1,
+    "producer": "General News Verified Producer",
+    "checkedAt": "2026-10-09T10:22:40.395030Z",
+    "status": "LOCAL_FALLBACK_FAILED",
+    "reason": "GitHub Copilot quota/capacity exhausted; GitHub-native local fallback attempted but produced no publishable verified output",
+    "blockedUntil": null,
+    "recoveryOwner": "automation:Newsroom Publisher",
+    "localFallbackModel": "qwen2.5:1.5b",
+    "workflowRunId": "37916836587"
+  },
+  "predecessorResultSHA": "8efc8446639b170c3e3d1f676848517f1360e7c1",
+  "failedProduction": {
+    "run": "37916836587",
+    "job": 113774991335,
+    "head": "a9c0fc9c4be514a9e99f297c9c4708e1183b2cfa",
+    "model": "qwen2.5:1.5b"
+  },
+  "priorDraftId": "general-news-20261009-1805-hkt",
+  "publicationPermissionGranted": false
+}
