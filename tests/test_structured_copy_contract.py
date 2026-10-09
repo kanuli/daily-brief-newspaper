@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import copy
 import json
+import math
 import types
 import urllib.error
 import urllib.request
@@ -17,6 +18,7 @@ NAMESPACE = gate.OBS
 FUNCTIONS = {"copy_output_schema", "canonical_copy_output", "model_prompt", "ollama_json"}
 CONSTANTS = {"MODEL_URL", "MODEL_NAME", "CODE_FENCE_RE"}
 NAMESPACE["urllib"] = types.SimpleNamespace(request=urllib.request)
+NAMESPACE["math"] = math
 nodes = [node for node in gate.TREE.body if (
     isinstance(node, ast.FunctionDef) and node.name in FUNCTIONS
 ) or (

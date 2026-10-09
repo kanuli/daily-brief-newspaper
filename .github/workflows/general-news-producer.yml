@@ -279,8 +279,13 @@ jobs:
             exit 1
           fi
           ollama pull qwen2.5:1.5b
+          fallback_seconds=$(python -c 'import math, sys, time; deadline=float(sys.argv[1]); remaining=min(600, math.floor(deadline-time.time())); assert math.isfinite(deadline) and remaining > 0; print(remaining)' '${{ steps.trial_guard.outputs.fallback_deadline_unix }}')
           set +e
-          python scripts/general_news_local_fallback.py             /tmp/general-news-verification-request.json             --facts verification-work/facts.raw             --copies verification-work/copy.raw
+          timeout --signal=KILL "${fallback_seconds}s" \
+            python scripts/general_news_local_fallback.py \
+            /tmp/general-news-verification-request.json \
+            --facts verification-work/facts.raw --copies verification-work/copy.raw \
+            --deadline-unix '${{ steps.trial_guard.outputs.fallback_deadline_unix }}'
           rc=$?
           set -e
           if [ "$rc" -eq 0 ]; then

@@ -26,7 +26,7 @@ def load_functions(path):
     source = path.read_text(encoding="utf-8")
     tree = ast.parse(source)
     wanted_functions = {"clean", "allowed_numbers", "valid_output", "editorial_gate_diagnostics", "copy_output_schema", "canonical_copy_output", "main"}
-    wanted_constants = {"NUM_RE", "CJK_RE", "KANA_RE", "BANNED_PUBLIC"}
+    wanted_constants = {"NUM_RE", "CJK_RE", "KANA_RE", "BANNED_PUBLIC", "MAX_SOURCE_PROBES", "MAX_MODEL_CALLS", "SOURCE_DIAGNOSTIC_CODES"}
     nodes = [node for node in tree.body if (
         isinstance(node, ast.FunctionDef) and node.name in wanted_functions
     ) or (
@@ -128,15 +128,17 @@ class EditorialDiagnosticsTests(unittest.TestCase):
         import argparse
         OBS.update({
             "argparse": argparse, "load": lambda path: {},
-            "choose": lambda request: [{"id": "fixture-001"}],
-            "source_packet": lambda candidate: packet,
+            "bounded_source_queue": lambda request: [{"id": "fixture-001", "desk": "synthetic"}],
+            "monotonic_run_deadline": lambda supplied: 100,
+            "remaining_seconds": lambda deadline: 100,
+            "bounded_source_packet": lambda candidate, deadline: (packet, None),
             "model_prompt": lambda packet: "NON-NEWS SYNTHETIC TEST",
             "ollama_json": lambda prompt, **kwargs: value,
         })
         if source_error:
-            def fail_source(candidate):
-                raise source_error
-            OBS["source_packet"] = fail_source
+            def fail_source(candidate, deadline):
+                return None, "locator-rss-invalid-xml" if isinstance(source_error, ET.ParseError) else "source-worker-failed"
+            OBS["bounded_source_packet"] = fail_source
         if diagnostic_error:
             def fail_diagnostic(*args):
                 raise RuntimeError("secret-error-text")
@@ -175,7 +177,7 @@ class EditorialDiagnosticsTests(unittest.TestCase):
     def test_rss_parse_error_identifies_locator_not_article_html_parser(self):
         diagnostic = self.run_rejected_main(source_error=ET.ParseError("secret-response-body"))
         self.assertEqual(diagnostic[0]["reasonCode"], "locator-rss-invalid-xml")
-        self.assertEqual(diagnostic[0]["error"], "ParseError")
+        self.assertEqual(diagnostic[0]["error"], "locator-rss-invalid-xml")
         self.assertNotIn("secret-response-body", json.dumps(diagnostic))
         self.assertEqual(SOURCE.count("ET.fromstring("), 1)
 

@@ -153,6 +153,15 @@ def audit_assignment(row):
     }
 
 
+def public_daily_evidence(evidence):
+    # The immutable epoch already retains the full clock-independent material
+    # pool. Avoid duplicating thousands of hashes in snapshot/last-evidence
+    # telemetry, without truncating the authoritative membership ledger.
+    value = {key: item for key, item in evidence.items() if key != "materialPoolHashes"}
+    value["materialPoolCount"] = len(evidence.get("materialPoolHashes") or [])
+    return value
+
+
 def daily_budget(previous, evidence):
     """Retain each material input epoch across held/blocked/unassigned cycles.
 
@@ -213,7 +222,7 @@ def daily_budget(previous, evidence):
             active["materialPoolHashes"] = list(evidence["materialPoolHashes"])
             active["selectedMaterialHashes"] = list(evidence["selectedMaterialHashes"])
             active["materialPoolAdmitted"] = True
-    state["lastInputEvidence"] = evidence
+    state["lastInputEvidence"] = public_daily_evidence(evidence)
     state["maxAttemptsPerInput"] = MAX_ATTEMPTS
     if not evidence["ready"]:
         decision = {"status": "awaiting-daily-prerequisite", "dispatchable": False, "reason": evidence["reason"]}

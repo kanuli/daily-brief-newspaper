@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -453,6 +454,11 @@ def apply_previous_outcomes(
             # generic retries must not reset a held or exhausted epoch.
             row["outcomeBefore"] = snapshot
             continue
+        if row.get("status") == "awaiting-reviewed-editorial-trial-outcome":
+            # Read-only proof of the sole active bound child is ownership, not
+            # admission or a completed retry. Never charge or dispatch here.
+            row["outcomeBefore"] = snapshot
+            continue
         prior = previous_rows.get(row["robot"])
         row["attempt"] = 1
         row["outcomeBefore"] = snapshot
@@ -632,7 +638,7 @@ def main() -> int:
         vocab_ok=vocab_ok,
     )
     producer_blocked = producer_capacity_blocked(producer_capacity, now)
-    from daily_recovery_dependency import daily_budget, inspect_daily_dependency
+    from daily_recovery_dependency import daily_budget, inspect_daily_dependency, public_daily_evidence
     import build_today_daily_from_desk as daily_builder
     import validate_desk_integrity as desk_integrity
     integrity_state, integrity_detail = desk_integrity.inspect(Path(args.desk), Path(args.live))
@@ -641,7 +647,7 @@ def main() -> int:
         integrity_state=integrity_state, integrity_detail=integrity_detail,
     )
     daily_recovery_state, daily_decision = daily_budget(previous, daily_input)
-    snapshot["dailyRecoveryInputEvidence"] = daily_input
+    snapshot["dailyRecoveryInputEvidence"] = public_daily_evidence(daily_input)
     # A successful deployment is not an independent observation. Retain the
     # latest real deployment clock across blocked/unassigned cycles; neither
     # missing metadata nor regressing/future clocks can erase this obligation.
@@ -985,6 +991,28 @@ def main() -> int:
             and str(trial_permit.get("dispatcherRunId") or "").isdigit()
             and trial_checked is not None and 0 <= (now - trial_checked).total_seconds() <= 300
         )
+        trial_expires = parse_iso(trial_permit.get("trialExpiresAt")) if isinstance(trial_permit, dict) else None
+        trial_claimed = parse_iso(trial_permit.get("trialClaimedAt")) if isinstance(trial_permit, dict) else None
+        trial_pending = bool(
+            isinstance(trial_permit, dict) and trial_permit.get("eligible") is False
+            and trial_permit.get("pending") is True
+            and trial_permit.get("owner") == "Site Editor-in-Chief"
+            and trial_permit.get("contractRevision") == CONTRACT_REVISION
+            and trial_permit.get("capacitySHA") == FAILED_CAPACITY_SHA
+            and trial_permit.get("priorCapacity") == producer_capacity
+            and trial_permit.get("capacityRemainsFailed") is True
+            and trial_permit.get("publicationPermissionGranted") is False
+            and type(trial_permit.get("trialRunAttempt")) is int and trial_permit["trialRunAttempt"] == 1
+            and trial_permit.get("trialChildStatus") in {"queued", "in_progress", "waiting", "requested", "pending"}
+            and all(re.fullmatch(r"[1-9][0-9]*", str(trial_permit.get(field) or ""))
+                    for field in ("trialDispatcherRunId", "trialChildRunId"))
+            and all(isinstance(trial_permit.get(field), str) and bool(trial_permit[field])
+                    for field in ("trialClaimSHA", "trialBindingSHA"))
+            and trial_checked is not None and 0 <= (now - trial_checked).total_seconds() <= 300
+            and trial_claimed is not None and trial_expires is not None
+            and trial_claimed <= trial_checked <= now <= trial_expires
+            and (trial_expires - trial_claimed).total_seconds() == 1200
+        )
         hkt_now = now.astimezone(HKT)
         active_live_hour = hkt_now.hour in {0, 6, 7} or 9 <= hkt_now.hour <= 23
         live_stamp = parse_iso(snapshot.get("liveLastUpdated"))
@@ -1004,11 +1032,25 @@ def main() -> int:
             live_slot_current if active_live_hour else None
         )
         snapshot["externalPublisherNoProgress"] = bool(
-            external_slot_due and not live_slot_current
+            external_slot_due and not live_slot_current and not (trial_pending or trial_eligible)
         )
+        snapshot["reviewedEditorialTrialPending"] = trial_pending
 
         for row in plan:
             if row.get("robot") != "general-producer":
+                continue
+            if trial_pending:
+                row.update(
+                    faultClass="reviewed-editorial-code-trial",
+                    status="awaiting-reviewed-editorial-trial-outcome", dispatchable=False,
+                    blockedBy=[], requiresExternalPublisher=False, requiresEditorReplan=False,
+                    reason="Site EIC's sole immutable-bound child is still active within its fixed expiry; failed capacity and publication gates remain held",
+                    trialChildRunId=trial_permit["trialChildRunId"],
+                    trialExpiresAt=trial_permit["trialExpiresAt"],
+                    verifyNextCycle=["observe exact bound child result without redispatch",
+                                     "strict new persisted draft proof or fail-closed terminal result"],
+                )
+                row.pop("dispatchInputs", None)
                 continue
             if trial_eligible and producer_capacity.get("status") == "LOCAL_FALLBACK_FAILED":
                 row.update(

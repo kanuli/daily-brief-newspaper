@@ -47,6 +47,17 @@ class Store:
     def ledger_ready(self):
         return True
 
+    def headers(self):
+        return {"User-Agent": "synthetic-observer-test"}
+
+    def json_request(self, request):
+        return {
+            "id": 901, "repository": {"full_name": trial.REPOSITORY},
+            "name": CHILD["workflow"], "path": ".github/workflows/general-news-producer.yml",
+            "event": "workflow_dispatch", "head_branch": "main", "run_attempt": 1,
+            "status": "in_progress", "conclusion": None,
+        }
+
     def read(self, path):
         return copy.deepcopy(self.rows.get(path))
 
@@ -356,6 +367,42 @@ class TrialTests(unittest.TestCase):
                 self.assertIs(row["dispatchable"], False)
                 self.assertNotEqual(row["status"], "reviewed-editorial-trial")
 
+    def test_active_bound_child_is_observed_without_dispatch_retry_or_false_external_fault(self):
+        store = Store(); claimed(store)
+        permit = trial.eligible(ROOT, store, EIC, NOW)
+        self.assertIs(permit["eligible"], False)
+        self.assertIs(permit["pending"], True)
+        self.assertEqual(permit["reason"], "semantic-trial-budget-consumed")
+        result = classified_trial(permit)
+        row = next(row for row in result["assignments"] if row["robot"] == "general-producer")
+        self.assertEqual(row["status"], "awaiting-reviewed-editorial-trial-outcome")
+        self.assertIs(row["dispatchable"], False)
+        self.assertIs(row["requiresEditorReplan"], False)
+        self.assertIs(row["requiresExternalPublisher"], False)
+        self.assertNotIn("dispatchInputs", row)
+        self.assertNotIn("attempt", row)
+        self.assertIs(result["externalPublisherNoProgress"], False)
+        self.assertIs(result["evidenceSnapshot"]["externalPublisherNoProgress"], False)
+        self.assertIs(result["evidenceSnapshot"]["producerCapacityBlocked"], True)
+        self.assertIs(result["healthy"], False)
+        self.assertEqual(store.capacity_writes, [])
+
+    def test_observer_clock_and_ownership_cannot_turn_invalid_proof_into_pending(self):
+        store = Store(); claimed(store)
+        permit = trial.eligible(ROOT, store, EIC, NOW)
+        for delta in ({"trialExpiresAt": trial.iso(NOW - timedelta(seconds=1))},
+                      {"checkedAt": trial.iso(NOW + timedelta(seconds=1))},
+                      {"trialExpiresAt": trial.iso(NOW + timedelta(minutes=21))},
+                      {"trialClaimSHA": ""}, {"trialRunAttempt": True},
+                      {"trialChildStatus": "completed"}, {"publicationPermissionGranted": True},
+                      {"eligible": True}, {"owner": "leaf robot"}):
+            with self.subTest(delta=delta):
+                result = classified_trial({**permit, **delta})
+                row = next(row for row in result["assignments"] if row["robot"] == "general-producer")
+                self.assertNotEqual(row["status"], "awaiting-reviewed-editorial-trial-outcome")
+                self.assertFalse(row["dispatchable"])
+                self.assertFalse(result["healthy"])
+
     def test_reused_pending_draft_and_no_candidates_cannot_clear(self):
         for draft in (None, {"status": "NO_PUBLISHABLE_UPDATE", "articles": []}):
             store = Store(); state = claimed(store)
@@ -475,6 +522,11 @@ class TrialTests(unittest.TestCase):
         self.assertEqual(producer_text.count("steps.trial_guard.outputs.active != 'true'"), 2)
         self.assertIn("/tmp/eic-editorial-reviewed/scripts/editorial_revision_trial.py finish", producer_text)
         self.assertLess(producer_text.index('Persist the verified draft'), producer_text.index('Finalize reviewed trial'))
+        self.assertIn("remaining=min(600, math.floor(deadline-time.time()))", producer_text)
+        self.assertIn('timeout --signal=KILL "${fallback_seconds}s"', producer_text)
+        self.assertIn("--deadline-unix '${{ steps.trial_guard.outputs.fallback_deadline_unix }}'", producer_text)
+        self.assertLess(producer_text.index('timeout --signal=KILL'), producer_text.index('GENERAL_NEWS_LOCAL_CAPACITY_FALLBACK_OK'))
+        self.assertIn('scripts/editorial_trial_observation.py', assignment_text)
         module_text = (ROOT / "scripts/editorial_revision_trial.py").read_text(encoding="utf-8")
         self.assertNotIn("force", module_text)
         self.assertNotIn("Newsroom Publisher", module_text)

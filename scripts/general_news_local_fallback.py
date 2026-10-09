@@ -15,11 +15,17 @@ No raw RSS headline is publishable by itself.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import html
 import ipaddress
 import json
+import math
+import os
 import re
 import socket
+import subprocess
+import sys
+import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -48,6 +54,20 @@ BANNED_PUBLIC = re.compile(
 MAX_SELECTED = 3
 MAX_SOURCE_BYTES = 1_000_000
 MAX_SOURCE_TEXT = 9000
+MAX_SOURCE_PROBES = 12
+MAX_CANDIDATES_PER_DESK = 4
+MAX_MODEL_CALLS = 3
+MAX_RUN_SECONDS = 600
+MAX_SOURCE_PROBE_SECONDS = 35
+SOURCE_PACKET_FIELDS = frozenset({
+    "candidateId", "desk", "originalTitle", "sourceName", "directUrl",
+    "sourcePageTitle", "sourceText",
+})
+SOURCE_DIAGNOSTIC_CODES = frozenset({
+    "source-timeout", "no-direct-source-text", "source-worker-failed",
+    "source-worker-protocol-invalid", "locator-rss-invalid-xml",
+    "source-deadline-expired",
+})
 
 
 def clean(value: Any) -> str:
@@ -286,6 +306,174 @@ def source_packet(candidate: dict[str, Any]) -> dict[str, str] | None:
     }
 
 
+def bounded_source_queue(request: dict[str, Any]) -> list[dict[str, Any]]:
+    """Rank existing trusted candidates fairly without preselecting availability."""
+    stale = list(dict.fromkeys(clean(desk) for desk in (request.get("staleDesks") or []) if clean(desk)))
+    by_desk: dict[str, list[dict[str, Any]]] = {}
+    for row in request.get("candidates") or []:
+        if not isinstance(row, dict) or not clean(row.get("id")) or not trusted(row):
+            continue
+        desk = clean(row.get("desk"))
+        if desk in stale:
+            by_desk.setdefault(desk, []).append(row)
+    for desk, rows in by_desk.items():
+        rows.sort(
+            key=lambda row: (
+                int(bool(re.search(r"政府|gov\.|official|uefa|fifa|afc|nhk|香港電台", clean(row.get("source")), re.I))),
+                clean(row.get("publishedAt")),
+            ),
+            reverse=True,
+        )
+        unique: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for row in rows:
+            cid = clean(row.get("id"))
+            if cid not in seen:
+                unique.append(row)
+                seen.add(cid)
+            if len(unique) >= MAX_CANDIDATES_PER_DESK:
+                break
+        by_desk[desk] = unique
+    queue: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for rank in range(MAX_CANDIDATES_PER_DESK):
+        for desk in stale:
+            rows = by_desk.get(desk) or []
+            if rank >= len(rows):
+                continue
+            row = rows[rank]
+            cid = clean(row.get("id"))
+            if cid not in seen_ids:
+                queue.append(row)
+                seen_ids.add(cid)
+    return queue
+
+
+def monotonic_run_deadline(deadline_unix: str | None) -> float:
+    """Translate an optional external deadline once; wall-clock drift cannot renew it."""
+    started = time.monotonic()
+    remaining = float(MAX_RUN_SECONDS)
+    if deadline_unix is not None:
+        try:
+            absolute = float(deadline_unix)
+        except (TypeError, ValueError):
+            raise ValueError("invalid deadline") from None
+        if not math.isfinite(absolute):
+            raise ValueError("invalid deadline")
+        remaining = min(remaining, absolute - time.time())
+    if not math.isfinite(remaining) or remaining <= 0:
+        raise ValueError("expired deadline")
+    return started + remaining
+
+
+def remaining_seconds(deadline: float) -> float:
+    return max(0.0, deadline - time.monotonic())
+
+
+def source_worker_environment() -> dict[str, str]:
+    """Source readers receive runtime essentials, never inherited credentials."""
+    permitted = ("PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "LANG", "LC_ALL", "TZ")
+    environment = {key: os.environ[key] for key in permitted if key in os.environ}
+    environment.update(PYTHONIOENCODING="utf-8", PYTHONUTF8="1", PYTHONUNBUFFERED="1")
+    return environment
+
+
+def source_worker_main() -> int:
+    """Fixed subprocess entrypoint; the source packet is private parent-child IPC."""
+    result: dict[str, Any] = {"packet": None, "diagnostic": "source-worker-failed"}
+    try:
+        raw = sys.stdin.read(64_001)
+        if len(raw) > 64_000:
+            raise ValueError("invalid worker input")
+        candidate = json.loads(raw)
+        if not isinstance(candidate, dict) or not clean(candidate.get("id")) or not trusted(candidate):
+            raise ValueError("invalid worker input")
+        # Decoder/library messages can contain page or connection details. They
+        # are suppressed, not forwarded into workflow logs or JSON diagnostics.
+        with open(os.devnull, "w", encoding="utf-8") as discarded:
+            with contextlib.redirect_stdout(discarded), contextlib.redirect_stderr(discarded):
+                packet = source_packet(candidate)
+        result = {
+            "packet": packet,
+            "diagnostic": None if packet else "no-direct-source-text",
+        }
+    except ET.ParseError:
+        result["diagnostic"] = "locator-rss-invalid-xml"
+    except Exception:
+        pass
+    sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
+    return 0
+
+
+def valid_worker_packet(packet: Any, candidate: dict[str, Any]) -> bool:
+    if not isinstance(packet, dict) or set(packet) != SOURCE_PACKET_FIELDS:
+        return False
+    if any(not isinstance(value, str) or not value.strip() for value in packet.values()):
+        return False
+    if (
+        packet["candidateId"] != clean(candidate.get("id"))
+        or packet["desk"] != clean(candidate.get("desk"))
+        or packet["sourceName"] != clean(candidate.get("source"))
+        or packet["originalTitle"] != producer.TITLE_SUFFIX.sub("", clean(candidate.get("title")))
+        or not 300 <= len(packet["sourceText"]) <= MAX_SOURCE_TEXT
+    ):
+        return False
+    try:
+        parsed = urllib.parse.urlparse(packet["directUrl"])
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme not in {"http", "https"} or not host or parsed.username or parsed.password:
+            return False
+        if host == "localhost" or host.endswith(".local"):
+            return False
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            return True  # DNS/network eligibility was checked by the unchanged source worker.
+        return not (
+            address.is_private or address.is_loopback or address.is_link_local
+            or address.is_multicast or address.is_reserved or address.is_unspecified
+        )
+    except ValueError:
+        return False
+
+
+def bounded_source_packet(candidate: dict[str, Any], deadline: float) -> tuple[dict[str, str] | None, str | None]:
+    remaining = remaining_seconds(deadline)
+    if remaining <= 0:
+        return None, "source-deadline-expired"
+    try:
+        response = subprocess.run(
+            [sys.executable, "-X", "utf8", str(Path(__file__).resolve()), "--source-worker"],
+            input=json.dumps(candidate, ensure_ascii=False),
+            capture_output=True, text=True, encoding="utf-8", errors="strict",
+            shell=False, check=False,
+            env=source_worker_environment(),
+            timeout=min(float(MAX_SOURCE_PROBE_SECONDS), remaining),
+        )
+    except subprocess.TimeoutExpired:
+        return None, "source-timeout"
+    except Exception:
+        return None, "source-worker-failed"
+    if remaining_seconds(deadline) <= 0:
+        return None, "source-deadline-expired"
+    if response.returncode != 0:
+        return None, "source-worker-failed"
+    try:
+        if len(response.stdout) > 100_000:
+            raise ValueError("invalid worker response")
+        value = json.loads(response.stdout)
+        if not isinstance(value, dict) or set(value) != {"packet", "diagnostic"}:
+            raise ValueError("invalid worker response")
+        packet, diagnostic = value["packet"], value["diagnostic"]
+        if packet is None and diagnostic in SOURCE_DIAGNOSTIC_CODES:
+            return None, diagnostic
+        if diagnostic is None and valid_worker_packet(packet, candidate):
+            return packet, None
+    except Exception:
+        pass
+    return None, "source-worker-protocol-invalid"
+
+
 def copy_output_schema(packet: dict[str, str]) -> dict[str, Any]:
     """Constrain formatting only; the existing editorial gate stays authoritative."""
     candidate_id = packet.get("candidateId")
@@ -348,7 +536,9 @@ def canonical_copy_output(value: dict[str, Any]) -> dict[str, Any]:
     return canonical
 
 
-def ollama_json(prompt: str, *, schema: dict[str, Any]) -> dict[str, Any]:
+def ollama_json(prompt: str, *, schema: dict[str, Any], timeout: float = 240) -> dict[str, Any]:
+    if not math.isfinite(timeout) or not 0 < timeout <= 240:
+        raise ValueError("invalid model timeout")
     body = json.dumps(
         {
             "model": MODEL_NAME,
@@ -365,7 +555,7 @@ def ollama_json(prompt: str, *, schema: dict[str, Any]) -> dict[str, Any]:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=240) as response:
+    with urllib.request.urlopen(req, timeout=timeout) as response:
         payload = json.loads(response.read().decode("utf-8"))
     raw = CODE_FENCE_RE.sub("", str(payload.get("response") or "").strip()).strip()
     value = json.loads(raw)
@@ -487,30 +677,56 @@ def main() -> int:
     ap.add_argument("request", type=Path)
     ap.add_argument("--facts", type=Path, required=True)
     ap.add_argument("--copies", type=Path, required=True)
+    ap.add_argument("--deadline-unix", default=None)
     args = ap.parse_args()
 
+    try:
+        deadline = monotonic_run_deadline(args.deadline_unix)
+    except ValueError:
+        raise SystemExit("LOCAL_FALLBACK_DEADLINE_INVALID_OR_EXPIRED") from None
     request = load(args.request)
-    candidates = choose(request)
+    candidates = bounded_source_queue(request)
     verified: list[dict[str, Any]] = []
     articles: list[dict[str, Any]] = []
     diagnostics: list[dict[str, Any]] = []
+    attempted_ids: set[str] = set()
+    accepted_desks: set[str] = set()
+    source_attempts = 0
+    model_calls = 0
 
     for candidate in candidates:
         cid = clean(candidate.get("id"))
-        try:
-            packet = source_packet(candidate)
-        except Exception as exc:
-            diagnostic = {"candidateId": cid, "stage": "source-probe", "error": type(exc).__name__}
-            if isinstance(exc, ET.ParseError):
-                # The locator RSS parse is the only ElementTree parse here.
-                diagnostic["reasonCode"] = "locator-rss-invalid-xml"
-            diagnostics.append(diagnostic)
+        desk = clean(candidate.get("desk"))
+        if cid in attempted_ids or desk in accepted_desks:
             continue
+        if source_attempts >= MAX_SOURCE_PROBES or model_calls >= MAX_MODEL_CALLS:
+            break
+        if remaining_seconds(deadline) <= 0:
+            diagnostics.append({"candidateId": cid, "stage": "source-probe", "error": "source-deadline-expired", "reasonCode": "source-deadline-expired"})
+            break
+        attempted_ids.add(cid)
+        source_attempts += 1
+        packet, source_diagnostic = bounded_source_packet(candidate, deadline)
         if not packet:
-            diagnostics.append({"candidateId": cid, "stage": "source-probe", "error": "no-direct-source-text"})
+            code = source_diagnostic if source_diagnostic in SOURCE_DIAGNOSTIC_CODES else "source-worker-failed"
+            diagnostics.append({"candidateId": cid, "stage": "source-probe", "error": code, "reasonCode": code})
             continue
+        remaining = remaining_seconds(deadline)
+        if remaining <= 0:
+            diagnostics.append({"candidateId": cid, "stage": "model", "error": "run-deadline-expired"})
+            break
         try:
-            model = ollama_json(model_prompt(packet), schema=copy_output_schema(packet))
+            prompt = model_prompt(packet)
+            schema = copy_output_schema(packet)
+            remaining = remaining_seconds(deadline)
+            if remaining <= 0:
+                diagnostics.append({"candidateId": cid, "stage": "model", "error": "run-deadline-expired"})
+                break
+            model_calls += 1
+            model = ollama_json(prompt, schema=schema, timeout=min(240.0, remaining))
+            if remaining_seconds(deadline) <= 0:
+                diagnostics.append({"candidateId": cid, "stage": "model", "error": "run-deadline-expired"})
+                break
             try:
                 model = canonical_copy_output(model)
             except ValueError:
@@ -550,12 +766,15 @@ def main() -> int:
             }
         )
         articles.append({"candidateId": cid, "verifiedCopy": copy})
-        diagnostics.append({"candidateId": cid, "stage": "accepted", "directUrl": packet["directUrl"]})
+        accepted_desks.add(desk)
+        diagnostics.append({"candidateId": cid, "stage": "accepted"})
 
     print("LOCAL_FALLBACK_DIAGNOSTIC", json.dumps(diagnostics, ensure_ascii=False))
 
     if not articles:
         raise SystemExit("LOCAL_FALLBACK_NO_VERIFIED_SOURCE_PAGE_COPY")
+    if remaining_seconds(deadline) <= 0:
+        raise SystemExit("LOCAL_FALLBACK_DEADLINE_EXPIRED_NO_OUTPUT")
 
     args.facts.write_text(
         json.dumps({"verified": verified}, ensure_ascii=False, indent=2) + "\n",
@@ -567,12 +786,14 @@ def main() -> int:
     )
     print(
         f"GENERAL_NEWS_LOCAL_FALLBACK_PASS "
-        f"selected={len(candidates)} published={len(articles)} model={MODEL_NAME}"
+        f"selected={source_attempts} published={len(articles)} model={MODEL_NAME} modelCalls={model_calls}"
     )
     return 0
 
 
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--source-worker"]:
+        raise SystemExit(source_worker_main())
     raise SystemExit(main())
 
 

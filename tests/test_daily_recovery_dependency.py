@@ -162,6 +162,13 @@ class DailyDependencyTests(unittest.TestCase):
         self.assertTrue(evidence["ready"], evidence)
         self.assertEqual(evidence["selectedCount"], 18)
 
+    def test_diagnostic_compaction_preserves_complete_authoritative_material_pool(self):
+        evidence = self.inspect()
+        state, _ = daily_budget({}, evidence)
+        self.assertEqual(state["epochs"][0]["materialPoolHashes"], evidence["materialPoolHashes"])
+        self.assertNotIn("materialPoolHashes", state["lastInputEvidence"])
+        self.assertEqual(state["lastInputEvidence"]["materialPoolCount"], len(evidence["materialPoolHashes"]))
+
     def test_old_daily_does_not_block_new_live_to_desk(self):
         self.desk["date"] = "2026-10-08"
         self.desk["generatedAt"] = (NOW - timedelta(days=1)).isoformat()
