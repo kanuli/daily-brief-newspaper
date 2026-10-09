@@ -54,11 +54,11 @@ class Store:
             "status": "completed", "conclusion": "failure",
             "steps": [{"name": "Fail non-capacity verification/copy errors", "conclusion": "failure"}],
         }
-        self.cancelled_run = {**self.failed_run, "id": int(trial.PREDECESSOR_CHILD),
-                              "head_sha": trial.PREDECESSOR_HEAD, "conclusion": "cancelled"}
-        self.cancelled_job = {**self.failed_job, "id": trial.PREDECESSOR_JOB,
-                              "run_id": int(trial.PREDECESSOR_CHILD), "conclusion": "cancelled",
-                              "steps": [{"name": "Run open-source local capacity fallback", "conclusion": "cancelled"}]}
+        self.predecessor_run = {**self.failed_run, "id": int(trial.PREDECESSOR_CHILD),
+                              "head_sha": trial.PREDECESSOR_HEAD, "conclusion": "failure"}
+        self.predecessor_job = {**self.failed_job, "id": trial.PREDECESSOR_JOB,
+                              "run_id": int(trial.PREDECESSOR_CHILD), "conclusion": "failure",
+                              "steps": [{"name": "Finalize reviewed trial from exact persisted draft or preserve failed capacity", "conclusion": "failure"}]}
 
     def ledger_ready(self):
         return True
@@ -67,11 +67,11 @@ class Store:
         return {"User-Agent": "synthetic-observer-test"}
 
     def json_request(self, request):
-        cancelled_url = f"/actions/runs/{trial.PREDECESSOR_CHILD}"
-        if request.full_url.endswith(cancelled_url):
-            return copy.deepcopy(self.cancelled_run)
-        if request.full_url.endswith(cancelled_url + "/jobs?per_page=100"):
-            return {"jobs": [copy.deepcopy(self.cancelled_job)]}
+        predecessor_url = f"/actions/runs/{trial.PREDECESSOR_CHILD}"
+        if request.full_url.endswith(predecessor_url):
+            return copy.deepcopy(self.predecessor_run)
+        if request.full_url.endswith(predecessor_url + "/jobs?per_page=100"):
+            return {"jobs": [copy.deepcopy(self.predecessor_job)]}
         failed_url = f"/actions/runs/{trial.FAILED_RUN}"
         if request.full_url.endswith(failed_url):
             return copy.deepcopy(self.failed_run)
@@ -174,7 +174,7 @@ class TrialTests(unittest.TestCase):
     def test_reviewed_sources_exact(self):
         self.assertTrue(trial.reviewed_code(ROOT))
 
-    def test_current_revision_requires_the_exact_cancelled_predecessor_record(self):
+    def test_current_revision_requires_the_exact_failed_serial_predecessor_record(self):
         path = f"{trial.TRIAL_ROOT}/{trial.PREDECESSOR_CONTRACT}.result.json"
         for change in ("missing", "sha", "success", "other-child", "failure-code"):
             store = Store()
@@ -190,7 +190,7 @@ class TrialTests(unittest.TestCase):
                 store.rows[path]["value"]["failureCode"] = "other-failure"
             with self.subTest(change=change):
                 self.assertEqual(trial.eligible(ROOT, store, EIC, NOW)["reason"],
-                                 "reviewed-cancelled-predecessor-record-not-proven")
+                                 "reviewed-failed-serial-predecessor-record-not-proven")
 
     def test_exact_failed_run_and_job_are_required_without_writes(self):
         for delta in ({"id": 1}, {"repository": {"full_name": "other/repo"}},
@@ -224,17 +224,17 @@ class TrialTests(unittest.TestCase):
         with self.assertRaises(trial.ProbeFailure):
             trial.bind(ROOT, store, trial.CONTRACT_REVISION, EIC["runId"], CHILD, NOW)
 
-    def test_exact_owner_disallowed_cancellation_is_required_before_new_model_admission(self):
+    def test_exact_failed_serial_trial_is_required_before_parallel_admission(self):
         for delta in ({"id": 1}, {"head_sha": "other"}, {"head_branch": "other"},
                       {"run_attempt": True}, {"run_attempt": 2}, {"status": "in_progress"},
-                      {"conclusion": "success"}, {"conclusion": "failure"}):
-            store = Store(); store.cancelled_run.update(delta)
+                      {"conclusion": "success"}, {"conclusion": "cancelled"}):
+            store = Store(); store.predecessor_run.update(delta)
             with self.subTest(run=delta):
                 self.assertEqual(trial.eligible(ROOT, store, EIC, NOW)["reason"],
-                                 "exact-owner-disallowed-trial-cancellation-not-proven")
+                                 "exact-failed-serial-trial-not-proven")
                 self.assertEqual(store.creates + store.capacity_writes, [])
         for delta in ({"id": 1}, {"run_id": 1}, {"conclusion": "success"}, {"steps": []}):
-            store = Store(); store.cancelled_job.update(delta)
+            store = Store(); store.predecessor_job.update(delta)
             with self.subTest(job=delta):
                 self.assertFalse(trial.eligible(ROOT, store, EIC, NOW)["eligible"])
                 self.assertEqual(store.creates + store.capacity_writes, [])

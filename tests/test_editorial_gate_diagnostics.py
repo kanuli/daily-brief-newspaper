@@ -148,7 +148,9 @@ class EditorialDiagnosticsTests(unittest.TestCase):
             with patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()) as output:
                 with self.assertRaisesRegex(SystemExit, "LOCAL_FALLBACK_NO_VERIFIED_SOURCE_PAGE_COPY"):
                     OBS["main"]()
-            line = output.getvalue().strip()
+            lines = [line for line in output.getvalue().splitlines() if line.startswith("LOCAL_FALLBACK_DIAGNOSTIC ")]
+            self.assertEqual(len(lines), 1)
+            line = lines[0]
             self.assertTrue(line.startswith("LOCAL_FALLBACK_DIAGNOSTIC "))
             return json.loads(line.removeprefix("LOCAL_FALLBACK_DIAGNOSTIC "))
         finally:

@@ -781,6 +781,7 @@ def main() -> int:
             break
         attempted_ids.add(cid)
         source_attempts += 1
+        print(f"LOCAL_SOURCE_PROBE_START candidateId={cid} sourceAttempt={source_attempts}", flush=True)
         packet, source_diagnostic = bounded_source_packet(candidate, deadline)
         if not packet:
             code = source_diagnostic if source_diagnostic in SOURCE_DIAGNOSTIC_CODES else "source-worker-failed"
@@ -802,6 +803,7 @@ def main() -> int:
                 diagnostics.append({"candidateId": cid, "stage": "model", "error": "run-deadline-expired"})
                 break
             model_calls += 1
+            print(f"LOCAL_MODEL_CALL_START candidateId={cid} modelCall={model_calls} timeoutSeconds={min(240.0, remaining):.1f}", flush=True)
             model = ollama_json(prompt, schema=schema, timeout=min(240.0, remaining))
             if remaining_seconds(deadline) <= 0:
                 diagnostics.append({"candidateId": cid, "stage": "model", "error": "run-deadline-expired"})

@@ -56,16 +56,17 @@ class OrdinaryDailyBodyTests(unittest.TestCase):
 
     def test_workflow_requires_daily_ready_copy_for_trial_and_ordinary_production(self):
         workflow = (budget.ROOT / ".github/workflows/general-news-producer.yml").read_text(encoding="utf-8")
-        self.assertIn("ordinary_copy_args=(--daily-ready-copy)", workflow)
-        self.assertIn('"${ordinary_copy_args[@]}"', workflow)
+        helper = (budget.ROOT / "scripts/parallel_general_news_fallback.py").read_text(encoding="utf-8")
+        self.assertIn('"--daily-ready-copy"', helper)
+        self.assertIn("python -u scripts/parallel_general_news_fallback.py worker", workflow)
         self.assertIn('timeout --signal=KILL "${fallback_seconds}s"', workflow)
-        self.assertEqual(workflow.count("ordinary_copy_args=(--daily-ready-copy)"), 1)
+        self.assertEqual(workflow.count("python -u scripts/parallel_general_news_fallback.py worker"), 1)
 
     def test_larger_model_contract_preserves_spent_predecessor_and_strict_gates(self):
         import sys
         sys.path.insert(0, str(budget.ROOT / "scripts"))
         import editorial_revision_trial as trial
-        self.assertEqual(trial.PREDECESSOR_CONTRACT, "709150ca26cc60f925c9acc4e23507bac16ee4dadc41a8ba8cb53ac816cf75f0")
+        self.assertEqual(trial.PREDECESSOR_CONTRACT, "393d146c2c5431eb3ba02acf9d7e28976a29fd40a9b73c91d5607d18f1f13b47")
         self.assertNotEqual(trial.CONTRACT_REVISION, trial.PREDECESSOR_CONTRACT)
         self.assertEqual(trial.CONTRACT["model"], "gemma3:4b-it-qat")
         self.assertEqual(trial.CONTRACT["ownerPolicy"], "non-China-developed-models-only")

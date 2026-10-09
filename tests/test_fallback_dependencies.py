@@ -86,10 +86,13 @@ class DependencyRegressionTests(unittest.TestCase):
         self.assertEqual(baseline.count(NEW_INSTALL), 1)
         original = baseline.replace(NEW_INSTALL, OLD_INSTALL).encode("utf-8")
         self.assertEqual(git_blob_sha(original), ORIGINAL_WORKFLOW_BLOB)
-        for constraint in ("--available-tools='view,web_search,web_fetch'", "--available-tools='view'",
-                           "scripts/general_news_verification_robot.py merge", "scripts/general_news_verification_robot.py produce"):
+        # Unpinned Copilot was removed by the separately reviewed Google-only
+        # execution contract. Preserve the unchanged canonical source/copy gate.
+        for constraint in ("scripts/general_news_verification_robot.py merge", "scripts/general_news_verification_robot.py produce"):
             self.assertIn(constraint, baseline)
             self.assertIn(constraint, changed)
+        self.assertNotIn("copilot -p", changed)
+        self.assertIn("scripts/parallel_general_news_fallback.py worker", changed)
 
     def test_source_and_editorial_gates_are_byte_identical(self):
         baseline_path = ROOT / "tests/fixtures/original_local_fallback_gates.py"

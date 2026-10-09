@@ -14,10 +14,13 @@ class DisallowedModelStopTests(unittest.TestCase):
         text = (ROOT / ".github/workflows/general-news-producer.yml").read_text(encoding="utf-8")
         for name in ("Cache open-source local fallback model", "Run open-source local capacity fallback"):
             block = step(text, name)
-            self.assertEqual(block.count("if:"), 1)
+            self.assertEqual(block.count("if:"), 0)  # Both now belong to the guarded worker job.
             executable = "\n".join(line for line in block.splitlines() if not line.lstrip().startswith("#"))
             self.assertNotIn("qwen", executable.lower())
         self.assertIn("ollama pull gemma3:4b-it-qat", text)
+        self.assertIn("if: needs.prepare.outputs.pending != 'true' && needs.prepare.outputs.candidate_count != '0'", text)
+        self.assertNotIn("copilot -p", text)
+        self.assertNotIn("copilot-requests:", text)
         self.assertNotIn("ollama pull qwen", text)
         self.assertIn("LOCAL_MODEL_IDENTITY_NOT_REVIEWED", text)
         self.assertIn("b0313423c9448adfab711aacbc9d0b885a390eb31f1145d7f8495d1e6f84f257", text)
