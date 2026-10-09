@@ -31,6 +31,52 @@ HKT = timezone(timedelta(hours=8))
 USER_AGENT = "DailyBriefRollingCollector/1.4 (+https://github.com/kanuli/daily-brief-newspaper)"
 RETENTION_HOURS = 24
 MAX_PER_DESK = 120
+DIRECT_PUBLISHER_FEEDS = {
+    "hong-kong": "https://rthk.hk/rthk/news/rss/c_expressnews_clocal.xml",
+}
+MAX_DIRECT_FEED_BYTES = 131072
+
+
+def direct_feed_get(url: str) -> bytes:
+    """Fixed official feed only, bounded bytes/time and same-publisher redirects."""
+    if url not in DIRECT_PUBLISHER_FEEDS.values():
+        raise ValueError("unreviewed-direct-feed")
+    expected_path = urllib.parse.urlparse(url).path
+
+    class PublisherRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            parsed = urllib.parse.urlparse(newurl)
+            if (parsed.scheme != "https" or parsed.hostname not in {"rthk.hk", "www.rthk.hk", "news.rthk.hk"}
+                or parsed.path != expected_path or parsed.username or parsed.password
+                or parsed.port not in {None, 443}):
+                raise ValueError("unreviewed-direct-feed-redirect")
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/rss+xml"})
+    with urllib.request.build_opener(PublisherRedirect()).open(request, timeout=10) as response:
+        payload = response.read(MAX_DIRECT_FEED_BYTES + 1)
+    if len(payload) > MAX_DIRECT_FEED_BYTES:
+        raise ValueError("direct-feed-too-large")
+    return payload
+
+
+def direct_feed_items(payload: bytes, desk: str, discovered: datetime) -> list[dict[str, Any]]:
+    """Discovery metadata only; never RSS descriptions, facts or verified copy."""
+    if desk not in DIRECT_PUBLISHER_FEEDS:
+        raise ValueError("unreviewed-direct-feed-desk")
+    result = []
+    for row in rss_items(payload, "香港電台", desk, "official-publisher-rss", discovered):
+        parsed = urllib.parse.urlparse(row["url"])
+        published = parse_date(row["publishedAt"])
+        if (parsed.scheme != "https" or parsed.hostname != "news.rthk.hk"
+            or parsed.username or parsed.password or parsed.port not in {None, 443}
+            or not re.fullmatch(r"/rthk/ch/component/k2/\d+-\d{8}\.htm", parsed.path)
+            or published is None or published > discovered):
+            continue
+        row["source"] = "香港電台"
+        row["provider"] = "RTHK Official RSS"
+        result.append(row)
+    return result
 
 # These are discovery-pool floors, never publication targets or caps. If the
 # primary provider returns fewer unique candidates than the floor, broaden via
@@ -439,7 +485,22 @@ def collect(existing: dict[str, Any], mode: str = "normal") -> dict[str, Any]:
             "bingFallbackQueries": 0,
             "bingFallbackItems": 0,
             "discoveryFloor": floor,
+            "directPublisherQueries": 0,
+            "directPublisherItems": 0,
         }
+
+        # Google's candidate count does not prove the wrapped URLs can be
+        # resolved into publisher text. Add one reviewed direct publisher path;
+        # keep every existing Google/Bing query and all publication gates.
+        if desk in DIRECT_PUBLISHER_FEEDS:
+            query_audit[desk]["directPublisherQueries"] = 1
+            try:
+                items = direct_feed_items(direct_feed_get(DIRECT_PUBLISHER_FEEDS[desk]), desk, started)
+                query_audit[desk]["directPublisherItems"] = len(items)
+                merge_items(desk, items, merged, discovered_this_run)
+            except Exception:
+                errors.append({"desk": desk, "provider": "RTHK Official RSS",
+                               "query": "official-publisher-rss", "error": "publisher-feed-unavailable"})
 
         for query in queries:
             try:
@@ -543,3 +604,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
