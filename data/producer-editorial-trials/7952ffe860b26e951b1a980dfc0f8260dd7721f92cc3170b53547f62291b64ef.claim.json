@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "owner": "Site Editor-in-Chief",
+  "scope": "single-reviewed-editorial-code-trial",
+  "contractRevision": "7952ffe860b26e951b1a980dfc0f8260dd7721f92cc3170b53547f62291b64ef",
+  "contract": {
+    "protocol": "ollama-availability-aware-source-and-paragraph-copy-v3",
+    "model": "qwen2.5:1.5b",
+    "candidateIdentity": "exact-candidate-id-enum",
+    "copyFields": [
+      "title",
+      "dek",
+      "summary",
+      "body",
+      "context",
+      "why",
+      "watchNext"
+    ],
+    "copyFieldsRequired": true,
+    "copyStringsNonempty": true,
+    "bodyRepresentation": "two-or-three-source-paragraphs-serialized-with-double-newline",
+    "predecessorContract": "cc1cc061851a1a4f4224e77dae3a76cbc0f5dbf608be4a452734b2afb9090852",
+    "observedPredecessorFailure": "source-probe-no-direct-source-text-for-first-three",
+    "sourceSelection": {
+      "mode": "availability-aware-round-robin-v1",
+      "maxCandidatesPerDesk": 4,
+      "maxSourceProbes": 12,
+      "maxModelCalls": 3,
+      "maxAcceptedPerDesk": 1,
+      "sourceWorkerTimeoutSeconds": 35,
+      "sharedFallbackSeconds": 600,
+      "bindDeadlineSeconds": 660
+    },
+    "factsMinimum": 2,
+    "factsMaximum": 5,
+    "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged"
+  },
+  "reviewedSources": {
+    "scripts/general_news_local_fallback.py": "698862ea88aea5ab26cb06d391c9d639e0230d62cfea370f39c1536bf97471c0",
+    "scripts/general_news_verified_producer.py": "b8604594ee18a5f7bc31d68acb0fb175ec752b73dc9f5970e1cd207ca2f37e2d",
+    "scripts/general_news_verification_robot.py": "5e60639ab28729975e8f8543efe669b2e11af77e7667913f13b1e33a3dd1b6f5"
+  },
+  "claimedAt": "2026-10-09T04:44:58.625431Z",
+  "expiresAt": "2026-10-09T05:04:58.625431Z",
+  "dispatcherRunId": "37885286003",
+  "assignmentId": "ef27bb8c2c629933",
+  "attempt": 1,
+  "maxAttempts": 1,
+  "remainingAttempts": 0,
+  "priorCapacitySHA": "3c2541d5c9ff3619b49abdcef4c1333bbc259275",
+  "priorCapacity": {
+    "schemaVersion": 1,
+    "producer": "General News Verified Producer",
+    "checkedAt": "2026-10-08T16:03:29.435752Z",
+    "status": "LOCAL_FALLBACK_FAILED",
+    "reason": "GitHub Copilot quota/capacity exhausted; GitHub-native local fallback attempted but produced no publishable verified output",
+    "blockedUntil": null,
+    "recoveryOwner": "automation:Newsroom Publisher",
+    "localFallbackModel": "qwen2.5:1.5b",
+    "workflowRunId": "37805090332"
+  },
+  "predecessorResultSHA": "e979e4a822fe7bc79f71ada74d4b871a2c739bee",
+  "priorDraftId": "general-news-20261007-1954-hkt",
+  "publicationPermissionGranted": false
+}
