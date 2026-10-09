@@ -109,6 +109,17 @@ def direct_feed_items(payload: bytes, desk: str, discovered: datetime) -> list[d
         result.append(row)
     return result
 
+
+def reviewed_direct_discovery(row: dict[str, Any], desk: str) -> bool:
+    """Preference only for the exact bounded direct-feed metadata contract."""
+    return bool(
+        desk in DIRECT_PUBLISHER_FEEDS and row.get("desk") == desk
+        and row.get("provider") == "RTHK Official RSS" and row.get("source") == "香港電台"
+        and parse_date(str(row.get("publishedAt") or "")) is not None
+        and re.fullmatch(r"https://news\.rthk\.hk/rthk/ch/component/k2/\d+-\d{8}\.htm", str(row.get("url") or ""))
+        and direct_title_routed(str(row.get("title") or ""), desk)
+    )
+
 # These are discovery-pool floors, never publication targets or caps. If the
 # primary provider returns fewer unique candidates than the floor, broaden via
 # free fallback discovery queries for that desk.
@@ -489,6 +500,12 @@ def merge_items(
         discovered_this_run.add(item["id"])
         old = merged[desk].get(item["id"])
         if old:
+            if reviewed_direct_discovery(old, desk) and not reviewed_direct_discovery(item, desk):
+                # A repeated search headline must not replace an already
+                # available publisher URL with its opaque search redirect.
+                # Preserve publisher date/copy identity; only discovery seen
+                # time reflects this new observation, never publication time.
+                item = {**old, "lastSeenAt": item["lastSeenAt"]}
             item["firstSeenAt"] = old.get("firstSeenAt") or item["firstSeenAt"]
         merged[desk][item["id"]] = item
 
@@ -573,8 +590,11 @@ def collect(existing: dict[str, Any], mode: str = "normal") -> dict[str, Any]:
     for desk, by_id in merged.items():
         items = list(by_id.values())
         items.sort(
-            key=lambda x: parse_date(str(x.get("publishedAt") or x.get("lastSeenAt") or ""))
-            or datetime.min.replace(tzinfo=timezone.utc),
+            key=lambda x: (
+                reviewed_direct_discovery(x, desk),
+                parse_date(str(x.get("publishedAt") or x.get("lastSeenAt") or ""))
+                or datetime.min.replace(tzinfo=timezone.utc),
+            ),
             reverse=True,
         )
         items = items[:MAX_PER_DESK]

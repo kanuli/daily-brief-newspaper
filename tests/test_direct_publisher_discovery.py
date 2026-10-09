@@ -122,6 +122,41 @@ class DirectDiscoveryTests(unittest.TestCase):
             collector.collect({})
         self.assertEqual(direct.call_count, 3)
 
+    def test_search_duplicate_cannot_replace_direct_url_or_refresh_publisher_date(self):
+        row = collector.direct_feed_items(feed(), "hong-kong", NOW)[0]
+        merged = {"hong-kong": {row["id"]: dict(row)}}
+        wrapped = {**row, "provider": "Google News RSS", "url": "https://news.google.com/rss/articles/synthetic",
+                   "publishedAt": "2026-10-09T14:59:00Z", "lastSeenAt": "2026-10-09T15:00:00Z"}
+        collector.merge_items("hong-kong", [wrapped], merged, set())
+        saved = merged["hong-kong"][row["id"]]
+        self.assertEqual(saved["url"], row["url"])
+        self.assertEqual(saved["publishedAt"], row["publishedAt"])
+        self.assertEqual(saved["provider"], "RTHK Official RSS")
+        self.assertEqual(saved["lastSeenAt"], wrapped["lastSeenAt"])
+
+    def test_source_access_preference_preserves_same_reservoir_cap_without_retiming(self):
+        base = collector.direct_feed_items(feed(), "hong-kong", NOW)[0]
+        generic = [{**base, "id": "synthetic-" + str(i), "provider": "Synthetic Discovery",
+                    "source": "Synthetic", "url": "https://example.invalid/" + str(i),
+                    "title": "SYNTHETIC ONLY NOT NEWS " + str(i), "publishedAt": "2026-10-09T14:59:00Z"}
+                   for i in range(125)]
+        with patch.object(collector, "now_utc", return_value=NOW), \
+             patch.object(collector, "http_get", return_value=b"<rss><channel/></rss>"), \
+             patch.object(collector, "direct_feed_get", return_value=feed()):
+            result = collector.collect({"desks": {"hong-kong": generic}})
+        rows = result["desks"]["hong-kong"]
+        self.assertEqual(len(rows), 120)
+        self.assertEqual(rows[0]["id"], base["id"])
+        self.assertEqual(rows[0]["publishedAt"], "2026-10-09T14:00:00Z")
+        self.assertEqual(result["maxCandidatesPerDesk"], 120)
+
+    def test_untrusted_provider_label_cannot_grant_reservoir_preference(self):
+        row = collector.direct_feed_items(feed(), "hong-kong", NOW)[0]
+        for delta in ({"source": "Untrusted"}, {"url": "http://127.0.0.1/private"},
+                      {"publishedAt": None}, {"provider": "unreviewed"}):
+            with self.subTest(delta=delta):
+                self.assertFalse(collector.reviewed_direct_discovery({**row, **delta}, "hong-kong"))
+
 
 if __name__ == "__main__":
     unittest.main()
