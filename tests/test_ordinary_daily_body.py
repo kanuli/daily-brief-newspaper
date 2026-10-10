@@ -66,7 +66,7 @@ class OrdinaryDailyBodyTests(unittest.TestCase):
         import sys
         sys.path.insert(0, str(budget.ROOT / "scripts"))
         import editorial_revision_trial as trial
-        self.assertEqual(trial.PREDECESSOR_CONTRACT, "07c723dc652c32b51237c599fd082e8eb518dba75cf40ca565a658185ca5c1b1")
+        self.assertEqual(trial.PREDECESSOR_CONTRACT, "cf07dddc7078cbffcbfca81a8eb4916be78cc30ad8ea0eb3525a01256fd0d4a3")
         self.assertNotEqual(trial.CONTRACT_REVISION, trial.PREDECESSOR_CONTRACT)
         self.assertEqual(trial.CONTRACT["model"], "gemma3:4b-it-qat")
         self.assertEqual(trial.CONTRACT["ownerPolicy"], "non-China-developed-models-only")

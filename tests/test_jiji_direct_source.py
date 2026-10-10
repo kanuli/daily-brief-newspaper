@@ -8,7 +8,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import rolling_news_collector as collector
 import general_news_verification_robot as robot
-from test_source_selection_budget import load_synthetic_module
+from test_source_selection_budget import load_synthetic_module, request
 
 NOW = datetime(2026, 10, 10, 3, tzinfo=timezone.utc)
 LINK = "https://www.jiji.com/jc/article?k=2026101099999&g=pol&m=rss"
@@ -52,6 +52,27 @@ class JijiSourceTests(unittest.TestCase):
         for change in ({"source": "unreviewed"}, {"provider": "Search"}, {"desk": "world"}):
             self.assertFalse(collector.reviewed_direct_discovery({**row, **change}, "japan"))
             self.assertLess(robot.candidate_score({**row, **change})[0], 8)
+
+    def test_worker_preserves_exact_direct_priority_inside_original_probe_budget(self):
+        data = request(["japan", "finance"])
+        data["candidates"].append(collector.jiji_feed_items(feed(), NOW)[0])
+        before = str(data)
+        queue = self.fallback.bounded_source_queue(data)
+        self.assertEqual(queue[0]["url"], LINK)
+        self.assertEqual(queue[1]["desk"], "finance")
+        self.assertEqual(len(queue), 8)
+        self.assertEqual(str(data), before)
+        self.assertEqual(self.fallback.MAX_CANDIDATES_PER_DESK, 4)
+        self.assertEqual(self.fallback.MAX_SOURCE_PROBES, 12)
+        self.assertEqual(self.fallback.MAX_MODEL_CALLS, 3)
+
+    def test_worker_direct_priority_cannot_be_claimed_by_wrong_provider_or_route(self):
+        for change in ({"provider": "Search"}, {"url": LINK + "&other=1"}, {"desk": "world"}):
+            row = {**collector.jiji_feed_items(feed(), NOW)[0], **change}
+            data = request(["japan", "finance"])
+            data["candidates"][0]["source"] = "NHK"
+            data["candidates"].append(row)
+            self.assertEqual(self.fallback.bounded_source_queue(data)[0]["source"], "NHK")
 
     def test_only_article_paragraphs_no_captions_meta_ads_or_related_links(self):
         body = "正文測試" * 90

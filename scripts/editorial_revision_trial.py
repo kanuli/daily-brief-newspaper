@@ -27,22 +27,22 @@ DRAFT_PATH = "data/prepublish.json"
 TRIAL_ROOT = "data/producer-editorial-trials"
 MODEL = "gemma3:4b-it-qat"
 FAILED_MODEL = "gemma3:4b-it-qat"
-FAILED_RUN = "37955233912"
-FAILED_JOB = 113905133099
-FAILED_HEAD = "2e12721182d544be4cb3634d50e01c0ef5eddd15"
-FAILED_CAPACITY_SHA = "be7dbf9945fa0911bd6e0e136f9d647ba53c4b55"
-FAILED_CHECKED_AT = "2026-10-09T15:58:07.688766Z"
+FAILED_RUN = "38021015383"
+FAILED_JOB = 114122461924
+FAILED_HEAD = "8a6f6e4a4f207ca4b134d0dabc23c063cf982ea8"
+FAILED_CAPACITY_SHA = "1c6e90f6ed820cd591feb752f689798881bd4dff"
+FAILED_CHECKED_AT = "2026-10-10T03:38:11.907886Z"
 MAX_RUNTIME_MINUTES = 20
-PREDECESSOR_CONTRACT = "07c723dc652c32b51237c599fd082e8eb518dba75cf40ca565a658185ca5c1b1"
-PREDECESSOR_RESULT_SHA = "f096c5a6f04d12a402638249e68c87ed6744a030"
-PREDECESSOR_CHILD = "37950761065"
-PREDECESSOR_HEAD = "932bb166cb4b52ba1be096ff797dbfdb0c462216"
-PREDECESSOR_JOB = 113890880726
+PREDECESSOR_CONTRACT = "cf07dddc7078cbffcbfca81a8eb4916be78cc30ad8ea0eb3525a01256fd0d4a3"
+PREDECESSOR_RESULT_SHA = "d9374cb794f05b8aede4baa471ef57216efd09ec"
+PREDECESSOR_CHILD = "37957455179"
+PREDECESSOR_HEAD = "34ab46c84496116afb4f396f770a76de4cadbeb4"
+PREDECESSOR_JOB = 113913147988
 FALLBACK_BIND_DEADLINE_SECONDS = 660
 # Fixed reviewed BEHAVIOR, not source/HEAD/clock: cosmetic source edits cannot
 # mint another immutable ledger path. Exact reviewed code is a separate check.
 CONTRACT = {
-    "protocol": "google-gemma-rthk-exact-article-body-extraction-v11", "model": MODEL,
+    "protocol": "google-gemma-public-body-direct-jiji-priority-v12", "model": MODEL,
     "modelDeveloper": "Google DeepMind", "ownerPolicy": "non-China-developed-models-only",
     "modelManifestDigest": "b0313423c9448adfab711aacbc9d0b885a390eb31f1145d7f8495d1e6f84f257",
     "verifiedRuntimePredecessor": {"run": PREDECESSOR_CHILD, "head": PREDECESSOR_HEAD, "job": PREDECESSOR_JOB},
@@ -74,7 +74,7 @@ CONTRACT = {
     "copyFieldsRequired": True, "copyStringsNonempty": True,
     "bodyRepresentation": "two-or-three-source-paragraphs-serialized-with-double-newline",
     "predecessorContract": PREDECESSOR_CONTRACT,
-    "observedPriorProductionFailure": "three-small-model-completions-rejected-for-kana-or-supplied-paragraph-representation",
+    "observedPriorProductionFailure": "four-source-probes-per-worker-zero-model-calls-direct-jiji-missed-by-worker-reordering",
     "priorFailedProduction": {"run": FAILED_RUN, "job": FAILED_JOB, "head": FAILED_HEAD, "model": FAILED_MODEL},
     "dailyBody": {"visibleMinimum": 100, "visibleMaximum": 1800, "paragraphCharactersMinimum": 60, "paragraphCharactersMaximum": 110},
     "boundedCopy": {"paragraphs": 2, "factCharactersMaximum": 100,
@@ -90,16 +90,22 @@ CONTRACT = {
     "trustedInstructionTransport": "initial-user-prompt-plus-final-after-input-reminder",
     "localeInstructionPosition": "original-prefix-plus-trusted-after-input-reminder",
     "sourceSelection": {
-        "mode": "availability-aware-round-robin-v1", "maxCandidatesPerDesk": 4,
+        "mode": "availability-aware-round-robin-v2-direct-jiji-priority", "maxCandidatesPerDesk": 4,
         "maxSourceProbes": 12, "maxModelCalls": 3, "maxAcceptedPerDesk": 1,
         "sourceWorkerTimeoutSeconds": 35, "sharedFallbackSeconds": 600,
         "bindDeadlineSeconds": FALLBACK_BIND_DEADLINE_SECONDS,
+        "directPriority": {"source": "時事通信", "provider": "Jiji Official RSS", "desk": "japan",
+                           "url": "https://www.jiji.com/jc/article?k=<13-digits>&g=<pol-or-soc>&m=rss",
+                           "queue": "ahead-of-opaque-search-wrappers-within-unchanged-per-desk-and-worker-caps",
+                           "body": "ArticleText-p-only-excluding-figures-ads-related-links-and-metadata",
+                           "minimumActualBodyCharacters": 300,
+                           "locatorPolicy": "NewsPicks-summary-and-reader-comments-never-publisher-evidence"},
     },
     "factsMinimum": 2, "factsMaximum": 5,
     "gatePolicy": "existing-valid-output-and-canonical-merge-unchanged",
 }
 REVIEWED_SOURCES = {
-    "scripts/general_news_local_fallback.py": "62d9ac3a4057955e73084783c4fbc3177e40f464fec0052e2bf537245b451509",
+    "scripts/general_news_local_fallback.py": "addd97ae35859889cb6ebdd82460663c33d3bc14f0775b8e2d3410c61ac57fd0",
     "scripts/parallel_general_news_fallback.py": "c5247c9d38338d37cebada3630feac4b4437cd650f07c1fc2eb03a2a2453aa0c",
     ".github/workflows/general-news-producer.yml": "4ad9dd48deca891bb8cb99565fe4beba2d1e0b33b3f09e9e1a32cbc92406ded1",
     "scripts/verified_draft_pending.py": "c1148ee824d72e094cde6398113e1a26830d63d85b30ea35d527708a48d56049",

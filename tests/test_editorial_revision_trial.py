@@ -18,7 +18,7 @@ import general_news_verified_producer as producer
 import probe_general_news_fallback_capability as capability
 import newsroom_control_plane as control
 
-NOW = datetime(2026, 10, 9, 16, 20, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 10, 3, 45, tzinfo=timezone.utc)
 EIC = {"runId": "900", "workflow": "Editor-in-Chief Newsroom Assignment"}
 CHILD = {"runId": "901", "workflow": "General News Verified Producer"}
 LOCAL_ENGINE = trial.producer_engine("false", "false", "true")
@@ -384,8 +384,8 @@ class TrialTests(unittest.TestCase):
         store = Store(); state = claimed(store)
         draft = new_draft()
         article = draft["articles"][0]
-        article["publishedAt"] = trial.iso(NOW - timedelta(hours=1))
-        # NOW is 00:20 HKT: the publication timestamp is on the prior local day.
+        article["publishedAt"] = trial.iso(NOW - timedelta(hours=13))
+        # NOW is 11:45 HKT: this remains a recent prior-local-day timestamp.
         self.assertNotEqual(producer.parse_iso(article["publishedAt"]).astimezone(producer.HKT).date(),
                             NOW.astimezone(producer.HKT).date())
         self.assertTrue(trial.canonical_article_ok(article, state["claim"], NOW))

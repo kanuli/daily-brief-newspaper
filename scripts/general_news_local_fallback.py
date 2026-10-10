@@ -449,6 +449,10 @@ def bounded_source_queue(request: dict[str, Any]) -> list[dict[str, Any]]:
     for desk, rows in by_desk.items():
         rows.sort(
             key=lambda row: (
+                int(bool(clean(row.get("source")) == "時事通信"
+                         and row.get("provider") == "Jiji Official RSS"
+                         and row.get("desk") == "japan"
+                         and re.fullmatch(r"https://www\.jiji\.com/jc/article\?k=[0-9]{13}&g=(?:pol|soc)&m=rss", clean(row.get("url"))))),
                 int(bool(re.search(r"政府|gov\.|official|uefa|fifa|afc|nhk|香港電台", clean(row.get("source")), re.I))),
                 clean(row.get("publishedAt")),
             ),
