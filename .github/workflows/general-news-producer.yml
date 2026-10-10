@@ -54,9 +54,12 @@ jobs:
             # Preserve the exact reviewed validator code before the later
             # prepublish-branch checkout replaces the main working tree.
             mkdir -p /tmp/eic-editorial-reviewed/scripts
-            cp scripts/editorial_revision_trial.py scripts/probe_general_news_fallback_capability.py \
-              scripts/general_news_local_fallback.py scripts/general_news_verified_producer.py \
-              scripts/general_news_verification_robot.py scripts/parallel_general_news_fallback.py /tmp/eic-editorial-reviewed/scripts/
+            # Include reviewed helpers and transitive local imports, not a
+            # hand-maintained list that can silently omit new gate modules.
+            cp scripts/*.py /tmp/eic-editorial-reviewed/scripts/
+            mkdir -p /tmp/eic-editorial-reviewed/.github/workflows
+            cp .github/workflows/general-news-producer.yml /tmp/eic-editorial-reviewed/.github/workflows/
+            PYTHONPATH=/tmp/eic-editorial-reviewed/scripts python -c 'from pathlib import Path; from editorial_revision_trial import reviewed_code; assert reviewed_code(Path("/tmp/eic-editorial-reviewed")), "REVIEWED_CACHE_INCOMPLETE"'
           fi
 
       - name: Load the latest discovery reservoir
@@ -309,13 +312,10 @@ jobs:
           cp /tmp/eic-parallel/staging.json /tmp/search-staging.json
           cp /tmp/eic-parallel/request.json /tmp/general-news-verification-request.json
           mkdir -p verification-work /tmp/eic-editorial-reviewed/scripts
-          cp scripts/editorial_revision_trial.py scripts/probe_general_news_fallback_capability.py \
-            scripts/general_news_local_fallback.py scripts/general_news_verified_producer.py \
-            scripts/general_news_verification_robot.py scripts/parallel_general_news_fallback.py \
-            scripts/owned_general_news_runtime.py \
-            /tmp/eic-editorial-reviewed/scripts/
+          cp scripts/*.py /tmp/eic-editorial-reviewed/scripts/
           mkdir -p /tmp/eic-editorial-reviewed/.github/workflows
           cp .github/workflows/general-news-producer.yml /tmp/eic-editorial-reviewed/.github/workflows/
+          PYTHONPATH=/tmp/eic-editorial-reviewed/scripts python -c 'from pathlib import Path; from editorial_revision_trial import reviewed_code; assert reviewed_code(Path("/tmp/eic-editorial-reviewed")), "REVIEWED_CACHE_INCOMPLETE"'
           if [ -s /tmp/eic-parallel/state.json ]; then
             cp /tmp/eic-parallel/state.json /tmp/eic-editorial-trial-state.json
           fi

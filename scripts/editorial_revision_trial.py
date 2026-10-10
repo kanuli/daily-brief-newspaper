@@ -107,7 +107,7 @@ CONTRACT = {
 REVIEWED_SOURCES = {
     "scripts/general_news_local_fallback.py": "addd97ae35859889cb6ebdd82460663c33d3bc14f0775b8e2d3410c61ac57fd0",
     "scripts/parallel_general_news_fallback.py": "c5247c9d38338d37cebada3630feac4b4437cd650f07c1fc2eb03a2a2453aa0c",
-    ".github/workflows/general-news-producer.yml": "4ad9dd48deca891bb8cb99565fe4beba2d1e0b33b3f09e9e1a32cbc92406ded1",
+    ".github/workflows/general-news-producer.yml": "37593e1dec7e1b4ea6d5669b3c96c1cf632bb0fdcde8819cb499962595984592",
     "scripts/verified_draft_pending.py": "c1148ee824d72e094cde6398113e1a26830d63d85b30ea35d527708a48d56049",
     "scripts/owned_general_news_runtime.py": "f1522b4d906d34c9a6e8c2bd9a2c9f7b8f69c7d298c9b91eb6d0dbacf107a1db",
     "scripts/general_news_verified_producer.py": "b8604594ee18a5f7bc31d68acb0fb175ec752b73dc9f5970e1cd207ca2f37e2d",
