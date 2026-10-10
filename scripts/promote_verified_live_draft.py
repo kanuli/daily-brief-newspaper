@@ -12,6 +12,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
+from verified_draft_pending import draft_has_locator_only_sources
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -108,6 +109,8 @@ def validate_draft(draft, now: datetime, grace_minutes: int, max_age_minutes: in
         raise SystemExit("FAILOVER_SKIP draft is not VERIFIED_DRAFT")
     if draft.get("publicationType") != "LIVE":
         raise SystemExit("FAILOVER_SKIP draft publicationType is not LIVE")
+    if draft_has_locator_only_sources(draft):
+        raise SystemExit("FAILOVER_SKIP locator/comment page is not publisher-body evidence")
     target = parse_iso(draft.get("targetPublication") or "")
     due = target + timedelta(minutes=grace_minutes)
     if now < due.astimezone(timezone.utc):
@@ -240,3 +243,4 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

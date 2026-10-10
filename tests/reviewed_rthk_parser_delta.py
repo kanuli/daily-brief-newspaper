@@ -1,5 +1,7 @@
 """Allow exactly the reviewed parser selection; keep every source gate pinned."""
 REVIEWED_SELECTION = '''parsed = urllib.parse.urlparse(final_url)
+        if locator_only_url(final_url):
+            return None
         reviewed_rthk = (
             parsed.scheme == "https" and parsed.hostname == "news.rthk.hk"
             and parsed.port in {None, 443} and not parsed.username and not parsed.password

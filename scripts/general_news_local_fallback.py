@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from opencc import OpenCC
+from verified_draft_pending import locator_only_url
 from googlenewsdecoder import gnewsdecoder
 
 import general_news_verified_producer as producer
@@ -385,6 +386,8 @@ def extract_source_page(url: str) -> tuple[str, str] | None:
         final_url, payload = fetch(url, accept="text/html,application/xhtml+xml,*/*")
         text = payload.decode("utf-8", errors="ignore")
         parsed = urllib.parse.urlparse(final_url)
+        if locator_only_url(final_url):
+            return None
         reviewed_rthk = (
             parsed.scheme == "https" and parsed.hostname == "news.rthk.hk"
             and parsed.port in {None, 443} and not parsed.username and not parsed.password

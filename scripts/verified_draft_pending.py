@@ -4,8 +4,30 @@ This is scheduling ownership, not publication permission. The publisher keeps
 its original grace/90-minute gate; original story dates and quality stay intact.
 """
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 HKT = timezone(timedelta(hours=8))
+
+
+def locator_only_url(value):
+    """NewsPicks summaries/reader picks are locators, not publisher evidence."""
+    try:
+        host = (urlparse(str(value or "")).hostname or "").lower().rstrip(".")
+    except ValueError:
+        return True
+    return host == "newspicks.com" or host.endswith(".newspicks.com")
+
+
+def draft_has_locator_only_sources(draft):
+    for article in draft.get("articles") or []:
+        if not isinstance(article, dict):
+            continue
+        if locator_only_url(article.get("sourceUrl")):
+            return True
+        for source in article.get("sources") or []:
+            if isinstance(source, dict) and locator_only_url(source.get("url")):
+                return True
+    return False
 
 
 def stamp(value):
@@ -21,6 +43,8 @@ def pending_verified_draft(draft, now, live=None):
         return False
     articles = draft.get("articles")
     if not isinstance(articles, list) or not articles:
+        return False
+    if draft_has_locator_only_sources(draft):
         return False
     draft_id = str(draft.get("draftId") or "").strip()
     consumed = str(((live or {}).get("coverage") or {}).get("verifiedDraftId") or "").strip()
