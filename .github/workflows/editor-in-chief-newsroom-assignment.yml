@@ -22,6 +22,7 @@ on:
       - "scripts/probe_general_news_fallback_capability.py"
       - "scripts/editorial_revision_trial.py"
       - "scripts/editorial_trial_observation.py"
+      - "scripts/audit_persisted_editorial_proof.py"
       - "scripts/validate_desk_freshness.py"
       - "scripts/merge_live_into_desk.py"
       - "scripts/validate_stock_news.py"
@@ -201,6 +202,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # One separately human-approved proof audit; zero news/model calls.
+          # Original failed result, execution expiry and trial budget survive.
+          mkdir -p /tmp/eic-original-proof-code
+          git archive d1ca7754367259e68d4b122b7ccc384b90a57848 scripts .github/workflows/general-news-producer.yml | tar -x -C /tmp/eic-original-proof-code
+          GH_TOKEN='${{ github.token }}' python scripts/audit_persisted_editorial_proof.py --original-root /tmp/eic-original-proof-code
+          # The classifier must see the independently CAS-proven capacity,
+          # rather than the pre-audit snapshot collected earlier in this job.
+          GH_TOKEN='${{ github.token }}' gh api "repos/${GITHUB_REPOSITORY}/contents/data/producer-capacity.json?ref=prepublish-news" --jq .content | tr -d '\n' | base64 -d > /tmp/producer-capacity.json
           GH_TOKEN='${{ github.token }}' python scripts/editorial_revision_trial.py inspect \
             --root . --permit /tmp/eic-editorial-trial-permit.json
           python -m py_compile scripts/newsroom_control_plane.py
