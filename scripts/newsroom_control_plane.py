@@ -72,6 +72,13 @@ def parse_iso(value: Any) -> datetime | None:
         return None
 
 
+def stock_duty_mode(check_age_minutes: float, due_after_minutes: float) -> str:
+    # A missed hourly review needs the existing fresh-snapshot recovery path,
+    # not another identical normal refresh of the same shallow source pool.
+    # This only selects an existing mode; prior attempt/STUCK guards still run.
+    return "deep" if check_age_minutes >= max(60.0, due_after_minutes) else "normal"
+
+
 def load_registry(path: str) -> tuple[dict[str, Any], dict[str, dict[str, Any]], dict[str, str]]:
     data = load(path, {})
     robots = data.get("robots")
@@ -905,6 +912,7 @@ def main() -> int:
             "stock",
             "stock-duty",
             f"standing hourly Stock review duty is due; last check age is {stock_age:.1f} minutes",
+            mode=stock_duty_mode(stock_age, stock_due),
         )
 
     # Validator failures override a routine duty and may escalate to deep mode.

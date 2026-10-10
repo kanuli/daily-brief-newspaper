@@ -13,6 +13,7 @@ on:
       - "scripts/generate_daily_vocab.py"
       - "scripts/rolling_news_collector.py"
       - ".github/workflows/general-news-producer.yml"
+      - ".github/workflows/stock-publication-maintenance.yml"
       - "scripts/general_news_verified_producer.py"
       - "scripts/general_news_verification_robot.py"
       - "scripts/general_news_local_fallback.py"
@@ -206,10 +207,9 @@ jobs:
           # Original failed result, execution expiry and trial budget survive.
           mkdir -p /tmp/eic-original-proof-code
           git archive d1ca7754367259e68d4b122b7ccc384b90a57848 scripts .github/workflows/general-news-producer.yml | tar -x -C /tmp/eic-original-proof-code
-          GH_TOKEN='${{ github.token }}' python scripts/audit_persisted_editorial_proof.py --original-root /tmp/eic-original-proof-code
-          # The classifier must see the independently CAS-proven capacity,
-          # rather than the pre-audit snapshot collected earlier in this job.
-          GH_TOKEN='${{ github.token }}' gh api "repos/${GITHUB_REPOSITORY}/contents/data/producer-capacity.json?ref=prepublish-news" --jq .content | tr -d '\n' | base64 -d > /tmp/producer-capacity.json
+          GH_TOKEN='${{ github.token }}' python scripts/audit_persisted_editorial_proof.py --original-root /tmp/eic-original-proof-code --capacity-output /tmp/producer-capacity.json
+          # Only successful CAS refreshes the classifier's local snapshot.
+          # Spent/expired audits add no redundant GitHub transport dependency.
           GH_TOKEN='${{ github.token }}' python scripts/editorial_revision_trial.py inspect \
             --root . --permit /tmp/eic-editorial-trial-permit.json
           python -m py_compile scripts/newsroom_control_plane.py

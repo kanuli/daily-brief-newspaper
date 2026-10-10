@@ -119,6 +119,7 @@ jobs:
           if [ "${{ steps.mode.outputs.mode }}" = "deep" ]; then
             rm -f /tmp/search-staging-current.json
             if timeout 180s python scripts/rolling_news_collector.py \
+              --mode deep \
               --output /tmp/search-staging-current.json; then
               mv /tmp/search-staging-current.json /tmp/search-staging.json
               echo "STOCK_DEEP_DISCOVERY_REFRESH_PASS"

@@ -198,12 +198,16 @@ def audit(root, original, store, owner, now, *, clock=None):
         recoveryOwner="workflow:general-news-producer.yml", verifiedDraftId=payload["draftId"], verifiedDraftSHA=DRAFT_SHA,
         structuredCopyPathSkipped=False, editorialProofAuditPath=AUDIT_ROOT + ".result.json",
         originalFailedTrialResultSHA=RESULT_SHA, editorialTrialLedgerBranch=current.LEDGER_BRANCH)
-    return {"audited": store.compare_and_swap_capacity(CAPACITY_SHA, value), "sourceCalls": 0, "modelCalls": 0,
-            "proofPath": AUDIT_ROOT + ".result.json"}
+    updated = store.compare_and_swap_capacity(CAPACITY_SHA, value)
+    result = {"audited": updated, "sourceCalls": 0, "modelCalls": 0, "proofPath": AUDIT_ROOT + ".result.json"}
+    if updated:
+        result["capacity"] = value
+    return result
 
 
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument("--original-root", type=Path, required=True)
+    parser.add_argument("--capacity-output", type=Path)
     args = parser.parse_args()
     try:
         owner = current.context("eic")
@@ -212,6 +216,9 @@ def main():
         original = importlib.util.module_from_spec(spec); spec.loader.exec_module(original)
         result = audit(args.original_root, original, AuditStore(os.environ.get("GH_TOKEN", ""), current.REPOSITORY),
                        owner, datetime.now(timezone.utc))
+        capacity = result.pop("capacity", None)
+        if result.get("audited") is True and capacity is not None and args.capacity_output:
+            current.save_json(args.capacity_output, capacity)
     except Exception as exc:
         result = {"audited": False, "reason": exc.code if isinstance(exc, current.ProbeFailure) else type(exc).__name__}
     print("EIC_HUMAN_APPROVED_PROOF_AUDIT " + json.dumps(result, sort_keys=True))

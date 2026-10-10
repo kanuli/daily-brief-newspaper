@@ -230,7 +230,8 @@ class AuditTests(unittest.TestCase):
     def test_owner_hook_runs_before_classification_and_reloads_CAPACITY(self):
         workflow = (ROOT / ".github/workflows/editor-in-chief-newsroom-assignment.yml").read_text()
         self.assertLess(workflow.index("python scripts/audit_persisted_editorial_proof.py"), workflow.index("python scripts/editorial_revision_trial.py inspect"))
-        self.assertIn('contents/data/producer-capacity.json?ref=prepublish-news', workflow)
+        self.assertIn('--capacity-output /tmp/producer-capacity.json', workflow)
+        self.assertNotIn('GH_TOKEN=\'${{ github.token }}\' gh api "repos/${GITHUB_REPOSITORY}/contents/data/producer-capacity.json?ref=prepublish-news"', workflow)
         self.assertEqual(trial.CONTRACT_REVISION, audit.REVISION)
 
 
