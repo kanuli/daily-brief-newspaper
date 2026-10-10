@@ -23,6 +23,9 @@ def feed(*, link=LINK, date="Fri, 09 Oct 2026 22:00:00 +0800", title="SYNTHETIC 
 class DirectDiscoveryTests(unittest.TestCase):
     def setUp(self):
         # Existing RTHK regressions must never make a new live publisher call.
+        jiji = patch.object(collector, "jiji_feed_get", return_value=b'<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/>')
+        jiji.start()
+        self.addCleanup(jiji.stop)
         mocked = patch.object(collector, "cna_feed_get", return_value=b"<rss><channel/></rss>")
         mocked.start()
         self.addCleanup(mocked.stop)

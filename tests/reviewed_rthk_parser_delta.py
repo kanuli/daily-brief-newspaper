@@ -7,7 +7,8 @@ REVIEWED_SELECTION = '''parsed = urllib.parse.urlparse(final_url)
             and re.fullmatch(r"/rthk/ch/component/k2/[0-9]+-[0-9]{8}\\.htm", parsed.path)
         )
         reviewed_cna = bool(re.fullmatch(r"https://www\\.cna\\.com\\.tw/news/aopl/[0-9]{12}\\.aspx", final_url))
-        parser = RthkArticleBodyParser() if reviewed_rthk else CnaArticleBodyParser() if reviewed_cna else ArticleTextParser()'''
+        reviewed_jiji = bool(re.fullmatch(r"https://www\\.jiji\\.com/jc/article\\?k=[0-9]{13}&g=(?:pol|soc)(?:&m=rss)?", final_url))
+        parser = RthkArticleBodyParser() if reviewed_rthk else CnaArticleBodyParser() if reviewed_cna else JijiArticleBodyParser() if reviewed_jiji else ArticleTextParser()'''
 
 
 def original_extraction_except_reviewed_parser(segment):

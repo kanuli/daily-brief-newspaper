@@ -142,6 +142,10 @@ def candidate_score(row: dict[str, Any]) -> tuple[int, float]:
     points = 0
     if producer.TRUSTED_SOURCE.search(source):
         points += 4
+    if (source == "時事通信" and row.get("provider") == "Jiji Official RSS"
+        and row.get("desk") == "japan"
+        and re.fullmatch(r"https://www\.jiji\.com/jc/article\?k=[0-9]{13}&g=(?:pol|soc)&m=rss", clean(row.get("url")))):
+        points += 4
     if (source == "中央通訊社" and row.get("provider") in {"CNA Official RSS", "CNA Official Japan Topic"}
         and row.get("desk") in {"asia", "japan"}
         and (row.get("provider") != "CNA Official Japan Topic" or row.get("desk") == "japan")

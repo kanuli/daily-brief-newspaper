@@ -328,6 +328,40 @@ class CnaArticleBodyParser(RthkArticleBodyParser):
             self.parts.append(data)
 
 
+class JijiArticleBodyParser(HTMLParser):
+    """Only public article paragraphs; never captions, ads or related links."""
+    VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
+    EXCLUDED = {"script", "style", "noscript", "svg", "figure", "figcaption", "aside", "nav"}
+
+    def __init__(self):
+        super().__init__()
+        self.frames = []
+        self.parts = []
+        self.meta = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.VOID:
+            return
+        parent = self.frames[-1] if self.frames else ("", False, False, False)
+        classes = str(dict(attrs).get("class") or "").split()
+        blocked = parent[2] or tag in self.EXCLUDED or "ArticleTextTab" in classes or "ArticleFigureWrapper" in classes
+        body = parent[1] or (tag == "div" and "ArticleText" in classes and not blocked)
+        paragraph = parent[3] or (body and tag == "p")
+        self.frames.append((tag, body, blocked, paragraph))
+
+    def handle_endtag(self, tag):
+        for index in range(len(self.frames) - 1, -1, -1):
+            if self.frames[index][0] == tag:
+                del self.frames[index:]
+                break
+
+    def handle_data(self, data):
+        if self.frames:
+            _, body, blocked, paragraph = self.frames[-1]
+            if body and paragraph and not blocked:
+                self.parts.append(data)
+
+
 def decoded_candidate_url(candidate: dict[str, Any]) -> str | None:
     raw = clean(candidate.get("url"))
     if not raw:
@@ -358,7 +392,8 @@ def extract_source_page(url: str) -> tuple[str, str] | None:
             and re.fullmatch(r"/rthk/ch/component/k2/[0-9]+-[0-9]{8}\.htm", parsed.path)
         )
         reviewed_cna = bool(re.fullmatch(r"https://www\.cna\.com\.tw/news/aopl/[0-9]{12}\.aspx", final_url))
-        parser = RthkArticleBodyParser() if reviewed_rthk else CnaArticleBodyParser() if reviewed_cna else ArticleTextParser()
+        reviewed_jiji = bool(re.fullmatch(r"https://www\.jiji\.com/jc/article\?k=[0-9]{13}&g=(?:pol|soc)(?:&m=rss)?", final_url))
+        parser = RthkArticleBodyParser() if reviewed_rthk else CnaArticleBodyParser() if reviewed_cna else JijiArticleBodyParser() if reviewed_jiji else ArticleTextParser()
         parser.feed(text)
         chunks = parser.meta + parser.parts
         source_text = clean(" ".join(chunks))

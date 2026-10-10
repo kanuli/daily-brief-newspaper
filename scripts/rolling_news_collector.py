@@ -46,6 +46,8 @@ MAX_DIRECT_FEED_BYTES = 131072
 CNA_INTERNATIONAL_FEED = "https://feeds.feedburner.com/rsscna/intworld"
 CNA_JAPAN_TOPIC = "https://www.cna.com.tw/tag/2850/"
 MAX_CNA_TOPIC_BYTES = 262144
+JIJI_DOMESTIC_FEED = "https://www.jiji.com/rss/ranking.rdf"
+JIJI_DOMESTIC_ARTICLE = re.compile(r"https://www\.jiji\.com/jc/article\?k=[0-9]{13}&g=(?:pol|soc)&m=rss")
 DIRECT_WORLD_TITLE = re.compile(r"美國|英國|法國|德國|俄羅斯|俄軍|烏克蘭|烏軍|歐盟|歐洲|北約|聯合國|加拿大|澳洲|巴西|墨西哥|阿根廷|南非|蘇丹")
 DIRECT_ASIA_TITLE = re.compile(r"亞洲|中國|內地|台灣|南韓|北韓|韓國|新加坡|馬來西亞|泰國|越南|印尼|菲律賓|印度|巴基斯坦|孟加拉|斯里蘭卡|中東|以色列|伊朗|伊拉克|加沙")
 DIRECT_JAPAN_TITLE = re.compile(r"日本|東京|日圓|高市|岸田|石破|自民黨")
@@ -116,6 +118,11 @@ def direct_feed_items(payload: bytes, desk: str, discovered: datetime) -> list[d
 
 def reviewed_direct_discovery(row: dict[str, Any], desk: str) -> bool:
     """Preference only for the exact bounded direct-feed metadata contract."""
+    if (desk == "japan" and row.get("desk") == desk
+        and row.get("source") == "時事通信" and row.get("provider") == "Jiji Official RSS"
+        and JIJI_DOMESTIC_ARTICLE.fullmatch(str(row.get("url") or ""))
+        and parse_date(str(row.get("publishedAt") or "")) is not None):
+        return True
     if (desk in {"asia", "japan"} and row.get("desk") == desk
         and row.get("provider") in {"CNA Official RSS", "CNA Official Japan Topic"} and row.get("source") == "中央通訊社"
         and (row.get("provider") != "CNA Official Japan Topic" or desk == "japan")
@@ -130,6 +137,41 @@ def reviewed_direct_discovery(row: dict[str, Any], desk: str) -> bool:
         and re.fullmatch(r"https://news\.rthk\.hk/rthk/ch/component/k2/\d+-\d{8}\.htm", str(row.get("url") or ""))
         and direct_title_routed(str(row.get("title") or ""), desk)
     )
+
+
+def jiji_feed_get() -> bytes:
+    """One fixed official feed, no redirects or credentials; metadata only."""
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            raise ValueError("unreviewed-jiji-feed-redirect")
+
+    request = urllib.request.Request(JIJI_DOMESTIC_FEED, headers={"User-Agent": USER_AGENT, "Accept": "application/rdf+xml"})
+    with urllib.request.build_opener(NoRedirect()).open(request, timeout=10) as response:
+        payload = response.read(MAX_DIRECT_FEED_BYTES + 1)
+    if len(payload) > MAX_DIRECT_FEED_BYTES:
+        raise ValueError("jiji-feed-too-large")
+    return payload
+
+
+def jiji_feed_items(payload: bytes, discovered: datetime) -> list[dict[str, Any]]:
+    """Exact domestic politics/society links and explicit publisher dates only."""
+    root = ET.fromstring(payload)
+    result = []
+    for item in root.findall("{http://purl.org/rss/1.0/}item")[:40]:
+        title = clean_text(item.findtext("{http://purl.org/rss/1.0/}title"))
+        url = clean_text(item.findtext("{http://purl.org/rss/1.0/}link"))
+        value = item.findtext("{http://purl.org/dc/elements/1.1/}date") or ""
+        if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:Z|[+-][0-9]{2}:[0-9]{2})", value):
+            continue
+        published = parse_date(value)
+        if (not title or not JIJI_DOMESTIC_ARTICLE.fullmatch(url) or published is None
+            or published > discovered or not candidate_is_fresh("japan", published, discovered)):
+            continue
+        result.append({"id": candidate_id("japan", title), "desk": "japan", "title": title,
+                       "url": url, "source": "時事通信", "provider": "Jiji Official RSS",
+                       "query": "official-jiji-domestic-ranking", "publishedAt": iso(published),
+                       "firstSeenAt": iso(discovered), "lastSeenAt": iso(discovered)})
+    return result
 
 
 def cna_feed_get(url: str = CNA_INTERNATIONAL_FEED) -> bytes:
@@ -683,6 +725,15 @@ def collect(existing: dict[str, Any], mode: str = "normal") -> dict[str, Any]:
                                "query": "official-cna-international-rss", "error": "publisher-feed-unavailable"})
 
         if desk == "japan":
+            query_audit[desk]["jijiPublisherQueries"] = 1
+            query_audit[desk]["jijiPublisherItems"] = 0
+            try:
+                items = jiji_feed_items(jiji_feed_get(), started)
+                query_audit[desk]["jijiPublisherItems"] = len(items)
+                merge_items(desk, items, merged, discovered_this_run)
+            except Exception:
+                errors.append({"desk": desk, "provider": "Jiji Official RSS",
+                               "query": "official-jiji-domestic-ranking", "error": "publisher-feed-unavailable"})
             query_audit[desk]["cnaJapanTopicQueries"] = 1
             query_audit[desk]["cnaJapanTopicItems"] = 0
             try:

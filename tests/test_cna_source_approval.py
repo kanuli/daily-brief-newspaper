@@ -19,6 +19,9 @@ LINK = "https://www.cna.com.tw/news/aopl/202610099999.aspx"
 class CnaApprovalTests(unittest.TestCase):
     def setUp(self):
         self.fallback = load_synthetic_module()
+        jiji = patch.object(collector, "jiji_feed_get", return_value=b'<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/>')
+        jiji.start()
+        self.addCleanup(jiji.stop)
 
     def row(self, desk="japan"):
         return collector.cna_feed_items(feed(link=LINK, title="合成非新聞日本材料"), desk, NOW)[0]
