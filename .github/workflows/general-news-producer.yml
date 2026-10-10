@@ -76,6 +76,7 @@ jobs:
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json
           from datetime import datetime, timezone
+          from scripts.verified_draft_pending import pending_verified_draft
 
           try:
               data=json.load(open('/tmp/current-prepublish.json',encoding='utf-8'))
@@ -96,13 +97,7 @@ jobs:
           draft_id=str(data.get('draftId') or '')
           published_draft_id=str(((live.get('coverage') or {}).get('verifiedDraftId') or ''))
           already_published=bool(draft_id and published_draft_id == draft_id)
-          pending=(
-              data.get('status') == 'VERIFIED_DRAFT'
-              and data.get('publicationType') == 'LIVE'
-              and bool(data.get('articles'))
-              and age <= 120
-              and not already_published
-          )
+          pending=pending_verified_draft(data, datetime.now(timezone.utc), live)
           print('pending=' + ('true' if pending else 'false'))
           print('pending_draft=' + draft_id)
           print('pending_age_minutes=' + f'{age:.1f}')

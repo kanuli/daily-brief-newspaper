@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from desk_freshness_policy import current_daily_dates
+from verified_draft_pending import pending_verified_draft
 
 HKT = timezone(timedelta(hours=8))
 SOFT_TARGETS = {
@@ -114,19 +115,7 @@ def pending_live_draft(
     now: datetime,
     live: dict[str, Any] | None = None,
 ) -> bool:
-    if prepublish.get("status") != "VERIFIED_DRAFT" or prepublish.get("publicationType") != "LIVE":
-        return False
-    if not prepublish.get("articles"):
-        return False
-    draft_id = str(prepublish.get("draftId") or "").strip()
-    published_draft_id = str(((live or {}).get("coverage") or {}).get("verifiedDraftId") or "").strip()
-    # A verified draft that already produced the current Live snapshot is consumed.
-    # Treating it as pending causes the Editor-in-Chief to redispatch the same
-    # publisher forever and prevents the producer from making the next edition.
-    if draft_id and published_draft_id == draft_id:
-        return False
-    created = parse_iso(prepublish.get("createdAt"))
-    return bool(created and 0 <= (now - created).total_seconds() <= 120 * 60)
+    return pending_verified_draft(prepublish, now, live)
 
 
 def producer_capacity_blocked(capacity: dict[str, Any], now: datetime) -> bool:
