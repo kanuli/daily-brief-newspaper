@@ -140,7 +140,7 @@ jobs:
         run: |
           set -euo pipefail
           gh workflow run pages.yml --ref main
-          gh workflow run discord-notify.yml --ref main
+          gh workflow run discord-notify.yml --ref main -f notification_type=daily
           echo "DAILY_RECOVERY_DOWNSTREAM_DISPATCHED pages=true discord=true"
 
       - name: Recovery status
