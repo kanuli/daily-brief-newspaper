@@ -476,20 +476,29 @@ def apply_previous_outcomes(
             before_live = ((prior or {}).get("outcomeBefore") or {}).get("liveLastUpdated")
             current_live = snapshot.get("liveLastUpdated")
             progress = bool(before_live and current_live and current_live != before_live)
-            if row.get("status") == "external-failover-stuck":
+            if progress:
+                row["attempt"] = 1
+                row["previousOutcome"] = {
+                    "cycleId": previous.get("cycleId"),
+                    "progress": True,
+                    "mode": (prior or {}).get("mode"),
+                    "attempt": prior_attempt,
+                    "evaluation": "external-publisher-progress-reset",
+                }
+            elif row.get("status") == "external-failover-stuck":
                 row["attempt"] = prior_attempt + 1 if prior else 1
                 row["previousOutcome"] = {
                     "cycleId": previous.get("cycleId"),
-                    "progress": progress,
+                    "progress": False if before_live else None,
                     "mode": (prior or {}).get("mode"),
                     "attempt": prior_attempt,
-                    "evaluation": "external-publisher-no-progress" if not progress else "external-capacity-failover",
+                    "evaluation": "external-publisher-no-progress",
                 }
             elif prior:
-                row["attempt"] = prior_attempt
+                row["attempt"] = prior_attempt + 1 if before_live else prior_attempt
                 row["previousOutcome"] = {
                     "cycleId": previous.get("cycleId"),
-                    "progress": progress if before_live else None,
+                    "progress": False if before_live else None,
                     "mode": prior.get("mode"),
                     "attempt": prior_attempt,
                     "evaluation": "external-capacity-failover",
