@@ -139,9 +139,19 @@ def producer_capacity_blocked(capacity: dict[str, Any], now: datetime) -> bool:
 
 
 def daily_recovery_required(latest: dict[str, Any], editor: dict[str, Any], now: datetime) -> bool:
-    """Daily owns its edition/structure, not unrelated Live or desk failures."""
+    """Daily owns its edition/structure; stale EIC evidence cannot reopen it."""
     if str(latest.get("date") or "") not in current_daily_dates(now=now):
         return True
+
+    # If today's Daily was generated after the EIC audit snapshot, that audit
+    # cannot be authoritative about the newly written edition. Wait for a fresh
+    # audit rather than dispatching the stale-edition builder against a current
+    # Daily and falsely declaring it stuck.
+    generated = parse_iso(latest.get("generatedAt"))
+    checked = parse_iso(editor.get("checkedAt"))
+    if generated is not None and (checked is None or checked < generated):
+        return False
+
     if any(
         isinstance(row, dict) and row.get("name") == "daily-v3" and row.get("ok") is False
         for row in (editor.get("validatorAudit") or [])
@@ -1114,6 +1124,23 @@ def main() -> int:
         now=now,
         trigger_robot=trigger_robot,
     )
+
+    # Current-slot repository evidence is authoritative. Do not carry hundreds
+    # of historical external-failover attempts after a same-hour Live write has
+    # actually succeeded.
+    if snapshot.get("externalPublisherSlotCurrent") is True:
+        for row in plan:
+            if str(row.get("status") or "").startswith("external-failover"):
+                prior_attempt = int(row.get("attempt") or 1)
+                row["attempt"] = 1
+                row["previousOutcome"] = {
+                    "cycleId": previous.get("cycleId"),
+                    "progress": True,
+                    "mode": row.get("mode"),
+                    "attempt": prior_attempt,
+                    "evaluation": "external-current-slot-satisfied",
+                }
+
     block_downstream_races(plan)
 
     cycle_id = make_cycle_id(now)
