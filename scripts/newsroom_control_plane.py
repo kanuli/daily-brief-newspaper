@@ -26,7 +26,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from daily_recovery_dependency import story_material
 from desk_freshness_policy import current_daily_dates
+from scheduled_publication_contract import CONTRACT, daily_payload_error, is_scheduled, publisher_errors
 from verified_draft_pending import pending_verified_draft
 
 HKT = timezone(timedelta(hours=8))
@@ -516,6 +518,38 @@ def apply_previous_outcomes(
             continue
         if not prior:
             continue
+        if row["robot"] == "desk-merge" and snapshot.get("scheduledLive"):
+            prior_snapshot = prior.get("outcomeBefore") or {}
+            previous_input = prior_snapshot.get("scheduledLiveInputSha256")
+            current_input = snapshot.get("scheduledLiveInputSha256")
+            previous_live = parse_iso(prior_snapshot.get("scheduledLiveInputAt") or prior_snapshot.get("liveLastUpdated"))
+            current_live = parse_iso(snapshot.get("liveLastUpdated"))
+            # Existing assignments recorded only the Live clock. Start their
+            # validated epoch on a strictly newer, contract-compliant snapshot.
+            # After migration, metadata-only changes cannot reset attempts.
+            changed = current_input and previous_live and current_live and (
+                (previous_input and current_live >= previous_live and current_input != previous_input)
+                or (not previous_input and current_live > previous_live)
+            )
+            if changed and row.get("dispatchable"):
+                row["previousOutcome"] = {
+                    "cycleId": previous.get("cycleId"), "progress": None,
+                    "mode": prior.get("mode"), "attempt": prior.get("attempt", 1),
+                    "evaluation": "new-verified-scheduled-live-input",
+                }
+                continue
+            if prior.get("status") == "stuck":
+                row.update(status="stuck", dispatchable=False, requiresEditorReplan=True,
+                           attempt=prior.get("attempt", 3))
+                if previous_input and previous_live and (not current_input or not current_live
+                                                         or current_live < previous_live):
+                    # An invalid or regressing cycle cannot erase the identity
+                    # of the verified input that exhausted the retry budget.
+                    row["outcomeBefore"] = {
+                        **snapshot, "scheduledLiveInputSha256": previous_input,
+                        "scheduledLiveInputAt": previous_live.isoformat(),
+                    }
+                continue
         execution = execution_for(previous, row["workflow"])
         # "already-active" is ownership evidence, not a completed attempt. Never
         # escalate a healthy in-flight robot merely because its output has not
@@ -681,6 +715,19 @@ def main() -> int:
     probe_evidence = public_probe_evidence(pages, now, required_after)
     snapshot.update(probe_evidence)
     probe_recovery = public_probe_recovery(previous, probe_evidence)
+    if is_scheduled(live):
+        snapshot["scheduledLive"] = True
+        if (live.get("publicationContract") == CONTRACT
+                and live.get("date") in current_daily_dates(now=now)
+                and not publisher_errors(live, now=now)):
+            material = []
+            for item in live["items"]:
+                story = story_material(item)
+                story.pop("id", None)
+                material.append(json.dumps(story, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+            snapshot["scheduledLiveInputSha256"] = hashlib.sha256(
+                json.dumps(sorted(material), ensure_ascii=False, separators=(",", ":")).encode()
+            ).hexdigest()
     snapshot["producerCapacityStatus"] = producer_capacity.get("status")
     snapshot["producerCapacityCheckedAt"] = producer_capacity.get("checkedAt")
     snapshot["producerCapacityBlockedUntil"] = producer_capacity.get("blockedUntil")
@@ -878,7 +925,11 @@ def main() -> int:
     # Daily needs a genuinely current verified Desk and eight Daily-safe stories.
     # Resolve this prerequisite before writer/race checks so a waiting Daily
     # cannot prevent newer verified Live from reaching Desk Merge.
-    if daily_recovery_required(latest, editor, now):
+    scheduled_daily_damage = (
+        is_scheduled(live) and latest.get("date") == daily_input["requiredEdition"]
+        and daily_payload_error(latest) is not None
+    )
+    if scheduled_daily_damage or daily_recovery_required(latest, editor, now):
         add_assignment(
             plan, robots, "daily-recovery", "daily-currentness",
             "repository Daily edition/currentness or Daily structure failed",
@@ -886,10 +937,9 @@ def main() -> int:
         daily_row = next(row for row in plan if row["robot"] == "daily-recovery")
         daily_row.update(daily_decision)
         daily_row["blockedBy"] = ["verified-current-rolling-desk"] if not daily_input["ready"] else []
-        if str(latest.get("date") or "") >= daily_input["requiredEdition"]:
-            # This builder only recovers a stale edition; its current-edition
-            # NOOP cannot repair malformed current copy. Escalate honestly,
-            # rather than repeatedly dispatch or pretend Desk is the blocker.
+        if daily_input.get("datedSourceSha256"):
+            daily_row["datedSourceSha256"] = daily_input["datedSourceSha256"]
+        elif not is_scheduled(live) and str(latest.get("date") or "") >= daily_input["requiredEdition"]:
             daily_row.update(
                 status="stuck", dispatchable=False, requiresEditorReplan=True,
                 blockedBy=[], reason="current-daily-structural-fault-not-repairable-by-stale-edition-builder",

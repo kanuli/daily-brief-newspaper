@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from atomic_publish import atomic_write_json
 from desk_retention import keep_on_desk
 from desk_freshness_policy import editorial_story_time, routed_slugs
+from scheduled_publication_contract import desk_freshness_errors, is_scheduled, require_publisher_live
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -229,9 +230,15 @@ def routing_integrity(desks):
     return all(observed.get(ident, set()) == routes for ident, routes in expected.items())
 
 
-def main():
-    live = load(LIVE)
-    desk = load(DESK)
+def merge(live, desk, *, now=None):
+    """Build both candidates before touching either publication file."""
+    live = copy.deepcopy(live)
+    desk = copy.deepcopy(desk)
+    scheduled = is_scheduled(live)
+    if scheduled:
+        require_publisher_live(live, now=now)
+    if "coverage" in live and not isinstance(live["coverage"], dict):
+        raise SystemExit("LIVE_COVERAGE_SHAPE_HOLD coverage must be an object")
     desks = desk.setdefault("desks", {})
     expired_cross_posts = []
     quarantined = desk.setdefault("quarantinedStories", [])
@@ -358,7 +365,7 @@ def main():
     depth_met = all(counts[slug] >= minimum for slug, minimum in FLOORS.items())
     raw_source_gate = bool(coverage.get("sourceGateMet", coverage.get("sourceGate", False)))
     derived_source_gate = bool(live_items) and all(item_has_public_source(item) for item in live_items)
-    source_gate = raw_source_gate or derived_source_gate
+    source_gate = derived_source_gate if scheduled else raw_source_gate or derived_source_gate
     # Geographic/routing readiness must describe the repaired publication
     # state, not the raw producer snapshot. The merge has recalculated every
     # route, removed unrelated cross-posts, and routing_integrity() requires
@@ -370,7 +377,13 @@ def main():
     # siblings can still advance, while a fully accepted non-empty payload is
     # safe to publish.
     copy_gate = bool(live_items) and not quarantined_live_items
-    publication_ready = depth_met and source_gate and copy_gate and geographic_gate and football_gate
+    freshness_errors = desk_freshness_errors(desks, now=now) if scheduled else []
+    publication_ready = (depth_met and source_gate and copy_gate and geographic_gate
+                         and football_gate and not freshness_errors)
+    if scheduled:
+        coverage["deskFreshnessMet"] = not freshness_errors
+        if freshness_errors:
+            coverage["blockingIssues"] = freshness_errors
     coverage["deskLatestStoryCounts"] = counts
     coverage["deskLatestDepthMet"] = depth_met
     coverage["japanCountVerified"] = counts["japan"]
@@ -386,8 +399,6 @@ def main():
 
     # Never truncate a canonical publication in place. Both candidates have
     # passed all schema/depth/routing gates above before the atomic replace.
-    atomic_write_json(DESK, desk)
-    atomic_write_json(LIVE, live)
     for slug, item_id, reason in newly_quarantined:
         print("ROLLING DESK QUARANTINED RETAINED ITEM", slug, item_id, reason)
     if quarantined_live_items:
@@ -395,7 +406,14 @@ def main():
             print("ROLLING DESK QUARANTINED LIVE ITEM", item_id, reason)
     if expired_cross_posts:
         print("ROLLING DESK EXPIRED CROSS-POSTS", expired_cross_posts)
-    print("ROLLING DESK MERGE OK", counts)
+    return live, desk
+
+
+def main():
+    live, desk = merge(load(LIVE), load(DESK))
+    atomic_write_json(DESK, desk)
+    atomic_write_json(LIVE, live)
+    print("ROLLING DESK MERGE OK", live["coverage"]["deskLatestStoryCounts"])
 
 
 if __name__ == "__main__":

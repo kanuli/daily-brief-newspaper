@@ -10,6 +10,8 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from scheduled_publication_contract import is_scheduled
+
 HKT = timezone(timedelta(hours=8))
 MAX_ATTEMPTS = 3
 MATERIAL_FIELDS = (
@@ -109,6 +111,7 @@ def inspect_daily_dependency(*, now, desk, live, builder, integrity_state, integ
         "reason": None,
         "readOnlyPreflight": True,
     }
+    scheduled = is_scheduled(live)
     live_at = parse_time(live.get("lastUpdated"))
     coverage = live.get("coverage") if isinstance(live.get("coverage"), dict) else {}
     verified_at = parse_time(coverage.get("verifiedDraftCreatedAt"))
@@ -125,15 +128,29 @@ def inspect_daily_dependency(*, now, desk, live, builder, integrity_state, integ
     # minutes before draft completion. That slot is not the verification clock.
     # Require the actual strict draft verification to have completed by this
     # observation, while retaining current-edition, source/copy and Desk gates.
-    elif not coverage_ok or verified_at is None or verified_at > now or verified_at.astimezone(HKT).date().isoformat() < target:
+    elif not scheduled and (
+        not coverage_ok or verified_at is None or verified_at > now
+        or verified_at.astimezone(HKT).date().isoformat() < target
+    ):
         evidence["reason"] = "await-current-verified-live-source"
     else:
         try:
-            daily, meta = builder.build(now=now)
+            # The Scheduled Publisher has no legacy Producer draft ID. The
+            # canonical builder verifies its Live, final Desk and source evidence.
+            daily, meta = builder.build(now=now, restore_invalid_current=scheduled)
             if meta.get("changed") is not True:
                 evidence["reason"] = "daily-already-current-or-no-recovery-input"
             elif len(daily.get("articles") or []) < 8:
                 evidence["reason"] = "await-eight-daily-safe-current-stories"
+            elif meta.get("recoveryMode") == "RESTORE_VERIFIED_SAME_DATE_DAILY":
+                # One separate bounded restore budget per edition. Replacing
+                # the archive or retrying the same one cannot mint a new budget.
+                evidence.update(
+                    inputKey=hashlib.sha256(f"restore-dated-daily-v1:{target}".encode()).hexdigest(),
+                    datedSourceSha256=meta["datedSourceSha256"],
+                    ready=True,
+                    reason="verified-same-date-archive-restore",
+                )
             elif input_fingerprint(target, daily["articles"], daily["sections"]) != evidence["inputKey"]:
                 evidence["reason"] = "preflight-selection-not-consistent-with-canonical-builder"
             else:
@@ -216,7 +233,7 @@ def daily_budget(previous, evidence):
             if known is not None:
                 # Reappearing old inputs retain their original spent budget.
                 active = known
-            elif new_edition or new_selected_material:
+            elif new_edition or new_selected_material or evidence.get("datedSourceSha256"):
                 active = {"inputKey": evidence["inputKey"], "requiredEdition": evidence["requiredEdition"], "dispatchesUsed": 0, "executionIds": []}
                 state["epochs"].append(active)
             # Otherwise retain the active epoch and its attempts: a clock-only

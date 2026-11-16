@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import datetime
 import json
 import os
@@ -9,10 +10,13 @@ import sys
 
 from desk_freshness_policy import (
     PUBLIC_DESK_FRESHNESS_HOURS,
+    current_daily_dates,
     editorial_story_time,
     newest_age_hours,
     routed_slugs,
 )
+
+from scheduled_publication_contract import desk_checkpoint_errors, is_scheduled, require_publisher_live
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -78,10 +82,18 @@ def publication_dates_align(latest_date, live_date):
     return live == daily or live == daily + datetime.timedelta(days=1)
 
 
-def validate_live(latest, live, desk):
+def validate_live(latest, live, desk, *, rolling_desk_checkpoint=False, now=None):
     mode = str(live.get("mode") or "").upper()
+    if is_scheduled(live):
+        now = now or datetime.datetime.now(datetime.timezone.utc)
+        require_publisher_live(live, now=now)
+        if not rolling_desk_checkpoint:
+            need(latest.get("date") in current_daily_dates(now=now), "Scheduled Live requires an independently current Daily edition")
+        checkpoint_errors = desk_checkpoint_errors(live, desk, now=now)
+        need(not checkpoint_errors, "Scheduled Live checkpoint HOLD: " + "; ".join(checkpoint_errors))
     need(mode in {"LIVE", "HOURLY_LIVE", "LIVE_INCREMENTAL", "LIVE_UPDATE", "DAILY_BASELINE"}, f"live mode invalid: {mode!r}")
-    need(publication_dates_align(latest.get("date"), live.get("date")), "live date must match Daily date or immediate overnight handoff date")
+    if not (rolling_desk_checkpoint and is_scheduled(live)):
+        need(publication_dates_align(latest.get("date"), live.get("date")), "live date must match Daily date or immediate overnight handoff date")
     for key in ("lastUpdated", "lastUpdatedLabel", "windowLabel", "nextUpdateLabel"):
         need(isinstance(live.get(key), str) and live[key].strip(), f"live missing {key}")
     items = live.get("items")
@@ -202,11 +214,18 @@ def report_voice_currentness_nonblocking():
 
 
 def main():
-    latest = load("latest.json")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--rolling-desk-checkpoint", action="store_true")
+    args = parser.parse_args()
     live = load("live.json")
+    checkpoint = args.rolling_desk_checkpoint and is_scheduled(live)
+    latest = {} if checkpoint else load("latest.json")
     desk = load("desk-latest.json")
     validate_desks(desk)
-    validate_live(latest, live, desk)
+    validate_live(latest, live, desk, rolling_desk_checkpoint=checkpoint)
+    if checkpoint:
+        print("ROLLING_DESK_CHECKPOINT_VALIDATION_OK", live["lastUpdated"])
+        return
     print("CURRENT_PUBLICATION_TEXT_VALIDATION_OK", live["windowLabel"], f"mode={live['mode']}", f"items={len(live['items'])}", f"japan={len(desk['desks']['japan'])}", f"next={live['nextUpdateLabel']}")
     report_voice_currentness_nonblocking()
 

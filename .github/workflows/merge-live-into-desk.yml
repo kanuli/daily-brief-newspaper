@@ -31,6 +31,22 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
 
+      - name: Preflight checked-out Live before publication writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/scheduled_publication_contract.py data/live.json \
+            --merge-commit "$(git rev-parse HEAD)" | tee "$RUNNER_TEMP/rolling-desk-live-preflight.json"
+
+      - name: Retain Live preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rolling-desk-live-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rolling-desk-live-preflight.json
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Regression test atomic publication guard
         shell: bash
         run: python scripts/test_atomic_publish.py
@@ -56,17 +72,8 @@ jobs:
             exit 0
           fi
           git commit -m "Normalize Daily v3 sections index"
-          for attempt in 1 2 3 4 5; do
-            if git push origin HEAD:main; then
-              echo "DAILY_SCHEMA_CHECKPOINT_PASS"
-              exit 0
-            fi
-            sleep $((attempt * 2))
-            git fetch origin main
-            git rebase origin/main
-          done
-          echo "Daily schema repair could not push after retries" >&2
-          exit 1
+          python scripts/push_publication_checkpoint.py
+          echo "DAILY_SCHEMA_CHECKPOINT_PASS"
 
       - name: Restore complete reservoir after destructive overwrite
         shell: bash
@@ -86,33 +93,35 @@ jobs:
             exit 0
           fi
           git commit -m "Restore complete Rolling Desk reservoir after destructive overwrite"
-          for attempt in 1 2 3 4 5; do
-            if git push origin HEAD:main; then
-              echo "ROLLING_DESK_RESERVOIR_CHECKPOINT_PASS"
-              exit 0
-            fi
-            sleep $((attempt * 2))
-            git fetch origin main
-            git rebase origin/main
-          done
-          echo "Rolling Desk emergency reservoir checkpoint could not push after retries" >&2
-          exit 1
+          python scripts/push_publication_checkpoint.py
+          echo "ROLLING_DESK_RESERVOIR_CHECKPOINT_PASS"
 
       - name: Catch up missed Live snapshots
         shell: bash
-        run: python scripts/catch_up_live_into_desk.py
+        run: |
+          set -o pipefail
+          python scripts/catch_up_live_into_desk.py 2>&1 | tee "$RUNNER_TEMP/rolling-desk-catchup.log"
+
+      - name: Retain rejected snapshot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rolling-desk-catchup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rolling-desk-catchup.log
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Sync verified Daily into Rolling Desk
         shell: bash
         run: python scripts/sync_daily_into_desk.py
 
-      - name: Merge current Live snapshot
-        shell: bash
-        run: python scripts/merge_live_into_desk.py
-
       - name: Recover hard desk depth
         shell: bash
         run: python scripts/recover_desk_depth_watchdog.py
+
+      - name: Merge current Live and derive coverage from the final Desk
+        shell: bash
+        run: python scripts/merge_live_into_desk.py
 
       # This integrity gate is intentionally before the checkpoint below.  It
       # allows stale-but-complete emergency restoration earlier in the job, but
@@ -140,18 +149,9 @@ jobs:
           fi
           LIVE_LABEL=$(python -c 'import json; print(json.load(open("data/live.json",encoding="utf-8")).get("windowLabel", "Live"))')
           git commit -m "Persist verified Rolling Desk progress for ${LIVE_LABEL}"
-          for attempt in 1 2 3 4 5; do
-            if git push origin HEAD:main; then
-              echo "changed=true" >> "$GITHUB_OUTPUT"
-              echo "ROLLING_DESK_PROGRESS_CHECKPOINT_PASS ${LIVE_LABEL}"
-              exit 0
-            fi
-            sleep $((attempt * 2))
-            git fetch origin main
-            git rebase origin/main
-          done
-          echo "Rolling Desk progress checkpoint could not push after retries" >&2
-          exit 1
+          python scripts/push_publication_checkpoint.py
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "ROLLING_DESK_PROGRESS_CHECKPOINT_PASS ${LIVE_LABEL}"
 
       # Freshness remains fail-closed. Old dated recovery templates were removed
       # from this workflow because once their real timestamps expire they cannot
@@ -160,9 +160,9 @@ jobs:
         shell: bash
         run: python scripts/validate_desk_freshness.py
 
-      - name: Validate current publication
+      - name: Validate Rolling Desk checkpoint for the separate Daily stage
         shell: bash
-        run: python scripts/validate_publication_current.py
+        run: python scripts/validate_publication_current.py --rolling-desk-checkpoint
 
       - name: Audit Traditional Chinese TTS coverage
         shell: bash

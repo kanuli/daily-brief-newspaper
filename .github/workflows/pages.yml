@@ -108,7 +108,11 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          import sys
           from pathlib import Path
+          sys.path.insert(0, "scripts")
+          from scheduled_publication_contract import is_scheduled
+          from validate_publication_current import validate_live
           required=['data/latest.json','data/live.json','data/desk-latest.json','data/stocks-latest.json']
           loaded={name:json.loads(Path(name).read_text(encoding='utf-8')) for name in required}
           live=loaded['data/live.json']; desk=loaded['data/desk-latest.json']; items=live.get('items'); mode=str(live.get('mode') or '').upper(); coverage=live.get('coverage') or {}
@@ -124,6 +128,7 @@ jobs:
               if mode not in {'LIVE','HOURLY_LIVE','LIVE_INCREMENTAL','LIVE_UPDATE'} or not items: raise SystemExit(f'Hourly Live mode/items invalid: {mode}')
               if coverage.get('status') != 'COMPLETE' or coverage.get('publishingGateMet') is not True or coverage.get('deskLatestDepthMet') is not True or coverage.get('footballGateMet') is not True: raise SystemExit('Hourly Live coverage hard gates are not complete')
           if desk.get('generatedAt') != live.get('lastUpdated'): raise SystemExit(f"Rolling Desk behind Live: desk={desk.get('generatedAt')} live={live.get('lastUpdated')}")
+          if is_scheduled(live): validate_live(loaded['data/latest.json'], live, desk)
           print('PUBLIC_AVAILABILITY_GATE_OK',mode,live.get('windowLabel'),len(items),desk.get('generatedAt'))
           PY
 
@@ -177,6 +182,9 @@ jobs:
           print('NO_JS_PRERENDER_VERIFY_OK',len(pages))
           PY
 
+      - name: Bind pre-rendered publication to checked-out commit
+        run: python scripts/pages_publication_receipt.py
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload static site
@@ -193,11 +201,20 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
-          import json, os, time, urllib.request
+          import json, os, sys, time, urllib.request
+          from pathlib import Path
+          sys.path.insert(0, "scripts")
+          from pages_publication_receipt import RECEIPT, verify
+          expected_receipt=json.loads(Path(RECEIPT).read_bytes())
           base=os.environ['PAGE_URL'].rstrip('/')+'/'; local=json.load(open('data/live.json',encoding='utf-8')); expected=local.get('lastUpdated'); expected_mode=str(local.get('mode') or '').upper(); expected_items=len(local.get('items') or []); pages=['index.html','live.html','world.html','asia.html','hong-kong.html','japan.html','finance.html','stocks.html','technology.html','manga-anime.html','manchester-united.html','football.html','archive.html']
-          def get(path):
+          def get_bytes(path):
               req=urllib.request.Request(base+path+('?v=' if '?' not in path else '&v=')+str(int(time.time()*1000)),headers={'Cache-Control':'no-cache','Pragma':'no-cache','User-Agent':'daily-brief-pages-check'})
-              with urllib.request.urlopen(req,timeout=15) as r: return r.read().decode('utf-8','replace')
+              with urllib.request.urlopen(req,timeout=15) as r:
+                  raw=r.read(32 * 1024 * 1024 + 1)
+                  if len(raw) > 32 * 1024 * 1024: raise ValueError('public object exceeds verification bound')
+                  return raw
+          def get(path):
+              return get_bytes(path).decode('utf-8','replace')
           last=None
           for _ in range(12):
               try:
@@ -207,6 +224,7 @@ jobs:
                       text=get(page)
                       if '<html' not in text.lower(): raise RuntimeError(page+' invalid HTML')
                       if 'retail-deals.html' in text: raise RuntimeError(page+' contains retired Retail link')
+                  verify(get_bytes, expected_receipt)
                   runtime=get('assets/js/system-panel.js')
                   if 'retail-deals.html' in runtime or '🛒 最新優惠' in runtime: raise RuntimeError('public retired Retail nav remains')
                   if not (runtime.index('⚽ Football') < runtime.index('🗂️ Archive')): raise RuntimeError('public nav order stale')

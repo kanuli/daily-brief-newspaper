@@ -34,11 +34,13 @@ jobs:
         run: |
           set -euo pipefail
           before=$(python -c 'import json; print(json.load(open("data/latest.json",encoding="utf-8")).get("date",""))')
-          python scripts/build_today_daily_from_desk.py --write | tee /tmp/daily-recovery.json
+          before_blob=$(git hash-object -- data/latest.json)
+          python scripts/build_today_daily_from_desk.py --write --restore-invalid-current | tee /tmp/daily-recovery.json
+          after_blob=$(git hash-object -- data/latest.json)
           after=$(python -c 'import json; print(json.load(open("data/latest.json",encoding="utf-8")).get("date",""))')
           echo "before=${before}" >> "$GITHUB_OUTPUT"
           echo "after=${after}" >> "$GITHUB_OUTPUT"
-          if [ "$before" != "$after" ]; then
+          if [ "$before_blob" != "$after_blob" ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -90,56 +92,36 @@ jobs:
           PY
 
       - name: Commit recovered Daily and archive to main
+        id: persist
         shell: bash
         run: |
           set -euo pipefail
+          echo "daily_persisted=false" >> "$GITHUB_OUTPUT"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          stage_and_commit() {
-            git add -- data/latest.json data/archive.json data/topic-more editions
-            git add -- data/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].json
-            if git diff --cached --quiet; then
-              echo "TODAY_DAILY_ARCHIVE_RECOVERY_NOOP"
-              return 1
-            fi
-            current=$(python -c 'import json; print(json.load(open("data/latest.json",encoding="utf-8")).get("date","unknown"))')
-            git commit -m "Self-heal Daily and archive through ${current}"
-            return 0
-          }
-
-          if ! stage_and_commit; then
+          git add -- data/latest.json data/archive.json data/topic-more editions
+          git add -- data/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].json
+          if git diff --cached --quiet; then
+            echo "TODAY_DAILY_ARCHIVE_RECOVERY_NOOP"
             exit 0
           fi
-
-          for attempt in 1 2 3 4 5; do
-            if git push origin HEAD:main; then
-              echo "TODAY_DAILY_ARCHIVE_RECOVERY_PUSHED"
-              exit 0
-            fi
-            echo "Push race on attempt ${attempt}; rebuilding from latest main"
-            git fetch origin main
-            git reset --hard origin/main
-            python scripts/build_today_daily_from_desk.py --write
-            python scripts/validate_daily_v3.py
-            python scripts/sync_daily_archive.py
-            if ! stage_and_commit; then
-              echo "Another producer already persisted the same recovery state."
-              exit 0
-            fi
-            sleep $((attempt * 2))
-          done
-          echo "Daily/archive recovery push failed after retries" >&2
-          exit 1
+          current=$(python -c 'import json; print(json.load(open("data/latest.json",encoding="utf-8")).get("date","unknown"))')
+          git commit -m "Self-heal Daily and archive through ${current}"
+          python scripts/push_publication_checkpoint.py
+          if [ "$(git diff --name-only HEAD^ HEAD -- data/latest.json)" = "data/latest.json" ]; then
+            echo "daily_persisted=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Dispatch downstream Pages and Discord after Daily recovery
-        if: steps.build.outputs.changed == 'true'
+        if: steps.build.outputs.changed == 'true' && steps.persist.outputs.daily_persisted == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
+          python scripts/push_publication_checkpoint.py --verify-only
           gh workflow run pages.yml --ref main
+          python scripts/push_publication_checkpoint.py --verify-only
           gh workflow run discord-notify.yml --ref main -f notification_type=daily
           echo "DAILY_RECOVERY_DOWNSTREAM_DISPATCHED pages=true discord=true"
 

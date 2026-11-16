@@ -50,10 +50,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export PAGES_SOURCE_COMMIT="$(git rev-parse HEAD)"
           python - <<'PY'
           import hashlib, html, json, os, subprocess, sys, time, urllib.request
           from datetime import datetime, timedelta, timezone
           from pathlib import Path
+          sys.path.insert(0, str(Path('scripts').resolve()))
+          from desk_freshness_policy import current_daily_dates, desk_is_fresh
 
           repo=os.environ.get('GITHUB_REPOSITORY','kanuli/daily-brief-newspaper')
           owner,name=repo.split('/',1)
@@ -127,6 +130,26 @@ jobs:
               coverage=live.get('coverage') or {}
               required=('deskLatestDepthMet','routingGateMet','sourceGateMet','copyGateMet','geographicGateMet','footballGateMet','publishingGateMet')
               return str(coverage.get('status','')).upper()=='COMPLETE' and all(coverage.get(k) is True for k in required)
+
+          def publication_current(daily, live, desk, now):
+              """Require publishing freshness independently of replica parity."""
+              if not all(isinstance(item,dict) for item in (daily,live,desk)):
+                  return {'dailyCurrent':False,'liveCurrent':False,'staleDesks':sorted(floors),'current':False}
+              daily_current=daily.get('date') in current_daily_dates(now=now)
+              live_updated=parse_iso(live.get('lastUpdated'))
+              live_current=bool(live_updated and live_updated<=now and
+                                live_updated.astimezone(HKT).date().isoformat() in current_daily_dates(now=now))
+              local=now.astimezone(HKT)
+              # The newsroom dispatcher treats an active slot as due after
+              # ten minutes. Start-of-hour grace and Daily handover stay intact.
+              if live_current and local.minute>=10 and (local.hour in (0,6,7) or 9<=local.hour<=23):
+                  current_slot=local.replace(minute=0,second=0,microsecond=0)
+                  live_current=live_updated>=current_slot
+              desks=desk.get('desks')
+              stale=sorted(slug for slug in floors if not isinstance(desks,dict)
+                           or not isinstance(desks.get(slug),list) or not desk_is_fresh(slug,desks[slug],now=now))
+              return {'dailyCurrent':daily_current,'liveCurrent':live_current,'staleDesks':stale,
+                      'current':bool(daily_current and live_current and not stale)}
 
           def stock_contract(stocks):
               if not isinstance(stocks,dict): return False
@@ -227,6 +250,7 @@ jobs:
 
           # Voice readiness is reported independently and never blocks text/news publication.
           overall=bool(daily_match and live_match and desk_match and stock_match and all_pages_ok and runtime_match)
+          editorial_current=publication_current(remote_latest,remote_live,remote_desk,now)
           payload={
               'checkedAt':now.isoformat(),'checkedAtHKT':now_hkt.isoformat(),'publicBaseUrl':root,
               'dailyMatch':daily_match,'liveMatch':live_match,'publicationComplete':publication_complete(remote_live),
@@ -236,6 +260,13 @@ jobs:
               'runtimeMatch':runtime_match,'runtimeChecks':runtime_checks,
               'retailRetiredContract':all(not x.get('retailStale',False) for x in page_checks.values()),
               'match':overall,'error':error,
+              'sourceCommit':os.environ.get('PAGES_SOURCE_COMMIT'),
+              'probeRunId':int(os.environ.get('GITHUB_RUN_ID','0')),
+              'probeRunAttempt':int(os.environ.get('GITHUB_RUN_ATTEMPT','0')),
+              'observedLiveAt':remote_live.get('lastUpdated') if isinstance(remote_live,dict) else None,
+              'observedDeskAt':remote_desk.get('generatedAt') if isinstance(remote_desk,dict) else None,
+              'publicationCurrentness':editorial_current,
+              'publicationRecoveryVerified':bool(overall and editorial_current['current']),
           }
           open('/tmp/pages-live-status.json','w',encoding='utf-8').write(json.dumps(payload,ensure_ascii=False,indent=2)+'\n')
           print(json.dumps(payload,ensure_ascii=False))

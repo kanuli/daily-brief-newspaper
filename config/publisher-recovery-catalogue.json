@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "robot": "public-probe",
+  "branch": "cantonese_newspaper",
+  "owner": "Editor-in-Chief",
+  "actions": {
+    "RECHECK_RESERVED_DRAFT": {
+      "scope": "READ_ONLY",
+      "budget": 1,
+      "cooldown_minutes": 15,
+      "precondition": "draft shape or original article time is invalid",
+      "required_evidence": "bound draft and Producer schedule",
+      "expected": "invalid reservation rejected",
+      "verify": "recompute pending state",
+      "rollback": "none",
+      "escalate": "EIC obtains approved replacement draft"
+    },
+    "INSPECT_EXECUTION": {
+      "scope": "READ_ONLY",
+      "budget": 1,
+      "cooldown_minutes": 15,
+      "precondition": "workflow state or receipt gap",
+      "required_evidence": "Assigned GitHub runId, runAttempt, headSha; complete bounded job page; external Publisher remains a distinct interface",
+      "expected": "bounded correlated evidence",
+      "verify": "Compare exact assigned run/attempt/commit; incomplete job page or contradiction remains HOLD",
+      "rollback": "none",
+      "escalate": "EIC requests missing original executor receipt"
+    },
+    "RECHECK_PUBLICATION": {
+      "scope": "READ_ONLY",
+      "budget": 1,
+      "cooldown_minutes": 15,
+      "precondition": "editorial or public freshness gate",
+      "required_evidence": "current Live, Desk, publisher and public probe receipts",
+      "expected": "PASS evidence candidate or HOLD",
+      "verify": "EIC review then independent CTO evidence",
+      "rollback": "none",
+      "escalate": "EIC verifies material and obtains independent CTO sample"
+    },
+    "RECONCILE_SCHEDULED_OUTCOME": {
+      "scope": "READ_ONLY",
+      "budget": 1,
+      "cooldown_minutes": 15,
+      "precondition": "known original Scheduled Publisher has missing, failed or unbound execution evidence",
+      "required_evidence": "original task ID; explicit evidence provenance; original execution and GitHub receipts if available",
+      "expected": "separate enablement, run, commit and publication states; HOLD pending independent verification",
+      "verify": "no safety-block retry; no enablement-to-success promotion; task/branch binding",
+      "rollback": "none; retain prior audit",
+      "escalate": "EIC obtains official task receipt; safety-blocked write requires original safety review, never alternate channel"
+    },
+    "INSPECT_PUBLICATION_CONTRACT": {
+      "scope": "READ_ONLY",
+      "budget": 1,
+      "cooldown_minutes": 15,
+      "precondition": "scheduled Live schema or checkpoint mismatch",
+      "required_evidence": "Exact committed Live and Rolling Desk, EIC dispatch receipt, and Pages result",
+      "expected": "field or gate error bound to the existing incident",
+      "verify": "validate same commit and deployment, followed by EIC and CTO review",
+      "rollback": "none",
+      "escalate": "EIC returns the specified field or checkpoint to the existing Publisher and merge workflow"
+    }
+  },
+  "dispatch": "existing protected main EIC workflow, inline public-probe capability only",
+  "max_attempts_per_evidence_binding": 2,
+  "idempotency": "catalogue version + stable fault/evidence identity",
+  "production_changes": "REQUIRES_SEPARATE_EXACT_AUTHORIZATION",
+  "interrupted_execution": "Persist explicit HOLD; resume prior evidence binding and budgets; never promote retained prior result to current success",
+  "revision": "V10_EIC_PUBLICATION_DISPATCH"
+}

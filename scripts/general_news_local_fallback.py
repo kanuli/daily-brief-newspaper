@@ -436,8 +436,22 @@ def source_packet(candidate: dict[str, Any]) -> dict[str, str] | None:
     }
 
 
+def direct_source_rank(row: dict[str, Any]) -> int:
+    """Prefer original article links over links requiring a locator round trip."""
+    try:
+        url = urllib.parse.urlparse(clean(row.get("url")))
+        host = (url.hostname or "").lower().rstrip(".")
+    except ValueError:
+        return 0
+    if (url.scheme not in {"https", "http"} or not host or url.username or url.password
+            or host in {"news.google.com", "bing.com", "www.bing.com"}
+            or locator_only_url(url.geturl())):
+        return 0
+    return 1
+
+
 def bounded_source_queue(request: dict[str, Any]) -> list[dict[str, Any]]:
-    """Rank existing trusted candidates fairly without preselecting availability."""
+    """Spend the bounded probe budget on direct candidates first, fairly by desk."""
     stale = list(dict.fromkeys(clean(desk) for desk in (request.get("staleDesks") or []) if clean(desk)))
     by_desk: dict[str, list[dict[str, Any]]] = {}
     for row in request.get("candidates") or []:
@@ -453,6 +467,7 @@ def bounded_source_queue(request: dict[str, Any]) -> list[dict[str, Any]]:
                          and row.get("provider") == "Jiji Official RSS"
                          and row.get("desk") == "japan"
                          and re.fullmatch(r"https://www\.jiji\.com/jc/article\?k=[0-9]{13}&g=(?:pol|soc)&m=rss", clean(row.get("url"))))),
+                direct_source_rank(row),
                 int(bool(re.search(r"政府|gov\.|official|uefa|fifa|afc|nhk|香港電台", clean(row.get("source")), re.I))),
                 clean(row.get("publishedAt")),
             ),
@@ -480,7 +495,9 @@ def bounded_source_queue(request: dict[str, Any]) -> list[dict[str, Any]]:
             if cid not in seen_ids:
                 queue.append(row)
                 seen_ids.add(cid)
-    return queue
+    # Stable partition keeps round-robin order within each group. An original
+    # link still has to pass the unchanged fetch, source and editorial gates.
+    return sorted(queue, key=direct_source_rank, reverse=True)
 
 
 def monotonic_run_deadline(deadline_unix: str | None) -> float:

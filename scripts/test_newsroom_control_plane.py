@@ -210,7 +210,8 @@ def pending(d):
         "publicationType": "LIVE",
         "draftId": "draft-1",
         "createdAt": NOW_ISO,
-        "articles": [{"id": "x"}],
+        "targetPublication": "2026-10-06T08:56:00Z",
+        "articles": [{"id": "x", "publishedAt": NOW_ISO}],
     }
 
 r = run_case(mutate=pending)

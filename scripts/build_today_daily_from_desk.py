@@ -19,13 +19,16 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from atomic_publish import atomic_write_text
 from desk_freshness_policy import editorial_story_time
 from validate_daily_v3 import validate_story
+from scheduled_publication_contract import daily_payload_error, desk_checkpoint_errors, is_scheduled, require_publisher_live
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -111,17 +114,26 @@ def required_daily_target(now_hkt: datetime) -> tuple[str, datetime, str]:
     return target_date.isoformat(), reference_hkt.astimezone(timezone.utc), mode
 
 
-def build(now: datetime | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+def build(now: datetime | None = None, *, restore_invalid_current: bool = False) -> tuple[dict[str, Any], dict[str, Any]]:
     actual_now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     now_hkt = actual_now.astimezone(HKT)
     target, reference, recovery_mode = required_daily_target(now_hkt)
     target_date = datetime.fromisoformat(target).date()
 
     latest_path = DATA / "latest.json"
-    previous = load(latest_path)
+    try:
+        previous_bytes = latest_path.read_bytes()
+        previous = json.loads(previous_bytes)
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise SystemExit("DAILY_LATEST_IDENTITY_UNREADABLE_HOLD") from exc
+    if not isinstance(previous, dict):
+        raise SystemExit("DAILY_LATEST_IDENTITY_UNREADABLE_HOLD")
     previous_date = str(previous.get("date") or "")
+    repair = previous_date == target and daily_payload_error(previous) is not None
+    if repair and not restore_invalid_current:
+        raise SystemExit("DAILY_SAME_DATE_REPAIR_AUTHORIZATION_HOLD")
 
-    if previous_date >= target:
+    if previous_date >= target and not repair:
         reason = "daily-already-current" if previous_date == target else "daily-newer-than-required-target"
         return previous, {
             "changed": False,
@@ -133,6 +145,14 @@ def build(now: datetime | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
 
     desk_path = DATA / "desk-latest.json"
     desk = load(desk_path)
+    live_path = DATA / "live.json"
+    live = load(live_path) if live_path.is_file() else {}
+    if repair and not is_scheduled(live):
+        raise SystemExit("DAILY_SAME_DATE_LIVE_PROVENANCE_HOLD")
+    if is_scheduled(live):
+        require_publisher_live(live, now=actual_now)
+        if errors := desk_checkpoint_errors(live, desk, now=actual_now):
+            raise SystemExit("DAILY_SCHEDULED_LIVE_DESK_CHECKPOINT_HOLD " + "; ".join(errors))
     desk_date = str(desk.get("date") or "")
     effective_desk_date = desk_date
     generated_at = str(desk.get("generatedAt") or desk.get("lastUpdated") or "")
@@ -151,6 +171,24 @@ def build(now: datetime | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
             f"desk date={desk_date} generatedAt={generated_at or 'missing'} "
             f"effective date={effective_desk_date} required={target}"
         )
+
+    if repair:
+        dated_path = DATA / f"{target}.json"
+        try:
+            if dated_path.is_symlink():
+                raise ValueError("dated edition must be a regular publication file")
+            raw = dated_path.read_bytes()
+            replica = json.loads(raw.decode("utf-8"))
+        except (OSError, UnicodeError, ValueError) as exc:
+            raise SystemExit("DAILY_SAME_DATE_DATED_EDITION_HOLD") from exc
+        if (not isinstance(replica, dict) or replica.get("date") != target
+                or daily_payload_error(replica) is not None):
+            raise SystemExit("DAILY_SAME_DATE_DATED_EDITION_HOLD")
+        return replica, {
+            "changed": True, "date": target, "recoveryMode": "RESTORE_VERIFIED_SAME_DATE_DAILY",
+            "datedSourceSha256": hashlib.sha256(raw).hexdigest(),
+            "previousLatestSha256": hashlib.sha256(previous_bytes).hexdigest(),
+        }
 
     desks = desk.get("desks") if isinstance(desk.get("desks"), dict) else {}
     selected_by_desk: dict[str, list[dict[str, Any]]] = {}
@@ -240,20 +278,41 @@ def build(now: datetime | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
     return daily, meta
 
 
+def write_recovered_daily(daily, meta):
+    if not meta.get("changed"):
+        return
+    edition_date = daily["date"]
+    latest = DATA / "latest.json"
+    dated = DATA / f"{edition_date}.json"
+    if meta.get("recoveryMode") == "RESTORE_VERIFIED_SAME_DATE_DAILY":
+        def verify_inputs(_staged):
+            if (dated.is_symlink() or latest.is_symlink()
+                    or hashlib.sha256(dated.read_bytes()).hexdigest() != meta["datedSourceSha256"]
+                    or hashlib.sha256(latest.read_bytes()).hexdigest() != meta["previousLatestSha256"]):
+                raise SystemExit("DAILY_SAME_DATE_INPUT_CHANGED_HOLD")
+        raw = dated.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != meta["datedSourceSha256"]:
+            raise SystemExit("DAILY_SAME_DATE_INPUT_CHANGED_HOLD")
+        atomic_write_text(latest, raw.decode("utf-8"), validator=verify_inputs)
+        return
+    dump(latest, daily)
+    dump(dated, daily)
+    # Topic-more is deliberately the same verified current reservoir for the
+    # catch-up edition. Normal Daily production may expand it on later runs.
+    dump(DATA / "topic-more" / f"{edition_date}.json", daily)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--now", help="ISO time for tests")
     ap.add_argument("--write", action="store_true")
+    ap.add_argument("--restore-invalid-current", action="store_true",
+                    help="Allow the existing authorized Daily workflow to restore a verified dated edition")
     args = ap.parse_args()
     now = datetime.fromisoformat(args.now.replace("Z", "+00:00")) if args.now else None
-    daily, meta = build(now)
-    if args.write and meta.get("changed"):
-        edition_date = daily["date"]
-        dump(DATA / "latest.json", daily)
-        dump(DATA / f"{edition_date}.json", daily)
-        # Topic-more is deliberately the same verified current reservoir for the
-        # catch-up edition. Normal Daily production may expand it on later runs.
-        dump(DATA / "topic-more" / f"{edition_date}.json", daily)
+    daily, meta = build(now, restore_invalid_current=args.restore_invalid_current)
+    if args.write:
+        write_recovered_daily(daily, meta)
     print(json.dumps(meta, ensure_ascii=False))
     return 0
 

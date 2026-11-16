@@ -6,6 +6,13 @@ on:
     paths:
       - ".github/workflows/editor-in-chief-newsroom-assignment.yml"
       - "config/newsroom-robots.json"
+      - "config/publisher-recovery-catalogue.json"
+      - "scripts/publisher_recovery_robot.py"
+      - "scripts/scheduled_publication_contract.py"
+      - "scripts/scheduled_publication_dispatch.py"
+      - "scripts/pages_publication_receipt.py"
+      - "scripts/scheduled_service_observation_v13.py"
+      - "scripts/verified_draft_pending.py"
       - "scripts/newsroom_control_plane.py"
       - "scripts/daily_recovery_dependency.py"
       - ".github/workflows/daily-japanese-vocab.yml"
@@ -237,6 +244,12 @@ jobs:
             --trigger-conclusion "${TRIGGER_CONCLUSION:-}" \
             --output /tmp/editor-news-assignments.json
 
+          python scripts/scheduled_publication_dispatch.py \
+            --plan /tmp/editor-news-assignments.json --live data/live.json \
+            --desk data/desk-latest.json --daily data/latest.json \
+            --previous /tmp/previous-assignments.json \
+            --receipt /tmp/eic-scheduled-publication-dispatch.json --commit "$(git rev-parse HEAD)"
+
           python - <<'PY' > /tmp/editor-news-queue.b64
           import base64, json
           d=json.load(open('/tmp/editor-news-assignments.json',encoding='utf-8'))
@@ -244,6 +257,34 @@ jobs:
               raw=json.dumps(row,separators=(',',':'),ensure_ascii=False).encode()
               print(base64.b64encode(raw).decode())
           PY
+
+      - name: Run EIC-assigned public-probe recovery capability
+        id: publisher-recovery
+        continue-on-error: true
+        if: github.ref == 'refs/heads/main'
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          export EIC_SOURCE_COMMIT="$(git rev-parse HEAD)"
+          # Assign this registered inline capability through the existing EIC run.
+          export EIC_RECOVERY_OPERATION="public-probe:publisherRecovery:READ_ONLY"
+          python scripts/publisher_recovery_robot.py \
+            --registry config/newsroom-robots.json --cycle /tmp/editor-news-assignments.json \
+            --draft /tmp/prepublish.json --live data/live.json --desk data/desk-latest.json \
+            --pages /tmp/pages-live-status.json --previous /tmp/previous-assignments.json \
+            --output /tmp/publisher-recovery-result.json
+
+      - name: Retain this EIC publication decision and Robot receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eic-publication-decision-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/eic-scheduled-publication-dispatch.json
+            /tmp/publisher-recovery-result.json
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Dispatch only Editor-in-Chief-assigned Robots
         env:
@@ -343,6 +384,7 @@ jobs:
       - name: Publish Editor-in-Chief assignment telemetry
         if: always()
         env:
+          RECOVERY_STEP_OUTCOME: ${{ steps.publisher-recovery.outcome }}
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
@@ -350,7 +392,7 @@ jobs:
           test -s /tmp/editor-news-assignments.json
 
           python - <<'PY'
-          import json
+          import json, os
           from pathlib import Path
 
           a=json.load(open('/tmp/editor-news-assignments.json',encoding='utf-8'))
@@ -358,6 +400,19 @@ jobs:
           p=Path('/tmp/editor-news-execution.jsonl')
           if p.is_file():
               execution=[json.loads(x) for x in p.read_text(encoding='utf-8').splitlines() if x.strip()]
+          result=Path('/tmp/publisher-recovery-result.json')
+          prior=Path('/tmp/previous-assignments.json')
+          previous=json.loads(prior.read_text(encoding='utf-8')) if prior.is_file() else {}
+          import sys
+          sys.path.insert(0, 'scripts')
+          from publisher_recovery_robot import merge_recovery_telemetry
+          try:
+              record=json.loads(result.read_text(encoding='utf-8')) if result.is_file() else {}
+          except (ValueError, OSError):
+              record={}
+          merge_recovery_telemetry(a, previous, record, os.environ.get('RECOVERY_STEP_OUTCOME'))
+          if 'scheduledPublisherObservation' in previous:
+              a['scheduledPublisherObservation']=previous['scheduledPublisherObservation']
           a['execution']=execution
           a['dispatchedCount']=sum(1 for x in execution if x.get('dispatched'))
           a['alreadyActiveCount']=sum(1 for x in execution if x.get('reason')=='already-active')

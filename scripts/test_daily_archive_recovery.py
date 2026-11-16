@@ -53,7 +53,13 @@ with tempfile.TemporaryDirectory() as td:
     root = Path(td)
     data = root / "data"
     data.mkdir()
-    (data / "latest.json").write_text(json.dumps({"date": "2026-09-20"}), encoding="utf-8")
+    article = story()
+    edition = {
+        "date": "2026-09-20", "contentVersion": 3, "editorialStandardVersion": 3,
+        "articles": [article], "leadId": article["id"], "topFive": [article["id"]],
+        "sections": [{"slug": "world", "articleIds": [article["id"]]}],
+    }
+    (data / "latest.json").write_text(json.dumps(edition, ensure_ascii=False), encoding="utf-8")
     old_data = daily_builder.DATA
     daily_builder.DATA = data
     try:

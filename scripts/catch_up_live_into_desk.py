@@ -18,17 +18,15 @@ from __future__ import annotations
 import json
 import pathlib
 import subprocess
-import sys
 from datetime import datetime
 
 from atomic_publish import atomic_write_json
-from merge_live_into_desk import live_item_rejection_reason
+from merge_live_into_desk import live_item_rejection_reason, merge
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 LIVE = DATA / "live.json"
 DESK = DATA / "desk-latest.json"
-MERGE = ROOT / "scripts" / "merge_live_into_desk.py"
 
 
 def parse_stamp(value: object) -> datetime | None:
@@ -36,7 +34,8 @@ def parse_stamp(value: object) -> datetime | None:
     if not raw:
         return None
     try:
-        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        stamp = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        return stamp if stamp.utcoffset() is not None else None
     except ValueError:
         return None
 
@@ -57,7 +56,10 @@ def committed_live(sha: str) -> dict | None:
 def publishable_story_count(snapshot: dict) -> tuple[int, list[tuple[str, str]]]:
     publishable = 0
     rejected: list[tuple[str, str]] = []
-    for item in snapshot.get("items", []):
+    items = snapshot.get("items")
+    if not isinstance(items, list):
+        return 0, [("snapshot", "items not an array")]
+    for item in items:
         if not isinstance(item, dict):
             rejected.append(("unknown", "not an object"))
             continue
@@ -74,56 +76,55 @@ def main() -> int:
     current = json.loads(LIVE.read_text(encoding="utf-8"))
     desk_at = parse_stamp(desk.get("generatedAt"))
     live_at = parse_stamp(current.get("lastUpdated"))
-    if desk_at is None or live_at is None or desk_at >= live_at:
+    if desk_at is None or live_at is None:
+        raise SystemExit("ROLLING_DESK_CATCHUP_TIMESTAMP_HOLD")
+    if desk_at > live_at:
+        raise SystemExit("ROLLING_DESK_CATCHUP_SOURCE_ROLLBACK_HOLD")
+    if desk_at == live_at:
         print("ROLLING_DESK_CATCHUP_NONE", desk.get("generatedAt"), current.get("lastUpdated"))
         return 0
 
     shas = [line.strip() for line in git_output("log", "--format=%H", "--", "data/live.json").splitlines() if line.strip()]
-    snapshots: dict[str, tuple[datetime, dict]] = {}
+    snapshots: dict[datetime, tuple[str, dict]] = {}
     for sha in shas:
         snap = committed_live(sha)
         if not snap:
+            print("ROLLING_DESK_CATCHUP_SKIPPED_REJECTED_SNAPSHOT", sha, "invalid or unavailable Live object")
             continue
         stamp = parse_stamp(snap.get("lastUpdated"))
-        if stamp is None or not (desk_at < stamp <= live_at):
+        if stamp is None:
+            print("ROLLING_DESK_CATCHUP_SKIPPED_REJECTED_SNAPSHOT", sha, "invalid or missing Live timestamp")
+            continue
+        if not (desk_at < stamp < live_at):
             continue
         # Multiple commits can carry the same Live timestamp. Keep only the
         # newest commit returned by git log for that timestamp.
-        snapshots.setdefault(stamp.isoformat(), (stamp, snap))
-
-    ordered = sorted(snapshots.values(), key=lambda pair: pair[0])
-    if not ordered:
-        print("ROLLING_DESK_CATCHUP_NO_SNAPSHOTS", desk.get("generatedAt"), current.get("lastUpdated"))
-        return 0
+        snapshots.setdefault(stamp, (sha, snap))
 
     replayed = 0
     skipped = 0
-    try:
-        for stamp, snap in ordered:
-            publishable, rejected = publishable_story_count(snap)
-            raw_items = snap.get("items", [])
-            if not isinstance(raw_items, list) or publishable == 0:
-                skipped += 1
-                print(
-                    "ROLLING_DESK_CATCHUP_SKIPPED_REJECTED_SNAPSHOT",
-                    stamp.isoformat(),
-                    snap.get("windowLabel"),
-                    f"rejected={rejected}",
-                )
-                continue
+    for stamp, (sha, snapshot) in sorted(snapshots.items()):
+        publishable, rejected = publishable_story_count(snapshot)
+        if not publishable:
+            skipped += 1
+            print("ROLLING_DESK_CATCHUP_SKIPPED_REJECTED_SNAPSHOT", sha, stamp.isoformat(), rejected)
+            continue
+        try:
+            _, candidate = merge(snapshot, desk)
+        except SystemExit as exc:
+            # History remains in Git. Keep its exact commit and rejection in the run log.
+            skipped += 1
+            print("ROLLING_DESK_CATCHUP_SKIPPED_REJECTED_SNAPSHOT", sha, stamp.isoformat(), exc)
+            continue
+        desk = candidate
+        replayed += 1
+        print("ROLLING_DESK_CATCHUP_REPLAYED", sha, stamp.isoformat())
 
-            atomic_write_json(LIVE, snap)
-            subprocess.run([sys.executable, str(MERGE)], cwd=ROOT, check=True)
-            replayed += 1
-            print("ROLLING_DESK_CATCHUP_REPLAYED", stamp.isoformat(), snap.get("windowLabel"))
-    finally:
-        # A replay failure must never leave the working tree pointing at a
-        # historical Live snapshot. Always restore the committed current state.
-        atomic_write_json(LIVE, current)
-
-    # Current publication stays fail-closed. Historical poison pills may be
-    # skipped, but the latest Live must itself pass the normal merge gate.
-    subprocess.run([sys.executable, str(MERGE)], cwd=ROOT, check=True)
+    # Validate the newest snapshot even when no historical candidate survives.
+    # Persist only the derived reservoir here. The normal merge workflow updates
+    # the Live coverage after Daily sync and revalidates both before Git commit.
+    _, desk = merge(current, desk)
+    atomic_write_json(DESK, desk)
     print(
         "ROLLING_DESK_CATCHUP_PASS",
         f"replayed={replayed}",
