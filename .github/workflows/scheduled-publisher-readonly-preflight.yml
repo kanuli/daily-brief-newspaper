@@ -1,0 +1,66 @@
+name: Scheduled Publisher Isolated Preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      scheduled_candidate_commit:
+        description: Exact prepublish-news commit
+        required: true
+        type: string
+      scheduled_draft_sha256:
+        description: SHA256 of exact Publisher draft bytes
+        required: true
+        type: string
+      reviewed_validator_commit:
+        description: Exact reviewed validator commit on main
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  scheduled-publisher-preflight:
+    if: github.repository == 'kanuli/daily-brief-newspaper' && github.ref == 'refs/heads/main' && inputs.reviewed_validator_commit == github.sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Checkout only trusted validator code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate the candidate as data only
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.scheduled_candidate_commit }}
+          DRAFT_SHA256: ${{ inputs.scheduled_draft_sha256 }}
+          GIT_TERMINAL_PROMPT: "0"
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ && "$DRAFT_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git fetch --no-tags --depth=1 https://github.com/kanuli/daily-brief-newspaper.git refs/heads/prepublish-news
+          test "$(git rev-parse FETCH_HEAD)" = "$CANDIDATE_COMMIT"
+          path="data/scheduled-live-candidate.json"
+          entry="$(git ls-tree "$CANDIDATE_COMMIT" -- "$path")"
+          test "${entry:0:12}" = "100644 blob "
+          blob="$(git rev-parse "$CANDIDATE_COMMIT:$path")"
+          bytes="$(git cat-file -s "$blob")"
+          test "$bytes" -gt 0 && test "$bytes" -le 1048576
+          draft="$RUNNER_TEMP/scheduled-live-candidate.json"
+          git cat-file blob "$blob" > "$draft"
+          test "$(sha256sum "$draft" | cut -d ' ' -f1)" = "$DRAFT_SHA256"
+          python -B scripts/scheduled_publisher_preflight_receipt.py issue \
+            "$draft" "$RUNNER_TEMP/scheduled-publisher-preflight.json" \
+            --current-live data/live.json --run "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
+            --validator "$GITHUB_SHA" --candidate "$CANDIDATE_COMMIT" --candidate-blob "$blob" \
+            --expected "$DRAFT_SHA256" --base-live "$(git rev-parse "$GITHUB_SHA:data/live.json")"
+      - name: Retain byte-binding receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scheduled-publisher-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/scheduled-publisher-preflight.json
+          if-no-files-found: ignore
+          retention-days: 3

@@ -18,6 +18,7 @@ import zipfile
 
 REPO = "kanuli/daily-brief-newspaper"
 WORKFLOW = ".github/workflows/editor-in-chief-newsroom-assignment.yml"
+ISOLATED_WORKFLOW = ".github/workflows/scheduled-publisher-readonly-preflight.yml"
 JOB = "scheduled-publisher-preflight"
 CANDIDATE = "data/scheduled-live-candidate.json"
 LIVE = "data/live.json"
@@ -120,14 +121,15 @@ def content_blob(path, ref):
     return sha(record["sha"])
 
 
-def trusted_receipt(run_id, *, now, source=api):
+def trusted_receipt(run_id, *, now, source=api, isolated=False):
     positive_id(run_id)
     run = source(f"actions/runs/{run_id}")
+    workflow_path = ISOLATED_WORKFLOW if isolated else WORKFLOW
     need(run.get("id") == int(run_id) and run.get("status") == "completed"
          and run.get("conclusion") == "success" and run.get("head_branch") == "main"
-         and run.get("event") == "workflow_dispatch" and run.get("path") == WORKFLOW
+         and run.get("event") == "workflow_dispatch" and run.get("path") == workflow_path
          and (run.get("head_repository") or {}).get("full_name") == REPO,
-         "run is not a successful main EIC preflight")
+         "run is not a successful main preflight in the requested workflow")
     attempt = positive_id(str(run.get("run_attempt")))
     job_rows = source(f"actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100")
     jobs = job_rows["jobs"]
@@ -136,6 +138,7 @@ def trusted_receipt(run_id, *, now, source=api):
     preflight = [job for job in jobs if job.get("name") == JOB and job.get("conclusion") == "success"]
     need(len(preflight) == 1 and preflight[0].get("run_id") == int(run_id)
          and preflight[0].get("head_sha") == run.get("head_sha")
+         and (not isolated or len(jobs) == 1)
          and not any(job.get("name") == "assign" and job.get("conclusion") != "skipped"
                      for job in jobs), "missing or non-isolated preflight job")
     name = f"scheduled-publisher-preflight-{run_id}-{attempt}"
@@ -169,7 +172,8 @@ def trusted_receipt(run_id, *, now, source=api):
 
 
 def verify(args):
-    receipt = trusted_receipt(args.run, now=datetime.now(timezone.utc))
+    isolated = getattr(args, "isolated", False)
+    receipt = trusted_receipt(args.run, now=datetime.now(timezone.utc), isolated=isolated)
     need(all(receipt.get(k) == v for k, v in fingerprint(args.draft).items()),
          "local draft bytes do not match preflight")
     candidate = sha(receipt["candidateCommitSha"])
@@ -189,6 +193,9 @@ def verify(args):
                  "publication commit is not on main")
         need(content_blob(LIVE, commit_id) == receipt["candidateBlobSha"],
              "published Live bytes do not match receipt")
+        if isolated and main != commit_id:
+            need(content_blob(LIVE, main) == receipt["candidateBlobSha"],
+                 "main Live has since changed; readback requires the current Live bytes")
         result = "PUBLISHED_BYTES_VERIFIED"
     else:
         need(branch_head("prepublish-news") == candidate and main == base,
@@ -211,6 +218,7 @@ def main():
     verify_parser.add_argument("run")
     verify_parser.add_argument("draft", type=Path)
     verify_parser.add_argument("--published-commit")
+    verify_parser.add_argument("--isolated", action="store_true", help="Require the dedicated read-only workflow")
     args = parser.parse_args()
     try:
         return issue(args) if args.command == "issue" else verify(args)
