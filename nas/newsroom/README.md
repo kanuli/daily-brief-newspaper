@@ -49,12 +49,12 @@ Use the same files in a verified local checkout or a read-only source bundle.
 The following are command interfaces, not commands that were run on the NAS:
 
 ```sh
-python3 nas/newsroom/intake.py --db /approved/nas-local/state/news.sqlite init
-python3 nas/newsroom/intake.py --db /approved/nas-local/state/news.sqlite ingest --snapshot /approved/staging.json
-python3 nas/newsroom/intake.py --db /approved/nas-local/state/news.sqlite inbox --limit 25
-python3 nas/newsroom/intake.py --db /approved/nas-local/state/news.sqlite health
+python3.9 nas/newsroom/intake.py --db /approved/nas-local/state/news.sqlite init
+python3.9 nas/newsroom/intake.py --db /approved/nas-local/state/news.sqlite ingest --snapshot /approved/staging.json
+python3.9 nas/newsroom/intake.py --db /approved/nas-local/state/news.sqlite inbox --limit 25
+python3.9 nas/newsroom/intake.py --db /approved/nas-local/state/news.sqlite health
 # Networked 15-minute collection, only after isolated NAS pilot approval:
-python3 nas/newsroom/intake.py --db /approved/nas-local/state/news.sqlite collect --repo /approved/newsroom/checkout --mode normal
+python3.9 nas/newsroom/intake.py --db /approved/nas-local/state/news.sqlite collect --repo /approved/newsroom/checkout --mode normal
 ```
 
 The `collect` entrypoint invokes the existing collector, not the Google/Gemma
