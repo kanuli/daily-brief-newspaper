@@ -82,6 +82,31 @@ class RobotTests(unittest.TestCase):
         for bad in (dict(pages, checkedAt=self.now.isoformat()), dict(pages, publicationCurrentness={"current": False})):
             self.assertEqual(execute(REGISTRY, CAT, healthy, {}, live, desk, bad, state, SHA, now=later)["outcome"], "HOLD")
 
+    def test_invalid_live_keeps_its_attempt_budget_across_unrelated_git_and_probe_updates(self):
+        attempts = []
+
+        def scan():
+            attempts.append(1)
+            return {}
+
+        now = self.now
+        live = {"publicationContract": "SCHEDULED_PUBLISHER_LIVE_V1",
+                "lastUpdated": now.isoformat(), "date": "2026-11-15", "items": []}
+        first = execute(REGISTRY, CAT, cycle(now), {}, live, {}, {"probeRunId": 7},
+                        {}, SHA, now=now, receipt_reader=scan)
+        later = now + timedelta(minutes=16)
+        before = {"publisherRecoveryRobot": first}
+        second = execute(REGISTRY, CAT, cycle(later), {}, live, {"generatedAt": later.isoformat()},
+                         {"probeRunId": 8}, before, "b" * 40, now=later, receipt_reader=scan)
+        self.assertEqual(second["inputBinding"], first["inputBinding"])
+        self.assertEqual(second["attempt"], 2)
+        last = later + timedelta(minutes=16)
+        before = {"publisherRecoveryRobot": second, "publisherRecoveryAudit": [first]}
+        stale = execute(REGISTRY, CAT, cycle(last), {}, live, {}, {"probeRunId": 9},
+                        before, "c" * 40, now=last, receipt_reader=scan)
+        self.assertEqual(stale, second)
+        self.assertEqual(len(attempts), 2)
+
     def test_inline_cli_reused_for_second_incident(self):
         root = CATALOGUE.parents[1]
         env = dict(os.environ, GITHUB_ACTIONS="true", GITHUB_REPOSITORY=REPOSITORY, GITHUB_REF="refs/heads/main",

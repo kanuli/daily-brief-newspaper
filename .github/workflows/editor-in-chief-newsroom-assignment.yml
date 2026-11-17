@@ -58,6 +58,15 @@ on:
     # Safety net only. Normal continuation is event-driven from robot completion.
     - cron: "8,23,38,53 * * * *"
   workflow_dispatch:
+    inputs:
+      scheduled_candidate_commit:
+        description: "Optional prepublish-news commit for a read-only Scheduled Publisher preflight"
+        required: false
+        type: string
+      scheduled_draft_sha256:
+        description: "SHA-256 of the exact draft bytes"
+        required: false
+        type: string
 
 permissions:
   actions: write
@@ -69,7 +78,47 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  scheduled-publisher-preflight:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && (inputs.scheduled_candidate_commit != '' || inputs.scheduled_draft_sha256 != '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Validate exact published candidate bytes without a write
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.scheduled_candidate_commit }}
+          DRAFT_SHA256: ${{ inputs.scheduled_draft_sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ && "$DRAFT_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          git fetch --no-tags --depth=1 origin refs/heads/prepublish-news
+          test "$(git rev-parse FETCH_HEAD)" = "$CANDIDATE_COMMIT"
+          candidate_path="data/scheduled-live-candidate.json"
+          bytes=$(git cat-file -s "$CANDIDATE_COMMIT:$candidate_path")
+          test "$bytes" -gt 0 && test "$bytes" -le 1048576
+          draft="$RUNNER_TEMP/scheduled-live-candidate.json"
+          git show "$CANDIDATE_COMMIT:$candidate_path" > "$draft"
+          test "$(sha256sum "$draft" | cut -d ' ' -f1)" = "$DRAFT_SHA256"
+          python scripts/scheduled_publisher_preflight_receipt.py issue \
+            "$draft" "$RUNNER_TEMP/scheduled-publisher-preflight.json" \
+            --current-live data/live.json --run "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" --validator "$GITHUB_SHA" \
+            --candidate "$CANDIDATE_COMMIT" --candidate-blob "$(git rev-parse "$CANDIDATE_COMMIT:$candidate_path")" \
+            --expected "$DRAFT_SHA256" --base-live "$(git rev-parse "$GITHUB_SHA:data/live.json")"
+      - name: Upload bound preflight receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scheduled-publisher-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/scheduled-publisher-preflight.json
+          if-no-files-found: ignore
+          retention-days: 3
   assign:
+    if: github.event_name != 'workflow_dispatch' || (inputs.scheduled_candidate_commit == '' && inputs.scheduled_draft_sha256 == '')
     runs-on: ubuntu-latest
     # Existing control plane plus at most one bounded runtime capability check.
     timeout-minutes: 12

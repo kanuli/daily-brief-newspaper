@@ -282,11 +282,21 @@ def execute(registry, catalogue, cycle, draft, live, desk, pages, previous, repo
         raise ValueError("RECOVERY_INCIDENT_SCOPE_HOLD")
     same_incident = old.get("incidentId") == incident
     # Bind scheduled diagnostics to the actual content, including same-slot corrections.
-    scheduled_content = [digest(live), digest(desk)] if is_scheduled(live) else []
+    upstream_contract_hold = bool(schema_errors)
+    scheduled_content = [digest(live)] if is_scheduled(live) else []
+    if scheduled_content and not upstream_contract_hold:
+        scheduled_content.append(digest(desk))
     # A replayed EIC snapshot must never consume a fresh network attempt after restart.
+    # A new stock/vocab commit or Pages probe cannot repair rejected Live bytes.
+    # Retain the real checkout SHA in receipts, but do not let those events
+    # renew the upstream recovery budget for the same rejected draft.
     input_binding = digest({"incident": incident, "faults": sorted(codes), "draft": digest(draft),
-                            "live": live.get("lastUpdated"), "desk": desk.get("generatedAt"),
-                            "scheduledContent": scheduled_content, "scheduled": {k:v for k,v in (scheduled or {}).items() if k != "checked_at"}, "source": repo_sha, "probe": [pages.get("probeRunId"), pages.get("probeRunAttempt")]})
+                            "live": live.get("lastUpdated"),
+                            "desk": None if upstream_contract_hold else desk.get("generatedAt"),
+                            "scheduledContent": scheduled_content,
+                            "scheduled": {k:v for k,v in (scheduled or {}).items() if k != "checked_at"},
+                            "source": None if upstream_contract_hold else repo_sha,
+                            "probe": [] if upstream_contract_hold else [pages.get("probeRunId"), pages.get("probeRunAttempt")]})
     prior = next((r for r in (old, *reversed(journal[-32:]))
                   if r.get("inputBinding") == input_binding), None)
     if prior is not None:
@@ -358,7 +368,11 @@ def execute(registry, catalogue, cycle, draft, live, desk, pages, previous, repo
             "publicationEvidenceSha256": digest(pages) if verified else None,
             "eicVerification": "REQUIRED", "ctoIndependentVerification": "REQUIRED",
             "reviewState": "EIC_REVIEW_REQUIRED" if verified else "HOLD",
-            "nextAction": action["escalate"], "productionMutation": False, "NO_SEND": True}
+            "nextAction": (
+                "EIC sends exact contract errors to the existing Scheduled Publisher; "
+                "require new source-backed Live and a bound successful preflight before publication"
+                if upstream_contract_hold else action["escalate"]
+            ), "productionMutation": False, "NO_SEND": True}
 
 
 

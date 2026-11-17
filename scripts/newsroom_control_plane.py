@@ -1140,8 +1140,13 @@ def main() -> int:
             row["dispatchable"] = False
             row["blockedBy"] = ["automation:Newsroom Publisher"]
             row["requiresExternalPublisher"] = True
+            producer_blocker = (
+                "Reviewed local Producer failed to deliver verified output"
+                if producer_capacity.get("status") == "LOCAL_FALLBACK_FAILED"
+                else "Producer capacity remains blocked according to its recorded receipt"
+            )
             row["reason"] = (
-                "GitHub Copilot producer capacity is exhausted; the existing "
+                producer_blocker + "; the existing "
                 "Newsroom Publisher owns the alternate verified production path "
                 "until the capacity probe window expires"
             )
@@ -1155,10 +1160,10 @@ def main() -> int:
                 row["status"] = "external-failover-stuck"
                 row["requiresEditorReplan"] = True
                 row["reason"] = (
-                    "GitHub Copilot producer capacity is exhausted and the external "
-                    "Newsroom Publisher did not advance Live into the current scheduled "
+                    producer_blocker + " and the existing Newsroom Publisher "
+                    "did not advance Live into the current scheduled "
                     f"{hkt_now.hour:02d}:00 HKT slot by minute {hkt_now.minute:02d}; "
-                    "closed-loop recovery must re-invoke or replace the external path"
+                    "EIC must review candidate preflight and verified output evidence"
                 )
                 row["verifyNextCycle"] = [
                     "liveLastUpdated advances into the current scheduled HKT slot",
