@@ -480,9 +480,21 @@ def bounded_source_queue(request: dict[str, Any]) -> list[dict[str, Any]]:
             if cid not in seen:
                 unique.append(row)
                 seen.add(cid)
-            if len(unique) >= MAX_CANDIDATES_PER_DESK:
-                break
-        by_desk[desk] = unique
+        # Keep the reviewed first choice, then give a different original
+        # publisher a chance before repeating the same host. Short wire items
+        # or a publisher outage must not consume all four worker probes.
+        first_by_host = []
+        remaining = []
+        seen_hosts = set()
+        for row in unique:
+            if direct_source_rank(row):
+                host = (urllib.parse.urlparse(clean(row.get("url"))).hostname or "").lower().rstrip(".")
+                if host not in seen_hosts:
+                    first_by_host.append(row)
+                    seen_hosts.add(host)
+                    continue
+            remaining.append(row)
+        by_desk[desk] = (first_by_host + remaining)[:MAX_CANDIDATES_PER_DESK]
     queue: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
     for rank in range(MAX_CANDIDATES_PER_DESK):
