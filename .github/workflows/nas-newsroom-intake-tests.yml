@@ -1,0 +1,34 @@
+name: NAS Newsroom Intake Unit Tests
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "nas/newsroom/**"
+      - ".github/workflows/nas-newsroom-intake-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-nas-intake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - name: Checkout reviewed code only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Test NAS-local SQLite intake without publishing
+        run: |
+          python -m compileall -q nas/newsroom
+          PYTHONPATH=nas/newsroom python -m unittest discover -s nas/newsroom -p 'test_*.py' -v
