@@ -57,6 +57,9 @@ jobs:
               'scripts/stock_news_rules.py',
               'scripts/stock_news_heartbeat.py',
               'scripts/desk_freshness_policy.py',
+              'scripts/merge_live_into_desk.py',
+              'scripts/scheduled_publication_contract.py',
+              'scripts/promote_verified_live_draft.py',
           }
           prefixes=(
               'data/latest.json',
@@ -77,10 +80,16 @@ jobs:
           echo "Skipping wall-clock freshness gates in PR CI only."
           echo "Production keeps the same strict validators under Editor-in-Chief runtime supervision."
 
+      # PRs changing only producer/runtime code must test that code against the
+      # committed fixtures, not try to publish an unrelated stale Live snapshot.
+      # Strict rebuild and existing validators remain enabled for live-data or
+      # publication-contract PRs and all manual CI runs.
       - name: Apply verification-gated public-desk freshness recovery
+        if: steps.live_contract.outputs.changed == 'true'
         run: PYTHONPATH=scripts python scripts/recover_manga_freshness_watchdog.py
 
       - name: Rebuild Rolling Desk and Live coverage metadata
+        if: steps.live_contract.outputs.changed == 'true'
         run: python scripts/merge_live_into_desk.py
 
       - name: Validate Python syntax for deployment builders
@@ -94,7 +103,9 @@ jobs:
           python -m py_compile scripts/stock_verified_producer.py
           python -m py_compile scripts/test_stock_news_pipeline.py
           python -m py_compile scripts/general_news_verified_producer.py
+          python -m py_compile scripts/general_news_local_fallback.py
           python -m py_compile scripts/test_general_news_producer.py
+          python -m py_compile scripts/test_general_news_source_queue.py
           python -m py_compile scripts/promote_verified_live_draft.py
           python -m py_compile scripts/promote_verified_stock_draft.py
           python -m py_compile scripts/editor_in_chief.py
@@ -116,6 +127,9 @@ jobs:
 
       - name: General-news producer regression tests
         run: PYTHONPATH=scripts python scripts/test_general_news_producer.py
+
+      - name: General-news source queue regression tests
+        run: python scripts/test_general_news_source_queue.py
 
       - name: Editor-in-Chief regression tests
         run: python scripts/test_editor_in_chief.py
