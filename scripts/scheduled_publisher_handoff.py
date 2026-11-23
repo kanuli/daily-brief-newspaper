@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import base64
 from contextlib import redirect_stdout
 import hashlib
@@ -63,9 +64,27 @@ def check_live(raw, validator):
                  "draft does not advance pinned Live")
 
 
-def check_current_validator(pinned):
+def check_live_only(raw, validator, *, now=None):
+    """Prepare a Live-only handoff from exact bytes, without requesting a Merge or deployment."""
+    from today_first_live import candidate_live
+    draft = candidate_live(raw, now=now or datetime.now(timezone.utc))
+    live = receipt.api(f"contents/{receipt.LIVE}?ref={validator}")
+    receipt.need(live.get("type") == "file" and live.get("encoding") == "base64",
+                 "could not inspect pinned base Live")
+    prior = json.loads(base64.b64decode(live["content"]))
+    receipt.need(contract.stamp(draft["lastUpdated"]) > contract.stamp(prior.get("lastUpdated")),
+                 "draft does not advance pinned Live")
+
+
+def check_current_validator(pinned, *, live_only=False):
     receipt.need(receipt.branch_head("main") == pinned, "main changed; review the new validator")
-    for local in (Path(contract.__file__), Path(receipt.__file__)):
+    paths = [Path(contract.__file__), Path(receipt.__file__)]
+    if live_only:
+        here = Path(__file__).resolve().parent
+        paths.extend(here / f"{name}.py" for name in ("today_first_live", "editorial_draft",
+                                                     "scheduled_publisher_handoff",
+                                                     "merge_live_into_desk", "emit_verified_live"))
+    for local in paths:
         receipt.need(receipt.fingerprint(local)["candidateBlobSha"] ==
                      receipt.content_blob(f"scripts/{local.name}", pinned),
                      f"local {local.name} differs from deployed source")
@@ -159,6 +178,7 @@ def main():
     parser.add_argument("--validator", required=True, help="reviewed deployed main SHA")
     parser.add_argument("--expected-tip", required=True, help="expected prepublish-news SHA")
     parser.add_argument("--draft-sha256", required=True, help="exact SHA-256 from existing Publisher")
+    parser.add_argument("--publication-scope", choices=("full", "live"), default="full")
     parser.add_argument("--run", help="exact run ID returned by Actions")
     parser.add_argument("--journal", type=Path, help="existing private dispatch journal directory")
     args = parser.parse_args()
@@ -168,11 +188,18 @@ def main():
         draft_hash = hashlib.sha256(raw).hexdigest()
         receipt.need(draft_hash == receipt.sha(args.draft_sha256, 64), "Publisher draft bytes changed")
         blob = hashlib.sha1(f"blob {len(raw)}\0".encode() + raw).hexdigest()
-        check_current_validator(validator)
-        check_live(raw, validator)
+        if args.publication_scope == "live":
+            receipt.need(args.step in ("inspect", "stage"), "LIVE_PAGES_WORKFLOW_REQUIRED")
+            check_current_validator(validator, live_only=True)
+            check_live_only(raw, validator)
+        else:
+            check_current_validator(validator)
+            check_live(raw, validator)
         receipt.need(receipt.branch_head(BRANCH) == tip, "candidate branch tip changed")
         result = {"candidateBlobSha": blob, "candidateCommitSha": tip,
                   "validatorCommitSha": validator, "draftSha256": draft_hash, "status": "INSPECTED"}
+        if args.publication_scope == "live":
+            result["publicationScope"] = "live"
         if args.step == "stage":
             result.update(candidateCommitSha=stage(raw, tip, blob), status="STAGED")
         elif args.step in ("dispatch", "verify"):

@@ -232,6 +232,16 @@ def routing_integrity(desks):
 
 def merge(live, desk, *, now=None):
     """Build both candidates before touching either publication file."""
+    return _project(live, desk, now=now, require_full_depth=True)
+
+
+def live_coverage_diagnostics(live, desk, *, now=None):
+    """Return only coverage diagnostics; this entry point emits no publishable files."""
+    projected, _ = _project(live, desk, now=now, require_full_depth=False)
+    return projected["coverage"]
+
+
+def _project(live, desk, *, now, require_full_depth):
     live = copy.deepcopy(live)
     desk = copy.deepcopy(desk)
     scheduled = is_scheduled(live)
@@ -332,7 +342,7 @@ def merge(live, desk, *, now=None):
 
     counts = {slug: unique_count(desks.get(slug, [])) for slug in FLOORS}
     missing = {slug: (counts[slug], minimum) for slug, minimum in FLOORS.items() if counts[slug] < minimum}
-    if missing:
+    if missing and require_full_depth:
         raise SystemExit(f"topic desk depth below hard floor: {missing}")
 
     routing_gate = routing_integrity(desks)
