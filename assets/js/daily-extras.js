@@ -173,7 +173,8 @@
   }
 
   async function loadDailyVocab(date) {
-    const urls = date ? [`data/vocab/${date}.json`, "data/vocab/latest.json"] : ["data/vocab/latest.json"];
+    if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    const urls = [`data/vocab/${date}.json`, "data/vocab/latest.json"];
     let lastError = null;
     for (const url of urls) {
       try {
@@ -181,12 +182,17 @@
         if (!res.ok) throw new Error(`Vocab HTTP ${res.status}`);
         const vocab = await res.json();
         if (!Array.isArray(vocab.words) || !vocab.words.length) throw new Error("Vocab payload is empty");
+        if (vocab.date !== date) throw new Error("Vocab payload belongs to another edition");
         renderDailyVocab(vocab);
-        if (url.endsWith("latest.json") && date && vocab.date !== date) console.warn(`Daily vocab fallback used: requested ${date}, serving ${vocab.date || "latest"}`);
         return;
       } catch (err) {
         lastError = err;
       }
+    }
+    const study = $("#study-desk");
+    if (study && study.dataset.vocabLoaded !== "true") {
+      study.textContent = date + " 的日語單字暫未發布。";
+      study.setAttribute("aria-label", "日語單字發布狀態");
     }
     console.warn("Daily vocab unavailable", lastError);
   }

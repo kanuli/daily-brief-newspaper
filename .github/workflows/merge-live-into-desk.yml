@@ -142,6 +142,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "changed=false" >> "$GITHUB_OUTPUT"
+          git show HEAD:data/live.json | python -B scripts/verify_derived_live.py data/live.json
           git add -- data/desk-latest.json data/live.json
           if git diff --cached --quiet; then
             echo "ROLLING_DESK_PROGRESS_CHECKPOINT_NOOP"

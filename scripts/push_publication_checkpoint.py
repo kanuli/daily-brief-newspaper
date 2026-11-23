@@ -3,9 +3,15 @@ import argparse
 from datetime import date
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
+
+from verify_derived_live import validate_bytes
+
+LIVE = "data/live.json"
+OID = re.compile(r"[0-9a-f]{40}")
 
 
 INPUTS = (
@@ -39,10 +45,26 @@ def push_checkpoint(cwd, *, pause=time.sleep, verify_only=False):
             result.check_returncode()
         return result.returncode == 0
 
+    def read_transition(checkpoint):
+        history=git("rev-list","--parents","-n","1",checkpoint).stdout.decode("ascii").split()
+        if len(history)!=2 or history[0]!=checkpoint or any(not OID.fullmatch(v) for v in history):
+            raise CheckpointHold("PUBLICATION_CHECKPOINT_SINGLE_PARENT_HOLD")
+        parent=history[1]
+        changed=git("diff","--no-renames","--name-only","-z",parent,checkpoint).stdout
+        updates=tuple(part.decode("utf-8") for part in changed.split(b"\0") if part)
+        if any(path.casefold()==LIVE and path!=LIVE for path in updates):
+            raise CheckpointHold("LIVE_WRITE_AUTHORITY_HOLD: conflicting Live path")
+        if LIVE in updates:
+            try:
+                before=git("show",f"{parent}:{LIVE}").stdout
+                after=git("show",f"{checkpoint}:{LIVE}").stdout
+                validate_bytes(before,after)
+            except (ValueError, OSError, subprocess.SubprocessError) as exc:
+                raise CheckpointHold("LIVE_WRITE_AUTHORITY_HOLD: checkpoint may only set coverage") from exc
+        return parent,updates
+
     checkpoint = git("rev-parse", "HEAD").stdout.strip().decode("ascii")
-    base = git("rev-parse", "HEAD^").stdout.strip().decode("ascii")
-    changed = git("diff", "--no-renames", "--name-only", "-z", base, checkpoint).stdout
-    updates = tuple(part.decode("utf-8") for part in changed.split(bytes(1)) if part)
+    base,updates=read_transition(checkpoint)
     paths = (*INPUTS, *updates)
     if "data/latest.json" in updates:
         try:
@@ -76,8 +98,11 @@ def push_checkpoint(cwd, *, pause=time.sleep, verify_only=False):
             git("rebase", remote)
             base = remote
             checkpoint = git("rev-parse", "HEAD").stdout.strip().decode("ascii")
+            inset_parent,inset_updates=read_transition(checkpoint)
+            if inset_parent!=base or inset_updates!=updates:
+                raise CheckpointHold("PUBLICATION_CHECKPOINT_REBASE_CHANGED_HOLD")
         try:
-            result = git("push", "origin", "HEAD:refs/heads/main", check=False)
+            result = git("push", "origin", checkpoint+":refs/heads/main", check=False)
         except subprocess.TimeoutExpired:
             # The branch may have advanced even though the response was lost.
             result = None

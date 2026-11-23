@@ -112,7 +112,7 @@ jobs:
             echo "daily_persisted=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Dispatch downstream Pages and Discord after Daily recovery
+      - name: Verify Daily persistence and retain existing notification handoff
         if: steps.build.outputs.changed == 'true' && steps.persist.outputs.daily_persisted == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -120,10 +120,8 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/push_publication_checkpoint.py --verify-only
-          gh workflow run pages.yml --ref main
-          python scripts/push_publication_checkpoint.py --verify-only
           gh workflow run discord-notify.yml --ref main -f notification_type=daily
-          echo "DAILY_RECOVERY_DOWNSTREAM_DISPATCHED pages=true discord=true"
+          echo "DAILY_RECOVERY_DOWNSTREAM_HANDOFF pages=editor-in-chief discord=true"
 
       - name: Recovery status
         if: always()

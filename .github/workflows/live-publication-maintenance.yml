@@ -175,6 +175,7 @@ jobs:
             python scripts/validate_publication_current.py
             python scripts/audit_tts_language.py
 
+            git show HEAD:data/live.json | python -B scripts/verify_derived_live.py data/live.json
             git add -- data/live.json data/desk-latest.json
             if git diff --cached --quiet; then
               echo "LIVE_COVERAGE_REPAIR_NOOP publication already caught up"
@@ -182,7 +183,7 @@ jobs:
             fi
 
             git commit -m "Repair current Live coverage, freshness and Rolling Desk state"
-            if git push origin HEAD:main; then
+            if python -B scripts/push_publication_checkpoint.py; then
               echo "changed=true" >> "$GITHUB_OUTPUT"
               echo "LIVE_COVERAGE_REPAIR_PASS"
               exit 0
@@ -192,57 +193,14 @@ jobs:
           echo "Current Live coverage repair could not push after retries" >&2
           exit 1
 
-      - name: Promote verified draft when normal publisher missed the hour
+      - name: Hold legacy failover pending the signed Publisher
         id: promote
         if: steps.inspect.outputs.repair != 'true' && steps.inspect.outputs.promote == 'true'
         shell: bash
         run: |
           set -euo pipefail
           echo "changed=false" >> "$GITHUB_OUTPUT"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git reset --hard origin/main
-
-            if [ "${{ steps.inspect.outputs.emergency }}" = "true" ]; then
-              python scripts/promote_verified_live_draft.py /tmp/prepublish.json --max-age-minutes 2160
-            else
-              python scripts/promote_verified_live_draft.py /tmp/prepublish.json
-            fi
-
-            # Persist the independently verified Live snapshot first. Global
-            # Rolling Desk freshness is health state, not a transaction guard
-            # for an otherwise valid new article.
-            git add -- data/live.json
-            if git diff --cached --quiet; then
-              echo "LIVE_FAILOVER_NOOP normal publisher already caught up"
-              exit 0
-            fi
-
-            TARGET_LABEL=$(python - <<'PY'
-          import json
-          from datetime import datetime
-          d=json.load(open('/tmp/prepublish.json',encoding='utf-8'))
-          t=datetime.fromisoformat(d['targetPublication'].replace('Z','+00:00'))
-          print('24:00' if t.hour == 0 else f'{t.hour:02d}:00')
-          PY
-            )
-            if [ "${{ steps.inspect.outputs.emergency }}" = "true" ]; then
-              git commit -m "Emergency publish verified Live recovery for ${TARGET_LABEL} HKT"
-            else
-              git commit -m "Failover publish verified ${TARGET_LABEL} HKT Live update"
-            fi
-            if git push origin HEAD:main; then
-              echo "changed=true" >> "$GITHUB_OUTPUT"
-              echo "LIVE_PUBLICATION_AUTO_FAILOVER_PASS draft=${{ steps.inspect.outputs.draft_id }} target=${{ steps.inspect.outputs.target }} emergency=${{ steps.inspect.outputs.emergency }}"
-              exit 0
-            fi
-            sleep $((attempt * 2))
-          done
-
-          echo "Verified Live failover could not push after retries" >&2
+          echo 'LIVE_FAILOVER_REQUIRES_EIC_CORE_SIGNED_PUBLISHER'
           exit 1
 
       - name: Live publication healthy

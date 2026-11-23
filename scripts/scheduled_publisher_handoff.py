@@ -83,7 +83,8 @@ def check_current_validator(pinned, *, live_only=False):
         here = Path(__file__).resolve().parent
         paths.extend(here / f"{name}.py" for name in ("today_first_live", "editorial_draft",
                                                      "scheduled_publisher_handoff",
-                                                     "merge_live_into_desk", "emit_verified_live"))
+                                                     "merge_live_into_desk", "emit_verified_live",
+                                                     "editorial_stage_authority", "signed_live_publisher", "github_live_write_policy"))
     for local in paths:
         receipt.need(receipt.fingerprint(local)["candidateBlobSha"] ==
                      receipt.content_blob(f"scripts/{local.name}", pinned),
@@ -173,7 +174,7 @@ def dispatch(parent, validator, draft_hash, journal):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("step", choices=("inspect", "stage", "dispatch", "verify"))
+    parser.add_argument("step", choices=("inspect", "stage", "dispatch", "verify", "publish"))
     parser.add_argument("draft", type=Path)
     parser.add_argument("--validator", required=True, help="reviewed deployed main SHA")
     parser.add_argument("--expected-tip", required=True, help="expected prepublish-news SHA")
@@ -181,6 +182,11 @@ def main():
     parser.add_argument("--publication-scope", choices=("full", "live"), default="full")
     parser.add_argument("--run", help="exact run ID returned by Actions")
     parser.add_argument("--journal", type=Path, help="existing private dispatch journal directory")
+    parser.add_argument("--stage-authorization", type=Path, help="EIC decision and Core grant for Live-only staging")
+    parser.add_argument("--source-evidence", type=Path, help="exact source evidence bound in the stage authorization")
+    parser.add_argument("--publication-authorization", type=Path, help="production-scoped signed one-time Live write")
+    parser.add_argument("--writer-policy-attestation", type=Path,
+                        help="short-lived Core-signed observation of the exact GitHub bypass roster")
     args = parser.parse_args()
     try:
         validator, tip = map(receipt.sha, (args.validator, args.expected_tip))
@@ -188,6 +194,37 @@ def main():
         draft_hash = hashlib.sha256(raw).hexdigest()
         receipt.need(draft_hash == receipt.sha(args.draft_sha256, 64), "Publisher draft bytes changed")
         blob = hashlib.sha1(f"blob {len(raw)}\0".encode() + raw).hexdigest()
+        if args.step == "publish":
+            from editorial_stage_authority import read_bounded
+            from signed_live_publisher import publish_once
+            receipt.need(args.publication_scope == "live" and os.getenv("NEWSROOM_SIGNED_WRITE_ENABLED")=="true"
+                         and args.publication_authorization and args.writer_policy_attestation and args.source_evidence and args.journal,
+                         "production Live mutation is disabled or lacks exact signed authority")
+            publisher=os.environ.get("NEWSROOM_PUBLISHER_LOGIN","")
+            def ready():
+                from github_live_write_policy import confirm,confirm_app_transport
+                confirm(receipt.api,ruleset_id=os.getenv("NEWSROOM_LIVE_UPDATE_RULESET_ID",""),
+                        publisher_integration_id=os.getenv("NEWSROOM_LIVE_PUBLISHER_APP_ID",""),
+                        approval=read_bounded(args.writer_policy_attestation),
+                        core_key=os.getenv("NEWSROOM_CORE_STAGE_PUBLIC_KEY",""),now=datetime.now(timezone.utc),
+                        main_parent=validator,draft_sha256=draft_hash)
+                check_current_validator(validator, live_only=True)
+                check_live_only(raw,validator)
+                # GitHub App installations are not user tokens. The active rule
+                # admits the pinned integration, while receipt readback verifies the resulting author.
+                def root_api(path):
+                    reply=subprocess.check_output(["gh","api","--hostname","github.com",path],timeout=10)
+                    return json.loads(reply)
+                confirm_app_transport(root_api,login=publisher,app_id=os.getenv("NEWSROOM_LIVE_PUBLISHER_APP_ID",""))
+            def commit(payload):
+                return receipt.sha(gh("POST","graphql",payload)["data"]["createCommitOnBranch"]["commit"]["oid"])
+            result=publish_once(raw,read_bounded(args.publication_authorization),read_bounded(args.source_evidence),
+                pins={"eic":os.getenv("NEWSROOM_EIC_STAGE_PUBLIC_KEY",""),"core":os.getenv("NEWSROOM_CORE_STAGE_PUBLIC_KEY","")},
+                parent=validator,staged=tip,publisher=publisher,directory=args.journal,
+                clock=lambda:datetime.now(timezone.utc), branch_head=receipt.branch_head,api=receipt.api,
+                staged_blob=candidate_blob_at,mutation=commit,check_mutation_ready=ready,require_github_signature=True)
+            print(json.dumps(result,sort_keys=True))
+            return 0
         if args.publication_scope == "live":
             receipt.need(args.step in ("inspect", "stage"), "LIVE_PAGES_WORKFLOW_REQUIRED")
             check_current_validator(validator, live_only=True)
@@ -195,12 +232,26 @@ def main():
         else:
             check_current_validator(validator)
             check_live(raw, validator)
-        receipt.need(receipt.branch_head(BRANCH) == tip, "candidate branch tip changed")
+        live_stage = args.publication_scope == "live" and args.step == "stage"
+        if not live_stage:
+            receipt.need(receipt.branch_head(BRANCH) == tip, "candidate branch tip changed")
         result = {"candidateBlobSha": blob, "candidateCommitSha": tip,
                   "validatorCommitSha": validator, "draftSha256": draft_hash, "status": "INSPECTED"}
         if args.publication_scope == "live":
             result["publicationScope"] = "live"
-        if args.step == "stage":
+        if live_stage:
+            from editorial_stage_authority import read_bounded, stage_once, verify
+            receipt.need(args.stage_authorization and args.source_evidence and args.journal,
+                         "signed EIC/Core stage approval, source evidence and private journal required")
+            pins = {"eic":os.environ.get("NEWSROOM_EIC_STAGE_PUBLIC_KEY", ""),
+                    "core":os.environ.get("NEWSROOM_CORE_STAGE_PUBLIC_KEY", "")}
+            event,binding = verify(raw,read_bounded(args.stage_authorization),read_bounded(args.source_evidence),
+                                   pins=pins,parent=tip,validator=validator,now=datetime.now(timezone.utc))
+            commit,new = stage_once(args.journal,event,binding,lambda:stage(raw,tip,blob))
+            receipt.need(receipt.branch_head(BRANCH)==commit and candidate_blob_at(commit)==blob,
+                         "approved staged commit no longer current")
+            result.update(candidateCommitSha=commit,status="STAGED" if new else "ALREADY_STAGED",stageEventId=event)
+        elif args.step == "stage":
             result.update(candidateCommitSha=stage(raw, tip, blob), status="STAGED")
         elif args.step in ("dispatch", "verify"):
             receipt.need(candidate_blob_at(tip) == blob, "stage exact draft before preflight")

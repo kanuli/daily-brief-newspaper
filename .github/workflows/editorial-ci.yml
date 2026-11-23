@@ -13,6 +13,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  candidate-code:
+    name: Candidate code and security
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.23.4"
+      - name: Install pinned development-only Gate A dependencies
+        run: python -m pip install --disable-pip-version-check --only-binary=:all: --require-hashes -r scripts/gate_a_requirements.lock
+      - name: Check the isolated Live candidate and authority contract
+        run: |
+          python -m unittest discover -s scripts -p 'test_editorial_authority_ci.py' -v
+          python -m unittest discover -s scripts -p test_signed_live_publisher.py -v
+          python -m unittest discover -s scripts -p test_github_live_readback.py -v
+          python -m unittest discover -s scripts -p test_github_live_write_policy.py -v
+          python -m unittest discover -s scripts -p test_pages_vocab_receipt.py -v
+          python -m unittest discover -s scripts -p test_non_live_writer_scope.py -v
+          python -m unittest discover -s scripts -p test_scoped_data_gateway.py -v
+          python -m unittest discover -s scripts -p test_verified_live_intake_bundle.py -v
+          python -m unittest discover -s scripts -p test_live_checkpoint_boundary.py -v
+          node --test tests/test_vocab_edition_binding.cjs
+          python scripts/test_scheduled_publisher_handoff.py
+          python scripts/test_newsroom_orchestration_contract.py
+
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
