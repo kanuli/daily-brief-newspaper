@@ -16,6 +16,7 @@ from tempfile import TemporaryDirectory
 
 import scheduled_publication_contract as contract
 import scheduled_publisher_preflight_receipt as receipt
+from staging_git_identity import readback as signed_stage_readback, stage_headline
 
 BRANCH = "prepublish-news"
 WORKFLOW = receipt.ISOLATED_WORKFLOW.rsplit("/", 1)[1]
@@ -84,7 +85,7 @@ def check_current_validator(pinned, *, live_only=False):
         paths.extend(here / f"{name}.py" for name in ("today_first_live", "editorial_draft",
                                                      "scheduled_publisher_handoff",
                                                      "merge_live_into_desk", "emit_verified_live",
-                                                     "editorial_stage_authority", "signed_live_publisher", "github_live_write_policy"))
+                                                     "editorial_stage_authority", "signed_live_publisher", "github_live_write_policy", "staging_git_identity"))
     for local in paths:
         receipt.need(receipt.fingerprint(local)["candidateBlobSha"] ==
                      receipt.content_blob(f"scripts/{local.name}", pinned),
@@ -140,6 +141,44 @@ def stage(raw, parent, blob):
                  "staged commit was not the single expected candidate addition or update")
     receipt.need(receipt.branch_head(BRANCH) == tip, "staged candidate superseded")
     return tip
+
+
+def require_publisher_app(login):
+    from github_live_write_policy import confirm_app_transport
+
+    def root_api(path):
+        reply=subprocess.check_output(["gh","api","--hostname","github.com",path],timeout=10)
+        return json.loads(reply)
+
+    return confirm_app_transport(root_api,login=login,app_id=os.getenv("NEWSROOM_LIVE_PUBLISHER_APP_ID",""))
+
+
+def recover_signed_stage(parent, blob, event, publisher):
+    return signed_stage_readback(api=receipt.api,branch_head=receipt.branch_head,parent=parent,
+                                 draft_blob=blob,event=event,publisher=publisher)
+
+
+def stage_signed(raw,parent,blob,event,publisher,*,authorize):
+    """Submit one CAS; only an exact signed GitHub effect can satisfy the stage."""
+    from signed_live_publisher import git_blob
+
+    receipt.need(git_blob(raw)==blob,"signed staging bytes do not match the Git blob")
+    receipt.need(receipt.branch_head(BRANCH)==parent,"candidate branch changed before signed staging")
+    receipt.need(candidate_blob_at(parent)!=blob,"signed stage cannot claim a pre-existing candidate")
+    authorize()
+    payload={"query":"mutation($input:CreateCommitOnBranchInput!) {createCommitOnBranch(input:$input){commit{oid}}}",
+             "variables":{"input":{
+                  "branch":{"repositoryNameWithOwner":receipt.REPO,"branchName":BRANCH},
+                  "expectedHeadOid":parent,"message":{"headline":stage_headline(event)},
+                  "fileChanges":{"additions":[{"path":receipt.CANDIDATE,"contents":base64.b64encode(raw).decode()}]}}}}
+    try:
+        response=receipt.sha(gh("POST","graphql",payload)["data"]["createCommitOnBranch"]["commit"]["oid"])
+    except TRANSPORT_ERRORS:
+        response=None
+    proven=recover_signed_stage(parent,blob,event,publisher)
+    receipt.need(proven is not None and (response is None or response==proven),
+                 "STAGING_OUTCOME_UNKNOWN_HOLD; reservation retained")
+    return proven
 
 
 def dispatch(parent, validator, draft_hash, journal):
@@ -202,7 +241,7 @@ def main():
                          "production Live mutation is disabled or lacks exact signed authority")
             publisher=os.environ.get("NEWSROOM_PUBLISHER_LOGIN","")
             def ready():
-                from github_live_write_policy import confirm,confirm_app_transport
+                from github_live_write_policy import confirm
                 confirm(receipt.api,ruleset_id=os.getenv("NEWSROOM_LIVE_UPDATE_RULESET_ID",""),
                         publisher_integration_id=os.getenv("NEWSROOM_LIVE_PUBLISHER_APP_ID",""),
                         approval=read_bounded(args.writer_policy_attestation),
@@ -210,12 +249,7 @@ def main():
                         main_parent=validator,draft_sha256=draft_hash)
                 check_current_validator(validator, live_only=True)
                 check_live_only(raw,validator)
-                # GitHub App installations are not user tokens. The active rule
-                # admits the pinned integration, while receipt readback verifies the resulting author.
-                def root_api(path):
-                    reply=subprocess.check_output(["gh","api","--hostname","github.com",path],timeout=10)
-                    return json.loads(reply)
-                confirm_app_transport(root_api,login=publisher,app_id=os.getenv("NEWSROOM_LIVE_PUBLISHER_APP_ID",""))
+                require_publisher_app(publisher)
             def commit(payload):
                 return receipt.sha(gh("POST","graphql",payload)["data"]["createCommitOnBranch"]["commit"]["oid"])
             result=publish_once(raw,read_bounded(args.publication_authorization),read_bounded(args.source_evidence),
@@ -245,11 +279,29 @@ def main():
                          "signed EIC/Core stage approval, source evidence and private journal required")
             pins = {"eic":os.environ.get("NEWSROOM_EIC_STAGE_PUBLIC_KEY", ""),
                     "core":os.environ.get("NEWSROOM_CORE_STAGE_PUBLIC_KEY", "")}
-            event,binding = verify(raw,read_bounded(args.stage_authorization),read_bounded(args.source_evidence),
-                                   pins=pins,parent=tip,validator=validator,now=datetime.now(timezone.utc))
-            commit,new = stage_once(args.journal,event,binding,lambda:stage(raw,tip,blob))
-            receipt.need(receipt.branch_head(BRANCH)==commit and candidate_blob_at(commit)==blob,
-                         "approved staged commit no longer current")
+            envelope=read_bounded(args.stage_authorization)
+            source=read_bounded(args.source_evidence)
+            publisher=os.getenv("NEWSROOM_PUBLISHER_LOGIN","")
+            def stage_grant():
+                return verify(raw,envelope,source,pins=pins,parent=tip,validator=validator,now=datetime.now(timezone.utc))
+
+            event,binding=stage_grant()
+            def prepare_stage_mutation():
+                from github_live_write_policy import confirm
+                receipt.need(args.writer_policy_attestation, "signed observation of the active staging update rule required")
+                confirm(receipt.api, ruleset_id=os.getenv("NEWSROOM_STAGE_UPDATE_RULESET_ID",""),
+                        publisher_integration_id=os.getenv("NEWSROOM_LIVE_PUBLISHER_APP_ID",""),
+                        approval=read_bounded(args.writer_policy_attestation), core_key=pins["core"],
+                        now=datetime.now(timezone.utc), draft_sha256=draft_hash,
+                        branch=BRANCH, staging_parent=tip)
+                require_publisher_app(publisher)
+
+            commit,new=stage_once(args.journal,event,binding,
+                lambda:stage_signed(raw,tip,blob,event,publisher,authorize=stage_grant),
+                lambda:recover_signed_stage(tip,blob,event,publisher),prepare=prepare_stage_mutation)
+
+            receipt.need(recover_signed_stage(tip,blob,event,publisher)==commit,
+                         "approved staged commit no longer has a current signed Git effect")
             result.update(candidateCommitSha=commit,status="STAGED" if new else "ALREADY_STAGED",stageEventId=event)
         elif args.step == "stage":
             result.update(candidateCommitSha=stage(raw, tip, blob), status="STAGED")

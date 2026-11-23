@@ -66,4 +66,27 @@ class ActivatedPolicyProof(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"ATTESTATION_MISMATCH"):
                 confirm(records.__getitem__,now=CLOCK,**options)
 
+    def test_staging_requires_a_branch_scoped_core_observation(self):
+        with TemporaryDirectory() as directory:
+            key = TestKey(Path(directory), b"S"*32)
+            rule = dict(RULE,updated_at="2026-01-10T03:59:00Z",
+                        conditions={"ref_name":{"include":["refs/heads/prepublish-news"],"exclude":[]}})
+            records = {"rulesets/41":rule,"rules/branches/prepublish-news":[{"type":"update","ruleset_id":41}]}
+            att = dict(scope="AI_GROUP_CORE_GITHUB_RULESET_OBSERVATION_V1",repository=REPO,
+                       branch="refs/heads/prepublish-news",rulesetId=41,rulesetUpdatedAt=rule["updated_at"],
+                       stagingParent="a"*40,draftSha256="b"*64,issuedAt=CLOCK.isoformat(),
+                       expiresAt=(CLOCK+timedelta(minutes=4)).isoformat(),bypassActors=rule["bypass_actors"])
+            options = dict(ruleset_id="41",publisher_integration_id="92",core_key=b64(key.public),
+                           staging_parent="a"*40,branch="prepublish-news",draft_sha256="b"*64,now=CLOCK)
+            with self.assertRaisesRegex(ValueError,"ATTESTATION_REQUIRED"):
+                confirm(records.__getitem__,**options)
+            options["approval"] = canonical(sign_claims(key,att))
+            self.assertEqual(confirm(records.__getitem__,**options)["branch"],"prepublish-news")
+            with self.assertRaisesRegex(ValueError,"ATTESTATION_MISMATCH"):
+                confirm(records.__getitem__,**dict(options,staging_parent="c"*40))
+            rule["conditions"] = RULE["conditions"]
+            with self.assertRaisesRegex(ValueError,"STAGING_SCOPE_UNPROVEN"):
+                confirm(records.__getitem__,**options)
+
+
 if __name__=="__main__":unittest.main()

@@ -7,11 +7,17 @@ from today_first_live import strict_json
 from today_first_live import REPO,require
 
 def confirm(api, *, ruleset_id, publisher_integration_id, approval=None, core_key=None,
-            now=None, main_parent=None, draft_sha256=None):
+            now=None, main_parent=None, draft_sha256=None, branch="main", staging_parent=None):
+    require(branch in ("main", "prepublish-news"), "LIVE_WRITER_BRANCH_UNAPPROVED")
+    ref = "refs/heads/" + branch
+    stage = branch == "prepublish-news"
+    if stage:
+        require(approval is not None and isinstance(staging_parent,str)
+                and re.fullmatch(r"[0-9a-f]{40}",staging_parent), "LIVE_STAGING_POLICY_ATTESTATION_REQUIRED")
     for value in (ruleset_id,publisher_integration_id):
         require(isinstance(value,str) and re.fullmatch(r"[1-9][0-9]{0,19}",value),"LIVE_WRITER_POLICY_PINS_REQUIRED")
     ident=int(ruleset_id)
-    active=api("rules/branches/main")
+    active=api("rules/branches/"+branch)
     require(isinstance(active,list) and any(r.get("type")=="update" and r.get("ruleset_id")==ident for r in active),
             "LIVE_WRITER_UPDATE_RESTRICTION_NOT_ACTIVE")
     detail=api("rulesets/"+ruleset_id)
@@ -20,14 +26,15 @@ def confirm(api, *, ruleset_id, publisher_integration_id, approval=None, core_ke
             and any(item.get("type")=="update" for item in detail.get("rules",[])),
             "LIVE_WRITER_RULESET_SCOPE_UNPROVEN")
     patterns=detail.get("conditions",{}).get("ref_name",{})
-    require(patterns.get("include") in (["refs/heads/main"],["~DEFAULT_BRANCH"])
-            and patterns.get("exclude")==[],"LIVE_WRITER_MAIN_SCOPE_UNPROVEN")
+    scopes = ([ref],) if stage else ([ref], ["~DEFAULT_BRANCH"])
+    require(patterns.get("include") in scopes and patterns.get("exclude")==[],
+            "LIVE_WRITER_STAGING_SCOPE_UNPROVEN" if stage else "LIVE_WRITER_MAIN_SCOPE_UNPROVEN")
     roster=detail.get("bypass_actors")
     if approval is not None:
         record,_=authenticate(strict_json(approval),core_key)
         expected=dict(scope="AI_GROUP_CORE_GITHUB_RULESET_OBSERVATION_V1",repository=REPO,
-                      branch="refs/heads/main",rulesetId=ident,rulesetUpdatedAt=detail["updated_at"],
-                      mainParent=main_parent,draftSha256=draft_sha256)
+                      branch=ref,rulesetId=ident,rulesetUpdatedAt=detail["updated_at"],draftSha256=draft_sha256)
+        expected["stagingParent" if stage else "mainParent"] = staging_parent if stage else main_parent
         require(set(record)==set(expected)|{"issuedAt","expiresAt","bypassActors"}
                 and all(record[k]==v for k,v in expected.items()),"LIVE_WRITER_POLICY_ATTESTATION_MISMATCH")
         issued,expiry=stamp(record["issuedAt"]),stamp(record["expiresAt"])
@@ -36,7 +43,7 @@ def confirm(api, *, ruleset_id, publisher_integration_id, approval=None, core_ke
         roster=record["bypassActors"]
     require(roster==[{"actor_type":"Integration","actor_id":int(publisher_integration_id),"bypass_mode":"always"}],
             "LIVE_WRITER_BYPASS_ROSTER_UNPROVEN")
-    return {"repository":REPO,"branch":"main","approvedRuleset":ident,"publisherIntegrationId":int(publisher_integration_id)}
+    return {"repository":REPO,"branch":branch,"approvedRuleset":ident,"publisherIntegrationId":int(publisher_integration_id)}
 
 
 def confirm_app_transport(root_api, *, login, app_id):

@@ -88,7 +88,7 @@ def verify(raw,envelope,evidence,*,pins,parent,validator,now):
     return eic["eventId"],digest(canonical(packet))
 
 
-def stage_once(directory,event,binding,submit):
+def stage_once(directory,event,binding,submit,recover=None,*,prepare=None):
     """Reserve before transport. A lost result may only be cleared by a proven readback."""
     mode=directory.stat(follow_symlinks=False)
     require(stat.S_ISDIR(mode.st_mode) and mode.st_uid==os.geteuid() and not mode.st_mode&0o077,
@@ -105,17 +105,27 @@ def stage_once(directory,event,binding,submit):
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("PRAGMA synchronous=FULL")
         db.execute("CREATE TABLE IF NOT EXISTS staging (event TEXT PRIMARY KEY, binding TEXT NOT NULL, commit_sha TEXT)")
-        db.execute("BEGIN IMMEDIATE")
-        prior=db.execute("SELECT binding, commit_sha FROM staging WHERE event=?",(event,)).fetchone()
-        if prior is not None:
-            db.commit()
+        lookup = "SELECT binding, commit_sha FROM staging WHERE event=?"
+        prior = db.execute(lookup,(event,)).fetchone()
+        fresh = False
+        if prior is None:
+            if prepare is not None:
+                prepare()
+            inserted = db.execute("INSERT OR IGNORE INTO staging VALUES(?,?,NULL)",(event,binding))
+            fresh = inserted.rowcount == 1
+            if not fresh:
+                prior = db.execute(lookup,(event,)).fetchone()
+        if fresh:
+            commit=submit()
+        else:
             require(prior[0]==binding,"staging event reused for different content")
-            require(bool(prior[1]),"staging outcome unknown; reconcile GitHub readback before retry")
-            return prior[1],False
-        db.execute("INSERT INTO staging VALUES(?,?,NULL)",(event,binding))
-        db.commit()
-        commit=submit()
+            if prior[1] is not None:
+                return prior[1],False
+            require(recover is not None,"staging outcome unknown; reconcile GitHub readback before retry")
+            commit=recover()
         require(isinstance(commit,str) and OID.fullmatch(commit),"unverified staged commit; reservation retained")
         db.execute("UPDATE staging SET commit_sha=? WHERE event=? AND binding=? AND commit_sha IS NULL",
                    (commit,event,binding))
-        return commit,True
+        stored=db.execute("SELECT commit_sha FROM staging WHERE event=? AND binding=?",(event,binding)).fetchone()
+        require(stored==(commit,),"staging readback contradicts the retained authorization")
+        return commit,fresh
