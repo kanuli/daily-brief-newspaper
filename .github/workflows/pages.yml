@@ -11,9 +11,9 @@ on:
         description: Exact prepublish-news tip for the approved Live bytes
         type: string
       live_base_mode:
-        description: Existing Pages receipt, or a separately approved replacement baseline
+        description: Existing Pages receipt, or a separately approved Git or public snapshot baseline
         type: choice
-        options: [existing, replacement]
+        options: [existing, replacement, public-snapshot]
         default: existing
       live_site_base_commit:
         description: Exact source commit from the Pages receipt or separately pinned replacement
@@ -58,6 +58,8 @@ jobs:
       url: ${{ steps.live_deployment.outputs.page_url }}
     env:
       LIVE_BASE_MODE: ${{ inputs.live_base_mode }}
+      LIVE_PUBLIC_BASE_ENABLED: ${{ vars.NEWSROOM_LIVE_PUBLIC_BASE_ENABLED }}
+      LIVE_PUBLIC_BASE_SHA256: ${{ vars.NEWSROOM_LIVE_PUBLIC_BASE_SHA256 }}
       LIVE_REPLACEMENT_ENABLED: ${{ vars.NEWSROOM_REPLACEMENT_ROLLOUT_ENABLED }}
       LIVE_REPLACEMENT_SOURCE: ${{ vars.NEWSROOM_REPLACEMENT_SOURCE_COMMIT }}
       LIVE_REPLACEMENT_SITE_PIN: ${{ vars.NEWSROOM_REPLACEMENT_SITE_SHA256 }}

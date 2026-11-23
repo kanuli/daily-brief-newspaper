@@ -15,14 +15,17 @@ import time
 import urllib.request
 
 import build_static_news_fallback as renderer
+import live_public_snapshot as public_snapshot
 from desk_freshness_policy import HKT, PUBLIC_DESK_FRESHNESS_HOURS, current_daily_dates, routed_slugs
 from merge_live_into_desk import DESK_LABELS, live_coverage_diagnostics
-from pages_publication_receipt import FILES as RECEIPT_FILES, RECEIPT as PAGES_RECEIPT, build as build_receipt
+from pages_publication_receipt import FILES as RECEIPT_FILES, RECEIPT as PAGES_RECEIPT, build as build_receipt, vocab_stamp
 from scheduled_publication_contract import CONTRACT, publisher_errors, stamp
 from verified_draft_pending import locator_only_url
 from today_first_replacement import public_state as replacement_public_state, stage as stage_replacement
 
 SCOPE = "AI_GROUP_CORE_LIVE_PAGES_RELEASE_V1"
+PUBLIC_BASE_SCOPE = "AI_GROUP_CORE_LIVE_PAGES_SNAPSHOT_RELEASE_V1"
+PUBLIC_BASE_MANIFEST = Path("config/newsroom-pages-public-baseline.json")
 REPO = "kanuli/daily-brief-newspaper"
 SITE = "https://kanuli.github.io/daily-brief-newspaper/"
 CANDIDATE = "data/scheduled-live-candidate.json"
@@ -83,15 +86,19 @@ def verify_ed25519(public, message, signature, *, openssl):
         require(p.returncode == 0, "invalid Core approval signature")
 
 
-def verify_approval(token, pin, raw, candidate, site_base, now, *, openssl="openssl"):
+def verify_approval(token, pin, raw, candidate, site_base, now, *, openssl="openssl", public_baseline=None):
     require(bool(token and pin), "CORE_LIVE_APPROVAL_UNAVAILABLE")
     require(len(token) <= 4096 and len(pin) <= 88, "approval exceeds size bounds")
     envelope = strict_json(base64.b64decode(token, validate=True))
     require(isinstance(envelope, dict) and set(envelope) == {"claims", "signature"}, "invalid approval envelope")
     claims = envelope["claims"]
-    require(isinstance(claims, dict) and set(claims) == CLAIMS, "unrecognized Core release claims")
+    expected = CLAIMS if public_baseline is None else CLAIMS | {"publicBaselineSha256"}
+    scope = SCOPE if public_baseline is None else PUBLIC_BASE_SCOPE
+    require(isinstance(claims, dict) and set(claims) == expected, "unrecognized Core release claims")
     require((claims["scope"], claims["repository"], claims["actor"], claims["decision"]) ==
-            (SCOPE, REPO, "CANTONESE_EIC", "APPROVE_LIVE_PAGES"), "wrong approval authority or scope")
+            (scope, REPO, "CANTONESE_EIC", "APPROVE_LIVE_PAGES"), "wrong approval authority or scope")
+    if public_baseline is not None:
+        require(claims["publicBaselineSha256"] == public_baseline, "approval does not bind the public baseline")
     require((claims["candidateCommit"], claims["siteBaseCommit"], claims["draftSha256"]) ==
             (candidate, site_base, hash_bytes(raw)), "approval does not bind the exact input and site base")
     issued, expires = stamp(claims["issuedAt"]), stamp(claims["expiresAt"])
@@ -149,9 +156,11 @@ def diagnostics(live, *, daily, desk, stock, now):
     return result
 
 
-def prepare(site, raw, *, token, pin, candidate, site_base, current_public, now, openssl="openssl"):
+def prepare(site, raw, *, token, pin, candidate, site_base, current_public, now, openssl="openssl",
+            public_baseline=None):
     live = candidate_live(raw, now=now)
-    issued = verify_approval(token, pin, raw, candidate, site_base, now, openssl=openssl)
+    issued = verify_approval(token, pin, raw, candidate, site_base, now, openssl=openssl,
+                             public_baseline=public_baseline)
     require(stamp(live["lastUpdated"]) <= issued, "Core approved before edition was produced")
     if current_public == raw:
         return {"decision": "ALREADY_PUBLIC", "draftSha256": hash_bytes(raw)}
@@ -218,15 +227,23 @@ def public_bytes(name):
 
 def live_base_receipt(raw, commit):
     receipt = strict_json(raw)
-    require(isinstance(receipt, dict) and receipt.get("schema") == "PUBLICATION_BUILD_RECEIPT_V1"
+    require(isinstance(receipt, dict) and receipt.get("schema") in {"PUBLICATION_BUILD_RECEIPT_V1", "PUBLICATION_BUILD_RECEIPT_V2"}
             and receipt.get("sourceCommit") == commit, "published Pages base does not match the approved commit")
     for key in ("runId", "runAttempt"):
         require(isinstance(receipt.get(key), str) and re.fullmatch(r"[1-9][0-9]*", receipt[key]),
                 "invalid base Pages run identity")
     files = receipt.get("files")
-    require(isinstance(files, dict) and set(files) == set(RECEIPT_FILES)
+    require(isinstance(files, dict) and set(RECEIPT_FILES) <= files.keys()
             and all(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) for value in files.values()),
             "invalid base Pages content receipt")
+    additional = files.keys() - set(RECEIPT_FILES)
+    if receipt["schema"] == "PUBLICATION_BUILD_RECEIPT_V2":
+        require(2 <= len(additional) <= 1500 and "data/vocab/latest.json" in additional,
+                "invalid base Pages vocabulary inventory")
+        for name in additional:
+            vocab_stamp(name)
+    else:
+        require(not additional, "legacy base Pages receipt contains unexpected paths")
     require(isinstance(receipt.get("builderCommit",commit),str)
             and re.fullmatch(r"[0-9a-f]{40}",receipt.get("builderCommit",commit)),
             "invalid base Pages builder identity")
@@ -287,6 +304,16 @@ def preserved_site_hash(site):
     return hash_bytes(canonical(manifest))
 
 
+def snapshot_plan(site_base):
+    require(os.environ.get("LIVE_PUBLIC_BASE_ENABLED") == "true", "public Pages baseline rollout is disabled")
+    pin = os.environ.get("LIVE_PUBLIC_BASE_SHA256", "")
+    with PUBLIC_BASE_MANIFEST.open("rb") as src:
+        raw = src.read(256 * 1024 + 1)
+    plan = public_snapshot.reviewed(raw, sha_pin=pin, commit=site_base, repo=REPO,
+                                    receipt=PAGES_RECEIPT, required=REPLACEMENT_READBACK, parse=strict_json)
+    return pin, plan
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("operation", choices=("base", "prepare", "check", "verify"))
@@ -298,6 +325,12 @@ def main():
                 if (hash_bytes(public_bytes(PAGES_RECEIPT)) == receipt["pagesReceiptSha256"]
                         and hash_bytes(public_bytes(LIVE)) == receipt["draftSha256"]
                         and hash_bytes(public_bytes("live.html")) == receipt["liveHtmlSha256"]):
+                    if "publicBaselineSha256" in receipt:
+                        baseline, plan = snapshot_plan(receipt["siteBaseCommit"])
+                        require(baseline == receipt["publicBaselineSha256"], "verified baseline pin differs")
+                        unchanged = {name: value for name, value in plan["files"].items() if name not in LIVE_OUTPUTS}
+                        missing = [name for name in plan["absent"] if name != PAGES_RECEIPT]
+                        public_snapshot.checked_public(plan, public_bytes, paths=unchanged, absent=missing)
                     print("TODAY_FIRST_PUBLIC_LIVE_MATCH", receipt["draftSha256"])
                     return
             except (OSError, ValueError):
@@ -312,14 +345,16 @@ def main():
     base_path = runner / "today-first-base-receipt.json"
     now = datetime.now(timezone.utc)
     base_mode = os.environ.get("LIVE_BASE_MODE", "existing")
-    require(base_mode in {"existing", "replacement"}, "unknown Pages base mode")
+    require(base_mode in {"existing", "replacement", "public-snapshot"}, "unknown Pages base mode")
     replacement = base_mode == "replacement"
+    base_pin, snapshot = snapshot_plan(site_base) if base_mode == "public-snapshot" else (None, None)
     if replacement:
         require(os.environ.get("LIVE_REPLACEMENT_ENABLED") == "true"
                 and os.environ.get("LIVE_REPLACEMENT_SOURCE") == site_base,
                 "separately approved replacement baseline is not enabled")
     token, pin = os.environ.get("LIVE_CORE_APPROVAL"), os.environ.get("LIVE_CORE_PUBLIC_KEY")
     if args.operation == "base":
+        require(base_mode == "existing", "Pages artifact recovery only applies to the existing base")
         try:
             raw_receipt = public_bytes(PAGES_RECEIPT)
         except OSError as exc:
@@ -334,7 +369,7 @@ def main():
         raw = (site / LIVE).read_bytes()
         receipt = strict_json((runner / "today-first-result.json").read_bytes())
         candidate_live(raw, now=now)  # recheck HKT midnight and source freshness before deploy
-        verify_approval(token, pin, raw, candidate, site_base, now)
+        verify_approval(token, pin, raw, candidate, site_base, now, public_baseline=base_pin)
         require(receipt["decision"] == "READY" and hash_bytes(raw) == receipt["draftSha256"]
                 and hash_bytes((site / "live.html").read_bytes()) == receipt["liveHtmlSha256"],
                 "built Live payload changed")
@@ -345,6 +380,9 @@ def main():
                     == os.environ["LIVE_REPLACEMENT_PUBLIC_PIN"] == receipt["replacementPublicSha256"]
                     and os.environ["LIVE_REPLACEMENT_SITE_PIN"] == receipt["replacementBaselineSha256"],
                     "replacement base or pinned public snapshot moved before deployment")
+        elif snapshot is not None:
+            require(receipt["publicBaselineSha256"] == base_pin, "reviewed public baseline changed")
+            public_snapshot.checked_public(snapshot, public_bytes)
         else:
             require(public_bytes(PAGES_RECEIPT) == base_path.read_bytes(), "public Pages base moved before deployment")
         require(hash_bytes((site / PAGES_RECEIPT).read_bytes()) == receipt["pagesReceiptSha256"],
@@ -357,7 +395,7 @@ def main():
     require(git("ls-tree", candidate, "--", CANDIDATE).startswith(b"100644 blob "), "candidate is not a regular file")
     require(0 < int(git("cat-file", "-s", f"{candidate}:{CANDIDATE}")) <= MAX_DRAFT, "candidate file outside bounds")
     raw = git("show", f"{candidate}:{CANDIDATE}")
-    verify_approval(token, pin, raw, candidate, site_base, now)
+    verify_approval(token, pin, raw, candidate, site_base, now, public_baseline=base_pin)
     site.mkdir()
     if replacement:
         current_public = public_bytes(LIVE)
@@ -366,13 +404,16 @@ def main():
                     read=lambda name: current_public if name == LIVE else public_bytes(name),
                     tracked_files=REPLACEMENT_READBACK, public_pin=os.environ["LIVE_REPLACEMENT_PUBLIC_PIN"],
                     canonical=canonical)
+    elif snapshot is not None:
+        public_snapshot.checked_public(snapshot, public_bytes, output=site)
+        current_public = (site / LIVE).read_bytes()
     else:
         extract_base(site, runner / "today-first-base-artifact" / "artifact.tar")
         current_public = validate_base(site, base_path.read_bytes(), site_base, read_public=public_bytes)
     preserved = preserved_site_hash(site)
     receipt = prepare(site, raw, token=token, pin=pin,
                       candidate=candidate, site_base=site_base, current_public=current_public,
-                      now=datetime.now(timezone.utc))
+                      now=datetime.now(timezone.utc), public_baseline=base_pin)
     if receipt["decision"] == "READY":
         lineage = build_receipt(site, commit=site_base, run_id=os.environ["GITHUB_RUN_ID"],
                                 attempt=os.environ["GITHUB_RUN_ATTEMPT"])
@@ -383,6 +424,11 @@ def main():
         if replacement:
             release = dict(replacementBaselineSha256=manifest,
                            replacementPublicSha256=os.environ["LIVE_REPLACEMENT_PUBLIC_PIN"])
+            lineage.update(release)
+            receipt.update(release)
+        elif snapshot is not None:
+            release = dict(publicBaselineSha256=base_pin, siteBaseCommit=site_base,
+                           preservedPublicPaths=len(snapshot["files"]) - 2)
             lineage.update(release)
             receipt.update(release)
         else:
