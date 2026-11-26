@@ -2,6 +2,26 @@ name: Deploy Daily Brief to GitHub Pages
 
 on:
   workflow_dispatch:
+    inputs:
+      publication_scope:
+        type: choice
+        options: [full, live]
+        default: full
+      live_candidate_commit:
+        description: Exact prepublish-news tip for the approved Live bytes
+        type: string
+      live_base_mode:
+        description: Existing Pages receipt, or a separately approved replacement baseline
+        type: choice
+        options: [existing, replacement]
+        default: existing
+      live_site_base_commit:
+        description: Exact source commit from the Pages receipt or separately pinned replacement
+        type: string
+      live_core_approval:
+        description: Base64 Core-signed Live release envelope (never a signing key)
+        type: string
+
 
 permissions:
   contents: read
@@ -10,10 +30,115 @@ permissions:
 
 concurrency:
   group: "pages"
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
+  live-denied:
+    if: inputs.publication_scope == 'live' && (github.repository != 'kanuli/daily-brief-newspaper' || github.ref != 'refs/heads/main' || vars.NEWSROOM_LIVE_ONLY_ENABLED != 'true')
+    permissions: {}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Refuse a Live request outside the approved repository, branch or rollout
+        run: |
+          echo 'LIVE_ONLY_ROLLOUT_OR_BRANCH_HOLD' >&2
+          exit 1
+
+  live-only:
+    if: github.repository == 'kanuli/daily-brief-newspaper' && github.ref == 'refs/heads/main' && inputs.publication_scope == 'live' && vars.NEWSROOM_LIVE_ONLY_ENABLED == 'true'
+    permissions:
+      contents: read
+      actions: read
+      pages: write
+      id-token: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment:
+      name: github-pages
+      url: ${{ steps.live_deployment.outputs.page_url }}
+    env:
+      LIVE_BASE_MODE: ${{ inputs.live_base_mode }}
+      LIVE_REPLACEMENT_ENABLED: ${{ vars.NEWSROOM_REPLACEMENT_ROLLOUT_ENABLED }}
+      LIVE_REPLACEMENT_SOURCE: ${{ vars.NEWSROOM_REPLACEMENT_SOURCE_COMMIT }}
+      LIVE_REPLACEMENT_SITE_PIN: ${{ vars.NEWSROOM_REPLACEMENT_SITE_SHA256 }}
+      LIVE_REPLACEMENT_PUBLIC_PIN: ${{ vars.NEWSROOM_REPLACEMENT_PUBLIC_SHA256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require a separately configured Core release key
+        env:
+          LIVE_CORE_PUBLIC_KEY: ${{ vars.NEWSROOM_CORE_RELEASE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$LIVE_CORE_PUBLIC_KEY"
+      - name: Identify the exact currently published Pages build
+        if: inputs.live_base_mode == 'existing'
+        id: base
+        env:
+          LIVE_CANDIDATE_COMMIT: ${{ inputs.live_candidate_commit }}
+          LIVE_SITE_BASE_COMMIT: ${{ inputs.live_site_base_commit }}
+        run: python -B scripts/today_first_live.py base
+      - name: Recover the existing Pages deployment artifact without rebuilding other desks
+        if: inputs.live_base_mode == 'existing'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_RUN_ID: ${{ steps.base.outputs.run_id }}
+          BASE_RUN_ATTEMPT: ${{ steps.base.outputs.run_attempt }}
+          BASE_BUILDER_COMMIT: ${{ steps.base.outputs.builder_commit }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BASE_RUN_ID" |
+            jq -e --arg id "$BASE_RUN_ID" --arg attempt "$BASE_RUN_ATTEMPT" --arg repo "$GITHUB_REPOSITORY" --arg builder "$BASE_BUILDER_COMMIT" '
+              (.id | tostring) == $id and (.run_attempt | tostring) == $attempt
+              and .head_branch == "main" and .path == ".github/workflows/pages.yml"
+              and .repository.full_name == $repo and .head_sha == $builder
+              and .status == "completed" and .conclusion == "success"' >/dev/null
+          gh run download "$BASE_RUN_ID" --repo "$GITHUB_REPOSITORY" --name github-pages \
+            --dir "$RUNNER_TEMP/today-first-base-artifact"
+      - name: Gate and build only the Core-approved Live payload
+        id: live
+        env:
+          LIVE_CANDIDATE_COMMIT: ${{ inputs.live_candidate_commit }}
+          LIVE_SITE_BASE_COMMIT: ${{ inputs.live_site_base_commit }}
+          LIVE_CORE_APPROVAL: ${{ inputs.live_core_approval }}
+          LIVE_CORE_PUBLIC_KEY: ${{ vars.NEWSROOM_CORE_RELEASE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          [[ "$LIVE_CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ && "$LIVE_SITE_BASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$LIVE_SITE_BASE_COMMIT" HEAD
+          git fetch --no-tags --depth=1 origin refs/heads/prepublish-news:refs/remotes/origin/prepublish-news
+          python -B scripts/today_first_live.py prepare
+      - uses: actions/configure-pages@v5
+        if: steps.live.outputs.decision == 'READY'
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.live.outputs.decision == 'READY'
+        with:
+          path: ${{ runner.temp }}/today-first-site
+          retention-days: 30
+      - name: Refuse revised candidate before deployment
+        if: steps.live.outputs.decision == 'READY'
+        env:
+          LIVE_CANDIDATE_COMMIT: ${{ inputs.live_candidate_commit }}
+          LIVE_SITE_BASE_COMMIT: ${{ inputs.live_site_base_commit }}
+          LIVE_CORE_APPROVAL: ${{ inputs.live_core_approval }}
+          LIVE_CORE_PUBLIC_KEY: ${{ vars.NEWSROOM_CORE_RELEASE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/prepublish-news | cut -f1)" = "$LIVE_CANDIDATE_COMMIT"
+          python -B scripts/today_first_live.py check
+      - uses: actions/deploy-pages@v4
+        if: steps.live.outputs.decision == 'READY'
+        id: live_deployment
+      - name: Verify exact published Live JSON and HTML
+        if: steps.live.outputs.decision == 'READY'
+        run: python -B scripts/today_first_live.py verify
+
+
   deploy:
+    if: inputs.publication_scope != 'live'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

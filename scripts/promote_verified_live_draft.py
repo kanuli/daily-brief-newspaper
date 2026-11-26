@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
 from verified_draft_pending import draft_has_locator_only_sources
+from scheduled_publication_contract import is_scheduled
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -227,6 +228,11 @@ def main():
         print(f"FAILOVER_NOOP current={current.isoformat()} target={target.isoformat()}")
         return 0
 
+    if is_scheduled(old_live):
+        # The recovery draft is a legacy editorial status and carries no
+        # Core/EIC-signed release for Schedule-governed Live. Keep old Live
+        # intact and leave promotion to the separately authenticated path.
+        raise SystemExit("FAILOVER_HOLD scheduled Live requires signed EIC/Core Publisher release")
     live = build_live(draft, old_live, latest, target, articles)
     LIVE_PATH.write_text(json.dumps(live, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(
