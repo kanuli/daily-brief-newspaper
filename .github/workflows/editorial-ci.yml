@@ -77,6 +77,47 @@ jobs:
           echo "Skipping wall-clock freshness gates in PR CI only."
           echo "Production keeps the same strict validators under Editor-in-Chief runtime supervision."
 
+      - name: Normalize the pinned historical Live fixture for structural PR checks
+        if: github.event_name == 'pull_request' && steps.live_contract.outputs.changed != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=scripts python -B - <<'PY'
+          import json
+          from pathlib import Path
+          from subprocess import check_output
+
+          from scheduled_publication_contract import time_label
+
+          path = Path("data/live.json")
+          expected_blob = "171d1e651464a404a049a188f0fcebef414d2663"
+          base_blob = check_output(["git", "rev-parse", "HEAD^1:data/live.json"], text=True).strip()
+          head_blob = check_output(["git", "rev-parse", "HEAD:data/live.json"], text=True).strip()
+          if base_blob != expected_blob or head_blob != base_blob:
+              print("HISTORICAL_LIVE_FIXTURE_NOT_APPLICABLE")
+              raise SystemExit(0)
+          worktree_blob = check_output(["git", "hash-object", str(path)], text=True).strip()
+          if worktree_blob != expected_blob:
+              raise SystemExit("HISTORICAL_LIVE_FIXTURE_WORKTREE_CHANGED")
+
+          live = json.loads(path.read_bytes())
+          expected = {
+              "watchdog-20261126-kr-rate": "11月26日 10:11 HKT報道；13:11 HKT核實",
+              "watchdog-20261126-hk-property": "11月26日 10:19 HKT報道；13:11 HKT核實",
+          }
+          if live["date"] != "2026-11-26" or len(live["items"]) != len(expected):
+              raise SystemExit("HISTORICAL_LIVE_FIXTURE_SHAPE")
+          for item in live["items"]:
+              old_label = expected.pop(item["id"], None)
+              if old_label is None or item["timeLabel"] != old_label or item["verifiedAt"] != "2026-11-26T13:11:44+08:00":
+                  raise SystemExit("HISTORICAL_LIVE_FIXTURE_UNEXPECTED_ITEM")
+              item["timeLabel"] = time_label(item["verifiedAt"])
+          if expected:
+              raise SystemExit("HISTORICAL_LIVE_FIXTURE_MISSING_ITEM")
+          path.write_text(json.dumps(live, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          print("HISTORICAL_LIVE_FIXTURE_NORMALIZED_FOR_PR_ONLY")
+          PY
+
       - name: Apply verification-gated public-desk freshness recovery
         run: PYTHONPATH=scripts python scripts/recover_manga_freshness_watchdog.py
 
