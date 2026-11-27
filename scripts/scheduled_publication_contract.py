@@ -1,6 +1,7 @@
 """Deterministic contract for the existing Scheduled Newsroom Publisher."""
 import argparse
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 import hashlib
 import json
 from pathlib import Path
@@ -49,7 +50,7 @@ def stamp(value):
 
 def time_label(verified_at):
     """Format the instant at which the publisher actually verified the source."""
-    return stamp(verified_at).astimezone(HKT).strftime("%m月%d日 %H:%M HKT核實")
+    return stamp(verified_at).astimezone(ZoneInfo("Asia/Hong_Kong")).strftime("%m月%d日 %H:%M HKT核實")
 
 
 def web_source(url):
