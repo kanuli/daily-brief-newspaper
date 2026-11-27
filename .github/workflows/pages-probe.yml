@@ -1,31 +1,6 @@
 name: Verify Public Pages Publication Snapshot
 
 on:
-  push:
-    branches: ["main"]
-    paths:
-      - ".github/workflows/pages-probe.yml"
-      - "scripts/validate_stock_news.py"
-      - "scripts/stock_news_heartbeat.py"
-      - "assets/css/live.css"
-      - "assets/css/live-rebuild.css"
-      - "assets/css/extras.css"
-      - "assets/js/live-rebuild.js"
-      - "assets/js/daily-extras.js"
-      - "assets/js/article-body-upgrade.js"
-      - "assets/js/site-tts-canto-nano.js"
-      - "assets/js/stocks.js"
-      - "live.html"
-      - "index.html"
-      - "data/latest.json"
-      - "data/live.json"
-      - "data/desk-latest.json"
-      - "data/stocks-latest.json"
-  workflow_run:
-    workflows: ["Deploy Daily Brief to GitHub Pages"]
-    types: [completed]
-  schedule:
-    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 permissions:
