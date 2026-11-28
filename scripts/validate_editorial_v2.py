@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json, pathlib, re, sys
 from semantic_copy_guard import semantic_copy_errors
+from source_headline_contract import validate_source_headline
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 DATA=ROOT/'data'
@@ -17,6 +18,8 @@ def cjk_len(v): return len(re.findall(r'[\u3400-\u9fff]',str(v or '')))
 def compact_len(v): return len(re.sub(r'\s+','',str(v or '')))
 
 def validate_story(story,label,strict=False):
+    if not isinstance(story, dict): fail(f'{label}: story must be an object')
+    if validate_source_headline(story, label): return
     required=['title','dek','summary','context','why','watchNext','sourceName','sourceUrl','timeLabel']+(['body'] if strict else [])
     for key in required:
         if not isinstance(story.get(key),str) or not story.get(key).strip(): fail(f'{label}: missing {key}')

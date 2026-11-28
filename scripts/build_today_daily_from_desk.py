@@ -29,6 +29,7 @@ from atomic_publish import atomic_write_text
 from desk_freshness_policy import editorial_story_time
 from validate_daily_v3 import validate_story
 from scheduled_publication_contract import daily_payload_error, desk_checkpoint_errors, is_scheduled, require_publisher_live
+from publication_coverage import effective_live
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -146,11 +147,16 @@ def build(now: datetime | None = None, *, restore_invalid_current: bool = False)
     desk_path = DATA / "desk-latest.json"
     desk = load(desk_path)
     live_path = DATA / "live.json"
-    live = load(live_path) if live_path.is_file() else {}
+    live_raw = live_path.read_bytes() if live_path.is_file() else b"{}"
+    live = json.loads(live_raw)
     if repair and not is_scheduled(live):
         raise SystemExit("DAILY_SAME_DATE_LIVE_PROVENANCE_HOLD")
     if is_scheduled(live):
         require_publisher_live(live, now=actual_now)
+        try:
+            live = effective_live(live_raw, desk, now=actual_now)
+        except ValueError as exc:
+            raise SystemExit(f"DAILY_SCHEDULED_LIVE_DESK_CHECKPOINT_HOLD {exc}") from exc
         if errors := desk_checkpoint_errors(live, desk, now=actual_now):
             raise SystemExit("DAILY_SCHEDULED_LIVE_DESK_CHECKPOINT_HOLD " + "; ".join(errors))
     desk_date = str(desk.get("date") or "")

@@ -83,9 +83,11 @@ def read_json(path: Path) -> dict[str, Any] | None:
 
 def publication_state() -> tuple[bool, str, dict[str, int]]:
     """Require the same complete newsroom state that voice is meant to cover."""
-    live = read_json(Path("data/live.json"))
-    if not live:
-        return False, "live-json-missing", {}
+    from publication_coverage import publication_input
+    try:
+        live, _ = publication_input(Path("data/live.json"), Path("data/desk-latest.json"))
+    except (OSError, ValueError, TypeError, SystemExit) as exc:
+        return False, f"live-or-desk-coverage-unverified:{type(exc).__name__}", {}
     coverage = live.get("coverage") if isinstance(live.get("coverage"), dict) else {}
     if coverage.get("status") != "COMPLETE":
         return False, f"coverage={coverage.get('status')}", {}
