@@ -121,7 +121,11 @@ jobs:
 
       - name: Merge current Live and derive coverage from the final Desk
         shell: bash
-        run: python scripts/merge_live_into_desk.py
+        run: |
+          set -euo pipefail
+          git show HEAD:data/live.json > "$RUNNER_TEMP/predecessor-live.json"
+          python scripts/merge_live_into_desk.py
+          python scripts/formal_desk_checkpoint.py "$RUNNER_TEMP/predecessor-live.json"
 
       # This integrity gate is intentionally before the checkpoint below.  It
       # allows stale-but-complete emergency restoration earlier in the job, but
@@ -142,7 +146,10 @@ jobs:
         run: |
           set -euo pipefail
           echo "changed=false" >> "$GITHUB_OUTPUT"
-          git add -- data/desk-latest.json data/live.json
+          git add -- data/desk-latest.json
+          if ! cmp -s "$RUNNER_TEMP/predecessor-live.json" data/live.json; then
+            git add -- data/live.json
+          fi
           if git diff --cached --quiet; then
             echo "ROLLING_DESK_PROGRESS_CHECKPOINT_NOOP"
             exit 0
@@ -171,4 +178,3 @@ jobs:
       - name: Test desk freshness policy
         shell: bash
         run: python scripts/test_desk_freshness.py
-

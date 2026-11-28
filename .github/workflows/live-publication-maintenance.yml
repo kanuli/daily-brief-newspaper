@@ -1,5 +1,3 @@
-# Immediate publication-state watchdog trigger enabled 2026-09-08
-# Existing watchdog recovery invocation refreshed after 19:00 publication-state failure.
 name: Live Publication Auto Maintenance
 
 on:
@@ -62,6 +60,19 @@ jobs:
           def parse(value):
               return datetime.fromisoformat(str(value).replace('Z','+00:00'))
 
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "scripts")
+          from publication_coverage import effective_live
+          from scheduled_publication_contract import is_scheduled
+
+          if is_scheduled(live):
+              try:
+                  desk=json.loads(Path('data/desk-latest.json').read_bytes())
+                  live=effective_live(Path('data/live.json').read_bytes(),desk)
+              except (OSError, ValueError, TypeError, SystemExit):
+                  # A held checkpoint must stay incomplete, and only EIC can arrange its recovery.
+                  live={**live,'coverage':{}}
           coverage=live.get('coverage') if isinstance(live.get('coverage'),dict) else {}
           counts=coverage.get('deskLatestStoryCounts') if isinstance(coverage.get('deskLatestStoryCounts'),dict) else {}
           depth_ok=all(int(counts.get(slug) or 0) >= minimum for slug,minimum in floors.items())
@@ -166,6 +177,11 @@ jobs:
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
+            ownership=$(python -c 'import json,sys; sys.path.insert(0,"scripts"); from scheduled_publication_contract import is_scheduled; print("formal" if is_scheduled(json.load(open("data/live.json"))) else "legacy")')
+            if test "$ownership" = formal; then
+              echo "FORMAL_LIVE_OWNED_BY_CORE_PUBLISHER_USE_EIC_DESK_HANDOFF"
+              exit 0
+            fi
             python scripts/recover_desk_container_watchdog.py
             python scripts/sync_daily_into_desk_watchdog.py
             python scripts/recover_manga_freshness_watchdog.py
@@ -205,6 +221,11 @@ jobs:
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
+            ownership=$(python -c 'import json,sys; sys.path.insert(0,"scripts"); from scheduled_publication_contract import is_scheduled; print("formal" if is_scheduled(json.load(open("data/live.json"))) else "legacy")')
+            if test "$ownership" = formal; then
+              echo "FORMAL_LIVE_OWNED_BY_CORE_PUBLISHER_USE_EIC_DESK_HANDOFF"
+              exit 0
+            fi
 
             if [ "${{ steps.inspect.outputs.emergency }}" = "true" ]; then
               python scripts/promote_verified_live_draft.py /tmp/prepublish.json --max-age-minutes 2160
