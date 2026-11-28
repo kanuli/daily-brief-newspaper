@@ -56,9 +56,10 @@ DESK_FLOORS = {
 
 def _publication_state_is_healthy() -> tuple[bool, str]:
     try:
-        live = json.loads(Path("data/live.json").read_text(encoding="utf-8"))
-    except Exception as exc:
-        return False, f"live-json-unreadable:{type(exc).__name__}"
+        from publication_coverage import publication_input
+        live, _ = publication_input(Path("data/live.json"), Path("data/desk-latest.json"))
+    except (OSError, ValueError, TypeError, SystemExit) as exc:
+        return False, f"live-or-desk-coverage-unverified:{type(exc).__name__}"
 
     coverage = live.get("coverage") or {}
     if coverage.get("status") != "COMPLETE":

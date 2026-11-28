@@ -17,6 +17,7 @@ from desk_freshness_policy import (
 )
 
 from scheduled_publication_contract import desk_checkpoint_errors, is_scheduled, require_publisher_live
+from source_headline_contract import validate_source_headline
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -56,6 +57,8 @@ def need(condition, message):
 
 def rich_story(story, label):
     need(isinstance(story, dict), f"{label}: story must be an object")
+    if validate_source_headline(story, label):
+        return
     for field in REQUIRED_STORY_FIELDS:
         value = story.get(field)
         need(isinstance(value, str) and value.strip(), f"{label}: missing {field}")
@@ -216,11 +219,15 @@ def report_voice_currentness_nonblocking():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--rolling-desk-checkpoint", action="store_true")
+    parser.add_argument("--detached", action="store_true")
     args = parser.parse_args()
     live = load("live.json")
     checkpoint = args.rolling_desk_checkpoint and is_scheduled(live)
     latest = {} if checkpoint else load("latest.json")
     desk = load("desk-latest.json")
+    if args.detached and is_scheduled(live):
+        from publication_coverage import effective_live
+        live = effective_live((DATA / "live.json").read_bytes(), desk)
     validate_desks(desk)
     validate_live(latest, live, desk, rolling_desk_checkpoint=checkpoint)
     if checkpoint:

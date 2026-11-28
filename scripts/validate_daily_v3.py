@@ -3,8 +3,7 @@ import json
 import pathlib
 import re
 import sys
-from urllib.parse import urlsplit
-from datetime import datetime
+from source_headline_contract import validate_source_headline
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -41,24 +40,7 @@ def validate_story(story, label):
         fail(f"{label}: story must be object")
     if not nonempty(story.get("id")):
         fail(f"{label}: id required")
-    mode = story.get("sourceAggregation")
-    if mode is not None:
-        if mode != "AI_GROUP_SOURCE_HEADLINE_V1":
-            fail(f"{label}: unsupported source aggregation mode")
-        if any(story.get(field, "") != "" for field in ("dek","summary","body","context","why","watchNext")):
-            fail(f"{label}: unexpected excerpt or narrative")
-        for field in ("title","sourceName","sourceUrl","publishedAt","verifiedAt","timeLabel"):
-            if not nonempty(story.get(field)):
-                fail(f"{label}: missing {field}")
-        url = urlsplit(story["sourceUrl"])
-        if url.scheme != "https" or not url.hostname or url.username or url.password:
-            fail(f"{label}: source URL invalid")
-        from scheduled_publication_contract import time_label
-        published, verified = (datetime.fromisoformat(story[key].replace("Z","+00:00"))
-                               for key in ("publishedAt","verifiedAt"))
-        if (published.utcoffset() is None or verified.utcoffset() is None or published > verified
-                or time_label(story["verifiedAt"]) != story["timeLabel"]):
-            fail(f"{label}: source times invalid")
+    if validate_source_headline(story, label):
         return
     for field in REQUIRED:
         if not nonempty(story.get(field)):

@@ -93,10 +93,15 @@ jobs:
               with urllib.request.urlopen(req,timeout=15) as response:
                   return response.getcode(), response.headers.get_content_type(), response.read()
 
-          def fetch_json(filename):
+          from publication_coverage import effective_live
+
+          def fetch_bytes(filename):
               status,_,body=request_bytes(data_base+filename)
               if status != 200: raise RuntimeError(f'{filename} HTTP {status}')
-              return json.loads(body.decode('utf-8'))
+              return body
+
+          def fetch_json(filename):
+              return json.loads(fetch_bytes(filename))
 
           def sha256(data): return hashlib.sha256(data).hexdigest()
 
@@ -166,7 +171,8 @@ jobs:
           error=None
           for _ in range(12):
               try:
-                  remote_latest=fetch_json('latest.json'); remote_live=fetch_json('live.json'); remote_desk=fetch_json('desk-latest.json')
+                  remote_latest=fetch_json('latest.json'); remote_desk=fetch_json('desk-latest.json')
+                  remote_live=effective_live(fetch_bytes('live.json'), remote_desk)
                   remote_stocks=fetch_json('stocks-latest.json'); remote_tts=fetch_json('tts-manifest.json')
                   desk_ok,_=desk_contract(remote_desk)
                   # Voice is asynchronous by newsroom policy. It is monitored below
@@ -177,7 +183,7 @@ jobs:
                   if data_ok: error=None; break
                   error='public data contract not yet current/complete'
                   if not stock_semantic_ok: error='Stock News substantive freshness validation failed: '+stock_semantic_detail
-              except Exception as exc:
+              except (Exception, SystemExit) as exc:
                   error=str(exc)
               time.sleep(5)
 

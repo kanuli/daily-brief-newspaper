@@ -2,7 +2,7 @@ name: Editorial CI
 
 on:
   pull_request:
-    branches: ["main"]
+    branches: ["main", "review/ai-group-v13-editorial-contract-20261128"]
   workflow_dispatch:
 
 permissions:
@@ -54,6 +54,10 @@ jobs:
           exact={
               'scripts/validate_stock_news.py',
               'scripts/validate_publication_current.py',
+              'scripts/validate_editorial_v2.py',
+              'scripts/validate_daily_v3.py',
+              'scripts/source_headline_contract.py',
+              'scripts/publication_coverage.py',
               'scripts/stock_news_rules.py',
               'scripts/stock_news_heartbeat.py',
               'scripts/desk_freshness_policy.py',
@@ -122,7 +126,10 @@ jobs:
         run: PYTHONPATH=scripts python scripts/recover_manga_freshness_watchdog.py
 
       - name: Rebuild Rolling Desk and Live coverage metadata
-        run: python scripts/merge_live_into_desk.py
+        run: |
+          cp data/live.json "$RUNNER_TEMP/original-live.json"
+          python scripts/merge_live_into_desk.py
+          python scripts/publication_coverage.py "$RUNNER_TEMP/original-live.json"
 
       - name: Validate Python syntax for deployment builders
         run: |
@@ -186,22 +193,29 @@ jobs:
           node --check assets/js/site-tts-canto-nano.js
           node --check assets/js/page-updated-time.js
 
+      - name: Source-headline and detached checkpoint contracts
+        run: python scripts/test_editorial_contract_repair.py
+
       - name: Structural editorial data validation
         run: |
           python scripts/validate_daily_v3.py
-          python scripts/validate_editorial_v2.py
+          python scripts/publication_coverage.py --validate-editorial
           python scripts/audit_tts_language.py
 
+      - name: Strict stock currentness validation when PR changes the live contract
+        if: ${{ !cancelled() && steps.live_contract.outputs.changed == 'true' }}
+        run: python scripts/validate_stock_news.py
+
       - name: Strict live currentness validation when PR changes the live contract
-        if: steps.live_contract.outputs.changed == 'true'
-        run: |
-          python scripts/validate_stock_news.py
-          python scripts/validate_publication_current.py
+        if: ${{ !cancelled() && steps.live_contract.outputs.changed == 'true' }}
+        run: python scripts/validate_publication_current.py --detached
 
       - name: Build static no-JS newspaper
+        if: ${{ !cancelled() }}
         run: python scripts/build_static_news_fallback.py
 
       - name: Verify prerendered pages contain current stories
+        if: ${{ !cancelled() }}
         shell: bash
         run: |
           python - <<'PY'
