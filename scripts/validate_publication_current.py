@@ -219,13 +219,13 @@ def report_voice_currentness_nonblocking():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--rolling-desk-checkpoint", action="store_true")
-    parser.add_argument("--detached", action="store_true")
+    parser.add_argument("--detached", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     live = load("live.json")
     checkpoint = args.rolling_desk_checkpoint and is_scheduled(live)
     latest = {} if checkpoint else load("latest.json")
     desk = load("desk-latest.json")
-    if args.detached and is_scheduled(live):
+    if is_scheduled(live):
         from publication_coverage import effective_live
         live = effective_live((DATA / "live.json").read_bytes(), desk)
     validate_desks(desk)

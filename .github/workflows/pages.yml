@@ -112,10 +112,11 @@ jobs:
           from pathlib import Path
           sys.path.insert(0, "scripts")
           from scheduled_publication_contract import is_scheduled
+          from formal_desk_checkpoint import effective_live
           from validate_publication_current import validate_live
           required=['data/latest.json','data/live.json','data/desk-latest.json','data/stocks-latest.json']
           loaded={name:json.loads(Path(name).read_text(encoding='utf-8')) for name in required}
-          live=loaded['data/live.json']; desk=loaded['data/desk-latest.json']; items=live.get('items'); mode=str(live.get('mode') or '').upper(); coverage=live.get('coverage') or {}
+          desk=loaded['data/desk-latest.json']; live=effective_live(Path('data/live.json').read_bytes(), desk); items=live.get('items'); mode=str(live.get('mode') or '').upper(); coverage=live.get('coverage') or {}
           if not live.get('lastUpdated') or not live.get('nextUpdateLabel'): raise SystemExit('Live timestamps missing')
           if not isinstance(items,list): raise SystemExit('Live items must be an array')
           floors={'world':8,'asia':8,'hong-kong':6,'japan':8,'market-economy':8,'ai-tech':6,'manga-anime':4,'manchester-united':4,'football':10}; counts=coverage.get('deskLatestStoryCounts') or {}
@@ -150,7 +151,7 @@ jobs:
       - name: Editorial QA — current Live / Rolling Desk
         run: python scripts/validate_publication_current.py
       - name: Editorial QA — hard desk depth and geography
-        run: python scripts/validate_editorial_v2.py
+        run: python scripts/formal_desk_checkpoint.py --validate-editorial
 
       - name: Build resilient static news fallback
         run: |
